@@ -1,0 +1,15 @@
+{
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "files.associations": {
+        "*.hpp": "cpp"
+    },
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/build",
+        "--background-index",
+        "--clang-tidy",
+        "--header-insertion=iwyu"
+    ]
+}

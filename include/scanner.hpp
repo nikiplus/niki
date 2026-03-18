@@ -1,0 +1,118 @@
+#pragma once
+#include "token.hpp"
+#include <string_view>
+namespace niki::syntax {
+
+/**
+ * @brief Token结构
+ * type:  token类型
+ * start: token在源字符串中的起始位置
+ * length: token的长度
+ * line: token所在的行号
+ */
+struct Token {
+    TokenType type;
+    const char *start;
+    int length;
+    int line;
+};
+
+// scanner扫描器，用于将原字符串切分为TOKEN
+// 我们在文本文件中写的代码事实上是一种“被定义的语言”。即，符号如何使用，语法如何定义，关键词，标识符是如何存在的，其为什么被如此命名，事实上都是由这门语言的设计者决定的。
+// 当然，现在有了一套统一规范的语言制定标准，我们大可延续这套标准，在在此之上设计属于自己的特殊的语言特性。
+class Scanner {
+    // 整个Scanner可以算作是一个“有限状态机”
+    // 而Scanner的状态转移图可以表示为一个有向图，其中每个节点表示一个状态，每条边表示一个状态转移。
+    // Scanner在扫描时，根据当前状态和输入字符，会转移到下一个状态，从而产出一个token。
+    // scanToken()是Scanner的核心API，每次调用产出一个token，而其之所以被放在公共函数中，是因为其是外部调用scanner时所需要的唯一接口。
+  public:
+    // 构造函数
+    /** @note 还是要讲讲这里为什么要用string_view而不是string
+     *首先普及一个概念，在计算机底层，“只读”的访问速率/性能优于“拷贝”，那么string和string_view的区别就很明显了。
+     ** @string:!涉及拷贝!!长度可变!,是实实在在被我们的scanner所持有的。
+     ** @string_view:!长度固定!!不涉及拷贝!，只是一个字符串的“视图”，本质上是一段指向源字符串的指针，string本身的长度则是通过一个额外的变量来维护的。
+     *那问题又来了，为什么长度和拷贝这么重要？
+     *这是因为，计算机底层在访问数据时，若每次都要拷贝数据，就不可避免的要涉及内存分配，整理等操作，而这些操作都是相当耗时的
+     *!长度固定!优于!长度可变!则是因为，在通常情况下计算机在访问和扫描数据时，定长的数据可以直接被批量访问，而无需因为数据长短进行额外的判断和处理。
+     *当然，!只读!本身也有其缺点，即，当“被只读”对象被删除时，其指向的内存空间也会被释放，而如果scanner还在使用这个内存空间，就会导致程序崩溃。
+     *不过在我们当前使用情境下，由于scanner只是对源字符串进行扫描，而不会对其进行修改，因此我们可以放心的使用string_view，而不用担心内存泄漏的问题。
+     */
+    Scanner(std::string_view source); // 返回一个Scanner对象
+    Token scanToken();                // 核心API，每次调用产出一个token
+
+    // 在这补充一点知识，什么是有限状态机？
+    // 用简单的话来讲，有限状态机就是一个“一次只能做一件事，且知道什么时候换一件事做”的逻辑模型。
+    // 而有限，指的就是“同一时间只能做一件事“。状态则就是”在做的这件事“。
+    // 状态机所需要的东西无非就是“对正在做的事的定义”——也即状态，以及这件事究竟是什么，什么时候开始做这件事的判断。
+    // 因此整个scanner事实上就是一个巨大的if else
+  private:
+    std::string_view source; // 定义来源
+    int start = 0;           // 当前扫描位置的起始索引
+    int current = 0;         // 扫描游标
+    int line = 1;            // 当前行号
+
+    // 代码的本质是文本文件，因此scanner的扫描也只是对文本文件中的语句和符号进行判断，再将之拆分成Token
+    // scanner在进行扫描时，对于字符需要进行如下几种类型的判断。
+    // 1字母；2数字；3空格;4换行；5标识符；6注释；7其他字符
+    // 空格，换行，制表符，回车符，垂直制表符，换页符这些本质上都是“与编程无关”的字符，
+    // scanner在扫描时需要将其忽略，不将其作为token的一部分，因此可以对这些“无关字符”进行跳过。
+    // 我们首先来完成数字，字母，以及这些“无用字符”的判断。
+
+    /** @brief 判断辅助函数(数字，字母，空格等) */
+    // 这三个函数主要是用于辅助主扫描器进行初步的字符判断的。
+    bool isAlpha(char current); // 是否为字母
+    bool isDigit(char current); // 是否为数字
+    void skipWhitespace(); // 跳过空白字符->我们上面已说明了，除字母，数字和标识符外其它的字符都是“无用字符”，跳过即可。
+
+    /** @brief 判断标识符 */
+    /**
+     ** @note 【首先是第一个问题：什么是标识符？】
+     * 标识符 = 所有的“名”（函数、类、变量...）
+     * * 【核心冲突：创作者 vs 使用者】
+     * 创作者想提供预装工具（如 ADD），但使用者可能也想起名叫 ADD。
+     * * 【解决方案：关键字隔离策略】
+     */
+
+    // 1. 扫描到一个单词 (text)
+    // 2. 进入判定逻辑：
+
+    /** @if (搜索_创作者定义的关键字列表.包含(text)) {
+
+    * @note 情况 A：撞名了
+    * 逻辑：创作者拥有优先权。
+    * 结果：这个单词被判定为“关键字”，用户不能把它当普通变量名用。
+    *    return TOKEN_KEYWORD; // 这是一个关键字
+
+    * } @else if (符合_标识符命名规则(text)) {
+    ** @note 情况 B：列表里没找到
+    * 逻辑：这是使用者自由发挥的领地。
+    * 规则：只要符合“字母开头，包含数字下划线”的通用格式。
+    *    @return TOKEN_IDENTIFIER; // 这是一个普通的名字
+
+    * } @else {
+    *    @return TOKEN_ERROR; // 既不是关键字，又不符合命名规则（比如数字开头）
+    * }*/
+    /**
+     * 结论：
+     * 标识符（Identifier）是一个大集合。
+     * 关键字（Keyword）是这个集合里被创作者“征收”了的特殊成员。
+     */
+    // (source)数据注入以下三个函数↓
+    // 详细解释我会放在具体函数实现中，可按住ctrl+点击函数名查看
+    TokenType checkKeyword(int startOffset, int length, const char *rest, TokenType type); // 检查是否为关键词
+    TokenType checkIdentifierType();                                                       // 检查是否为标识符
+    Token makeIdentifierToken();                                                           // 构造标识符token
+
+    bool isAtEnd();            // 是否到达源字符串末尾
+    char advance();            // 移动游标并返回当前字符
+    char peek();               // 查看当前字符但不移动游标
+    char peekNext();           // 查看下一个字符但不移动游标
+    bool match(char expected); // 匹配当前字符并移动游标
+
+    /*具体的TOKEN构造函数*/
+    Token makeToken(TokenType type);
+    Token errorToken(const char *message);
+
+    // 具体的扫描逻辑
+};
+} // namespace niki::syntax
