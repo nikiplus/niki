@@ -11,5 +11,8 @@
         "--background-index",
         "--clang-tidy",
         "--header-insertion=iwyu"
-    ]
+    ],
+    "[cmake]": {
+        "editor.defaultFormatter": "cheshirekow.cmake-format"
+    }
 }

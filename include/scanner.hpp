@@ -5,13 +5,12 @@
 *首先明确一件事，我们的代码全部是写在文本文件上的文本。那么扫描器就是对这个文本进行解析，使之转化为机器能阅读的机器码的第一步。
 *扫描器的任务是将文本中的字符拆分为一个个“token”——也就是孤立的，单独的，不可再分的符号——是的，我们将关键字，标识符之类的也称作符号——也即token。
 *扫描器是如何工作的呢？我们可以将扫描器理解为一个磁带上的磁针，而我们的文本就是不断旋转的一段磁带上的字符。
-*欸？为什么文本是磁带？它怎么成了一维的？
-*因为文本本身就是一维的呀！！我们人眼阅读时，不也像一个扫描器一样从左往右连续的，一行一行地往下读吗？
+*到这里，要注意，文本本身就是一维的，我们人眼对文本进行阅读是也是一样的，自左向右，自上而下的一行行阅读和理解。
 *这样也导致了各种代码语言的一个特性，即，代码是一行一行的执行的——因为先写出的代码首先被阅读和解析到，而后写的代码则可以“覆盖”之前的代码——就像下面这样。
 *@start:开始执行！(这里是文件头)
-*@pass: 哇呀！我要让一个玩家每次受击掉很多很多血！(damage = 10000000)！！
+*@pass: 哇呀！我要让一个玩家每次受击掉很多很多血！(damage = 10000000)
 *@pass:哎哟，这样设计玩家会骂死我的吧，还是少掉一点(damage = 10)
-*@end: 结束执行！(这里是文件尾)
+*@end: 结束执行，输出damge=10
 那么由于代码是从上到下，从左往右执行的，这个damage的值最终就是10。
 */
 /*欸？那既然你这么说，那我们是不是得先定义一些token出来？不然scanner扫描器扫出来的字符我们怎么知道它是个什么符号呢？
@@ -32,7 +31,9 @@ struct Token {
     TokenType type;
     const char *start;
     int length;
-    int line;
+    // 下面两行是用于编译器报错的
+    int column; // 列号
+    int line;   // 行号
 };
 
 // scanner扫描器，用于将原字符串切分为TOKEN
@@ -56,33 +57,46 @@ class Scanner {
      *不过在我们当前使用情境下，由于scanner只是对源字符串进行扫描，而不会对其进行修改，因此我们可以放心的使用string_view，而不用担心内存泄漏的问题。
      */
     Scanner(std::string_view source); // 返回一个Scanner对象
-    Token scanToken();                // 核心API，每次调用产出一个token
+    Token scanToken();                // 核心API，每次调用产出一个token，也是我们的主扫描函数。
 
     // 在这补充一点知识，什么是有限状态机？
     // 用简单的话来讲，有限状态机就是一个“一次只能做一件事，且知道什么时候换一件事做”的逻辑模型。
     // 而有限，指的就是“同一时间只能做一件事“。状态则就是”在做的这件事“。
     // 状态机所需要的东西无非就是“对正在做的事的定义”——也即状态，以及这件事究竟是什么，什么时候开始做这件事的判断。
-    // 因此整个scanner事实上就是一个巨大的if else
+    // 从这个角度而言，简单点理解的话整个scanner事实上就是一个巨大的if else
   private:
     std::string_view source; // 定义来源
-    int start = 0;           // 当前扫描位置的起始索引
-    int current = 0;         // 扫描游标
-    int line = 1;            // 当前行号
+    const char *start = nullptr;
+    const char *current = nullptr;
+    int line = 1;                  // 当前行号
+    const char *lineStart = nullptr; // 当前行的起始位置
+
+    /** @section 扫描辅助函数(判断是否到达源字符串末尾，移动游标，查看当前字符等) */
+    // 为什么要有这些辅助函数呢？
+    // 事实上，绝大多数辅助函数，都是从主扫描函数中提取出的，经常会用到的方法。在实际代码中看了就能明白。
+    bool isAtEnd();            // 是否到达源字符串末尾
+    char advance();            // 移动游标并返回当前字符
+    char peek();               // 查看当前字符但不移动游标
+    char peekNext();           // 查看下一个字符但不移动游标
+    bool match(char expected); // 匹配当前字符并移动游标
 
     // 代码的本质是文本文件，因此scanner的扫描也只是对文本文件中的语句和符号进行判断，再将之拆分成Token
-    // scanner在进行扫描时，对于字符需要进行如下几种类型的判断。
+    // scanner在进行扫描时，对于字符需要进行如下几种类型的判断↓
     // 1字母；2数字；3空格;4换行；5标识符；6注释；7其他字符
-    // 空格，换行，制表符，回车符，垂直制表符，换页符这些本质上都是“与编程无关”的字符，
+    // 其中，空格，换行，制表符，回车符，垂直制表符，换页符这些本质上都是“与编程无关”的字符，
     // scanner在扫描时需要将其忽略，不将其作为token的一部分，因此可以对这些“无关字符”进行跳过。
     // 我们首先来完成数字，字母，以及这些“无用字符”的判断。
 
-    /** @brief 判断辅助函数(数字，字母，空格等) */
+    /** @section 判断辅助函数(数字，字母，空格等) */
     // 这三个函数主要是用于辅助主扫描器进行初步的字符判断的。
-    bool isAlpha(char current); // 是否为字母
-    bool isDigit(char current); // 是否为数字
-    void skipWhitespace(); // 跳过空白字符->我们上面已说明了，除字母，数字和标识符外其它的字符都是“无用字符”，跳过即可。
+    // 这里的c通常通过 advance()或peek()来获取到当前的源代码字符——>如source[current]
+    // c = source[current];
+    bool isAlpha(char c); // 是否为字母->@bool: 返回的是（真1/假0）
+    bool isDigit(char c); // 是否为数字
+    void
+    skipWhitespace(); // 跳过空白字符->我们上面已说明了，除字母，数字和标识符外其它的字符都是“无用字符”，跳过即可。->void->无返回值
 
-    /** @brief 判断标识符 */
+    /** @section 判断标识符 */
     /**
      ** @note 【首先是第一个问题：什么是标识符？】
      * 标识符 = 所有的“名”（函数、类、变量...）
@@ -117,19 +131,17 @@ class Scanner {
      */
     // (source)数据注入以下三个函数↓
     // 详细解释我会放在具体函数实现中，可按住ctrl+点击函数名查看
-    TokenType checkKeyword(int startOffset, int length, const char *rest, TokenType type); // 检查是否为关键词
-    TokenType checkIdentifierType();                                                       // 检查是否为标识符
-    Token makeIdentifierToken();                                                           // 构造标识符token
-
-    bool isAtEnd();            // 是否到达源字符串末尾
-    char advance();            // 移动游标并返回当前字符
-    char peek();               // 查看当前字符但不移动游标
-    char peekNext();           // 查看下一个字符但不移动游标
-    bool match(char expected); // 匹配当前字符并移动游标
+    TokenType checkKeyword(int startOffset, int length, const char *rest,
+                           TokenType type); // 检查是否为关键词->@TokenType: 返回的是（TOKEN_IDENTIFIER）
+    TokenType checkIdentifierType();        // 检查是否为标识符->@TokenType: 返回的是（TOKEN_IDENTIFIER）
+    Token makeIdentifierToken();            // 构造标识符token
+    Token makeNumberToken();                // 构造数字token
+    Token makeCharToken();                  // 构造字符token
+    Token makeStringToken();                // 构造字符串token
 
     /*具体的TOKEN构造函数*/
-    Token makeToken(TokenType type);
-    Token errorToken(const char *message);
+    Token makeToken(TokenType type);       // 构造token
+    Token errorToken(const char *message); // 构造错误token->会返回一段错误信息哦
 
     // 具体的扫描逻辑
 };
