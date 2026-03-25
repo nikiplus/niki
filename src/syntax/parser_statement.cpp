@@ -1,6 +1,10 @@
 #include "niki/syntax/parser.hpp"
+#include <span>
 
 using namespace niki::syntax;
+Parser::Parser(std::span<const Token> tokens, ASTPool &pool) : tokens(tokens), astPool(pool), tokenIndex(0) {
+    advance();
+}
 
 //---游标控制---
 void Parser::advance() {
