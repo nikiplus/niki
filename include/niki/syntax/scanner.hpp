@@ -20,22 +20,6 @@
 // 命名空间，我们将scanner相关的代码都放在这个命名空间下，以避免和其他代码的命名冲突，尤其是C++本身的命名空间。
 namespace niki::syntax {
 
-/**
- * @brief Token结构
- * type:  token类型
- * start: token在源字符串中的起始位置
- * length: token的长度
- * line: token所在的行号
- */
-struct Token {
-    TokenType type;
-    const char *start;
-    int length;
-    // 下面两行是用于编译器报错的
-    int column; // 列号
-    int line;   // 行号
-};
-
 // scanner扫描器，用于将原字符串切分为TOKEN
 // 我们在文本文件中写的代码事实上是一种“被定义的语言”。即，符号如何使用，语法如何定义，关键词，标识符是如何存在的，其为什么被如此命名，事实上都是由这门语言的设计者决定的。
 // 当然，现在有了一套统一规范的语言制定标准，我们大可延续这套标准，在在此之上设计属于自己的特殊的语言特性。
@@ -68,7 +52,7 @@ class Scanner {
     std::string_view source; // 定义来源
     const char *start = nullptr;
     const char *current = nullptr;
-    int line = 1;                  // 当前行号
+    int line = 1;                    // 当前行号
     const char *lineStart = nullptr; // 当前行的起始位置
 
     /** @section 扫描辅助函数(判断是否到达源字符串末尾，移动游标，查看当前字符等) */
@@ -131,13 +115,13 @@ class Scanner {
      */
     // (source)数据注入以下三个函数↓
     // 详细解释我会放在具体函数实现中，可按住ctrl+点击函数名查看
-    TokenType checkKeyword(int startOffset, int length, const char *rest,
-                           TokenType type); // 检查是否为关键词->@TokenType: 返回的是（TOKEN_IDENTIFIER）
-    TokenType checkIdentifierType();        // 检查是否为标识符->@TokenType: 返回的是（TOKEN_IDENTIFIER）
-    Token makeIdentifierToken();            // 构造标识符token
-    Token makeNumberToken();                // 构造数字token
-    Token makeCharToken();                  // 构造字符token
-    Token makeStringToken();                // 构造字符串token
+    TokenType isKeyword(std::string_view str,
+                        TokenType type); // 检查是否为关键词->@TokenType: 返回的是（TOKEN_IDENTIFIER）
+    TokenType checkIdentifierType();     // 检查是否为标识符->@TokenType: 返回的是（TOKEN_IDENTIFIER）
+    Token makeIdentifierToken();         // 构造标识符token
+    Token makeNumberToken();             // 构造数字token
+    Token makeCharToken();               // 构造字符token
+    Token makeStringToken();             // 构造字符串token
 
     /*具体的TOKEN构造函数*/
     Token makeToken(TokenType type);       // 构造token

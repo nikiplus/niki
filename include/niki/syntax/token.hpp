@@ -132,4 +132,19 @@ enum class TokenType : uint8_t {
     // 其他
     COMMENT, // 注释
 };
+/**
+ * @brief Token结构
+ * type:  token类型
+ * start: token在源字符串中的起始位置
+ * length: token的长度
+ * line: token所在的行号
+ */
+struct Token {
+    TokenType type;
+    const char *start;
+    int length;
+    // 下面两行是用于编译器报错的
+    int column; // 列号
+    int line;   // 行号
+};
 } // namespace niki::syntax

@@ -1,5 +1,5 @@
-#include "include/scanner.hpp"
-#include "include/token.hpp"
+#include "niki/syntax/scanner.hpp"
+#include "niki/syntax/token.hpp"
 #include <chrono>
 #include <gtest/gtest.h>
 #include <iostream>

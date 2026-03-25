@@ -1,7 +1,9 @@
-#include "include/scanner.hpp"
+#include "niki/syntax/scanner.hpp"
+#include "niki/syntax/token.hpp"
 #include <cstddef>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <sys/stat.h>
 
 // 在编写一个头文件对应的实现文件时，最好能保证函数的顺序是对应的——最好注释也能对应。
@@ -228,17 +230,12 @@ void Scanner::skipWhitespace() {
 
 /** @section 判断标识符 */
 // 检查是否为关键词。如果是，返回对应的 TokenType；否则返回普通的 IDENTIFIER。
-TokenType Scanner::checkKeyword(int startOffset, int length, const char *rest, TokenType type) {
-    // 在这里，我们先创建一个“sub指针”，用来指向即将访问的字符串的地址
-    const char *current_word = start + startOffset;
-    // 2. 利用 && 的短路求值特性进行两阶段比对：
-    // 第一阶段（廉价）：检查“当前扫到的长度”是否与“目标关键词长度”完全一致。
-    // 第二阶段（昂贵但精确）：调用 memcmp 直接对比内存字节流，确认内容是否一致。
-    // 经过这两次判断后，若其大小和我们tokentype里定义的type是对等的，则我们可以视为其为某个指定类型的token
-    if (this->current - this->start == startOffset + length && memcmp(current_word, rest, length) == 0) {
-        return type;
+TokenType Scanner::isKeyword(std::string_view keyword, TokenType keywordtype) {
+    const size_t length = static_cast<size_t>(current - start);
+    if (length != keyword.length()) {
+        return TokenType::IDENTIFIER;
     }
-    return TokenType::IDENTIFIER;
+    return std::char_traits<char>::compare(start, keyword.data(), length) == 0 ? keywordtype : TokenType::IDENTIFIER;
 };
 
 // 检查是否为标识符->@TokenType: 返回的是（TOKEN_IDENTIFIER）
@@ -246,92 +243,63 @@ TokenType Scanner::checkIdentifierType() {
     // 看，我们上面刚刚构建好的checkKeyword就在这里用到了。
     // 这儿用了树状思路来判断那些前几个字符类似的标识符，比如"false""flow"。
     // 我们对各类关键字以长度进行分类。
-    int length = current - start;
-    /**
-     * @brief [CHECK_KW]来讲解为什么设计了下面这个宏
-     * * @details 该宏采用两阶段匹配策略以提升性能：
-     * 1. 预先检查首字母是否匹配。(块比较)
-     * 2. 使用 memcmp 批量比较剩余字符。(慢比较)
-     * tips:别忘了代码是从左往右执行的，在各类比较中，若左侧比较成立，编译器会直接跳转结果，而不会继续检查右侧条件是否成立
-     * * @note **关于长度计算 `sizeof(str) - 2` 的原理解析：**
-     * C++ 字符串字面量（如 "abc"）在内存中会自动包含一个不可见的结束符 `\0`。
-     * @code
-     * str = "abc"
-     * +---+---+---+---+
-     * | a | b | c | \0|
-     * +---+---+---+---+
-     * ^           ^
-     * start[0]    sizeof(str) = 4
-     * @endcode
-     * * 计算剩余需要比较的长度逻辑如下：
-     * - **sizeof(str)**: 获取总字节数（包含 `\0`）。
-     * - **-1**: 减去末尾自动生成的结束符 `\0`。
-     * - **-1**: 减去已经在外部 Switch/If 中判断过的首字母。
-     * - **结果**: `sizeof(str) - 2` 即为剩余有效负载（Payload）的长度。
-     * * @warning
-     * - 宏具有特定的作用域，在使用完毕后需及时通过 `#undef` 释放，以防污染后续代码空间。
-     * - 该宏仅适用于字符串字面量，不可用于 `const char*` 变量。
-     */
-#define CHECK_KW(str, type)                                                                                            \
-    if (start[0] == str[0] && (sizeof(str) == 2 || memcmp(start + 1, &str[1], sizeof(str) - 2) == 0))                  \
-        return type;
-    // 先筛选长度，再通过宏防止与其它关键字首字母相同，以及判断是否为关键字，
+    int length = static_cast<int>(current - start);
     switch (length) {
     case 2:
-        CHECK_KW("if", TokenType::KEYWORD_IF);
+        isKeyword("if", TokenType::KEYWORD_IF);
         break;
     case 3:
-        CHECK_KW("var", TokenType::KEYWORD_VAR);
-        CHECK_KW("any", TokenType::KEYWORD_ANY);
-        CHECK_KW("tag", TokenType::NK_TAG);
-        CHECK_KW("nil", TokenType::NIL);
-        CHECK_KW("int", TokenType::KEYWORD_INT);
-        CHECK_KW("set", TokenType::NK_SET);
+        isKeyword("var", TokenType::KEYWORD_VAR);
+        isKeyword("any", TokenType::KEYWORD_ANY);
+        isKeyword("tag", TokenType::NK_TAG);
+        isKeyword("nil", TokenType::NIL);
+        isKeyword("int", TokenType::KEYWORD_INT);
+        isKeyword("set", TokenType::NK_SET);
         break;
     case 4:
-        CHECK_KW("true", TokenType::KEYWORD_TRUE);
-        CHECK_KW("else", TokenType::KEYWORD_ELSE);
-        CHECK_KW("loop", TokenType::KEYWORD_LOOP);
-        CHECK_KW("func", TokenType::KEYWORD_FUNC);
-        CHECK_KW("bool", TokenType::KEYWORD_BOOL);
-        CHECK_KW("void", TokenType::KEYWORD_VOID);
-        CHECK_KW("flow", TokenType::NK_FLOW);
-        CHECK_KW("nock", TokenType::NK_FLOW_NOCK);
-        CHECK_KW("type", TokenType::KEYWORD_TYPE);
-        CHECK_KW("with", TokenType::NK_WITH);
-        CHECK_KW("read", TokenType::NK_READ);
-        CHECK_KW("enum", TokenType::NK_ENUM);
+        isKeyword("true", TokenType::KEYWORD_TRUE);
+        isKeyword("else", TokenType::KEYWORD_ELSE);
+        isKeyword("loop", TokenType::KEYWORD_LOOP);
+        isKeyword("func", TokenType::KEYWORD_FUNC);
+        isKeyword("bool", TokenType::KEYWORD_BOOL);
+        isKeyword("void", TokenType::KEYWORD_VOID);
+        isKeyword("flow", TokenType::NK_FLOW);
+        isKeyword("nock", TokenType::NK_FLOW_NOCK);
+        isKeyword("type", TokenType::KEYWORD_TYPE);
+        isKeyword("with", TokenType::NK_WITH);
+        isKeyword("read", TokenType::NK_READ);
+        isKeyword("enum", TokenType::NK_ENUM);
         break;
     case 5:
-        CHECK_KW("false", TokenType::KEYWORD_FALSE);
-        CHECK_KW("break", TokenType::KEYWORD_BREAK);
-        CHECK_KW("const", TokenType::KEYWORD_CONST);
-        CHECK_KW("match", TokenType::KEYWORD_MATCH);
-        CHECK_KW("await", TokenType::NK_FLOW_AWAIT);
-        CHECK_KW("async", TokenType::NK_FLOW_ASYNC);
-        CHECK_KW("float", TokenType::KEYWORD_FLOAT);
-        CHECK_KW("unset", TokenType::NK_UNSET);
-        CHECK_KW("write", TokenType::NK_WRITE);
+        isKeyword("false", TokenType::KEYWORD_FALSE);
+        isKeyword("break", TokenType::KEYWORD_BREAK);
+        isKeyword("const", TokenType::KEYWORD_CONST);
+        isKeyword("match", TokenType::KEYWORD_MATCH);
+        isKeyword("await", TokenType::NK_FLOW_AWAIT);
+        isKeyword("async", TokenType::NK_FLOW_ASYNC);
+        isKeyword("float", TokenType::KEYWORD_FLOAT);
+        isKeyword("unset", TokenType::NK_UNSET);
+        isKeyword("write", TokenType::NK_WRITE);
         break;
     case 6:
-        CHECK_KW("return", TokenType::KEYWORD_RETURN);
-        CHECK_KW("struct", TokenType::NK_STRUCT);
-        CHECK_KW("target", TokenType::NK_TARGET);
-        CHECK_KW("system", TokenType::NK_SYSTEM);
-        CHECK_KW("string", TokenType::KEYWORD_STRING);
-        CHECK_KW("module", TokenType::NK_MODULE);
+        isKeyword("return", TokenType::KEYWORD_RETURN);
+        isKeyword("struct", TokenType::NK_STRUCT);
+        isKeyword("target", TokenType::NK_TARGET);
+        isKeyword("system", TokenType::NK_SYSTEM);
+        isKeyword("string", TokenType::KEYWORD_STRING);
+        isKeyword("module", TokenType::NK_MODULE);
         break;
     case 7:
-        CHECK_KW("context", TokenType::NK_CONTEXT);
+        isKeyword("context", TokenType::NK_CONTEXT);
         break;
     case 8:
-        CHECK_KW("continue", TokenType::KEYWORD_CONTINUE);
-        CHECK_KW("taggroup", TokenType::NK_TAGGROUP);
+        isKeyword("continue", TokenType::KEYWORD_CONTINUE);
+        isKeyword("taggroup", TokenType::NK_TAGGROUP);
         break;
     case 9:
-        CHECK_KW("component", TokenType::NK_COMPONENT);
-        CHECK_KW("interface", TokenType::KEYWORD_INTERFACE);
-        CHECK_KW("exclusive", TokenType::NK_EXCLUSIVE);
+        isKeyword("component", TokenType::NK_COMPONENT);
+        isKeyword("interface", TokenType::KEYWORD_INTERFACE);
+        isKeyword("exclusive", TokenType::NK_EXCLUSIVE);
         break;
     }
 
