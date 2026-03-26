@@ -21,7 +21,7 @@ bool Compiler::compile(std::string_view source) {
         if (token.type == TokenType::TOKEN_EOF)
             break;
     }
-    Parser parser(tokens, astPool);
+    Parser parser(source, tokens, astPool);
     rootNode = parser.parse();
     return rootNode.isvalid();
 };

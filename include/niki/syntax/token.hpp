@@ -140,11 +140,21 @@ enum class TokenType : uint8_t {
  * line: token所在的行号
  */
 struct Token {
+    uint32_t start_offset;
+    uint32_t line;
+    uint32_t column;
+    uint16_t length;
     TokenType type;
-    const char *start;
-    int length;
-    // 下面两行是用于编译器报错的
-    int column; // 列号
-    int line;   // 行号
 };
+/*画个token的数据结构图在这里。
+        +-------------------+----+------+-------------+----+
+token:  |start_offset:假设为1|line|column|length:假设为5|type|
+        +-------------------+----+------+-------------+----+
+
+        |←length→ |
+        |---------|-+-+-+-+
+string: |1|2|3|4|5|6|7|8|9|
+        +↑--------+-+-+-+-+
+         |start_offest
+*/
 } // namespace niki::syntax

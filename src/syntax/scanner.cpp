@@ -1,6 +1,8 @@
 #include "niki/syntax/scanner.hpp"
 #include "niki/syntax/token.hpp"
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <string_view>
@@ -12,8 +14,8 @@
 namespace niki::syntax {
 
 Scanner::Scanner(std::string_view source) : source(source) {
-    start = source.data();
-    current = source.data();
+    start = 0;
+    current = 0;
     line = 1;
     lineStart = start;
 }
@@ -135,40 +137,44 @@ Token Scanner::scanToken() {
     case '\'':
         return makeCharToken();
     }
-    return errorToken("Scanner:未知字符串!");
+    return errorToken();
 };
 
 /** @section 扫描辅助函数(判断是否到达源字符串末尾，移动游标，查看当前字符等) */
 // 想要让主函数能获知当前是个什么个状态，指针指到了哪里，我们就需要一系列辅助函数来进行辅助。
-bool Scanner::isAtEnd() { return *current == '\0'; };
+bool Scanner::isAtEnd() { return current >= source.size(); };
 // 返回当前字符并移动游标->之前我们在scanner开头有讲，代码是从左往右执行的，因此我们下面这段代码是先”返回“，再”移动“
-char Scanner::advance() { return *current++; };
+char Scanner::advance() {
+    if (isAtEnd())
+        return false;
+    return source[current++];
+};
 /** @note 注意这个”++“!它的意思是current += 1，是有副作用的，会对current指针的位置产生改动的*/
 // 查看当前字符但不移动游标
 char Scanner::peek() {
     // 进行检查，防止peek到不存在的字符串->这会导致bug！
     if (isAtEnd())
-        return '\0';
-    return *current;
+        return false;
+    return source[current];
 };
 // 查看下一个字符但不移动游标
 char Scanner::peekNext() {
     // 看看到头了没
     if (isAtEnd())
-        return '\0';
+        return false;
     /** @note 而这个+1，它只是告诉source去看current+1的那个位置，而current本身是不进行修改的[也就是无副作用]*/
     // 再看看指针的下一个位置是不是结束符
-    if (*(current + 1) == '\0')
-        return '\0';
+    if (current + 1 >= source.size())
+        return false;
     // 返回下一个位置的值
-    return current[1];
+    return source[current + 1];
     /** @note 这里的 current[1] 只是向前看一个位置，current 指针本身不会被修改（无副作用）*/
 }; // [副作用]这个概念很重要，建议去深入了解一下。
 // 匹配当前字符并移动游标
 bool Scanner::match(char expected) {
     if (isAtEnd())
-        return '\0';
-    if (*current != expected)
+        return false;
+    if (source[current] != expected)
         return false;
     current++;
     return true;
@@ -231,11 +237,10 @@ void Scanner::skipWhitespace() {
 /** @section 判断标识符 */
 // 检查是否为关键词。如果是，返回对应的 TokenType；否则返回普通的 IDENTIFIER。
 TokenType Scanner::isKeyword(std::string_view keyword, TokenType keywordtype) {
-    const size_t length = static_cast<size_t>(current - start);
-    if (length != keyword.length()) {
-        return TokenType::IDENTIFIER;
+    if (source.substr(start, current - start) == keyword) {
+        return keywordtype;
     }
-    return std::char_traits<char>::compare(start, keyword.data(), length) == 0 ? keywordtype : TokenType::IDENTIFIER;
+    return TokenType::IDENTIFIER;
 };
 
 // 检查是否为标识符->@TokenType: 返回的是（TOKEN_IDENTIFIER）
@@ -339,12 +344,12 @@ Token Scanner::makeNumberToken() {
 };
 Token Scanner::makeCharToken() {
     if (isAtEnd()) {
-        return errorToken("Scanner:未闭合字符(char.)");
+        return errorToken();
     }
 
     advance();
     if (peek() != '\'') {
-        return errorToken("Scanner:未闭合字符(char)或字符(char)过长");
+        return errorToken();
     }
     advance();
     return makeToken(TokenType::LITERAL_CHAR);
@@ -360,7 +365,7 @@ Token Scanner::makeStringToken() {
         }
     }
     if (isAtEnd())
-        return errorToken("Scanner:未闭合字符串(string.)");
+        return errorToken();
     advance();
     return makeToken(TokenType::LITERAL_STRING);
 };
@@ -369,25 +374,22 @@ Token Scanner::makeStringToken() {
 Token Scanner::makeToken(TokenType type) {
     Token token;
     token.type = type;
-    token.start = start;
-    token.length = int(current - start);
+    token.start_offset = start;
+    token.length = static_cast<uint16_t>(current - start);
     token.line = line;
-    token.column = int(start - lineStart) + 1; // 统一从列号 1 开始
+    token.column = static_cast<uint16_t>(start - lineStart + 1); // 统一从列号 1 开始
     return token;
 
 }; // 构造token
 
 // 构造错误token->会返回一段错误信息哦
-Token Scanner::errorToken(const char *message) {
+Token Scanner::errorToken() {
     Token token;
     token.type = TokenType::TOKEN_ERROR;
-    // 注意，我们在上面传来了一段message对吗？那么我们现在想通过token将这个message传(return)出去，因此就有了下面这段
-    token.start = message;               // 看，start指针直接指向了message的地址！
-    token.length = (int)strlen(message); // 长度就是message这个字符串的长度
-    // 经过上面两步操作，我们就得到了一个，名为TOKEN_ERROR的，包含有指向错误信息的指针的Token
-    // 这样是零内存分配的——无需拷贝或new，性能极快
+    token.start_offset = start;
+    token.length = static_cast<uint16_t>(current - start);
     token.line = line;
-    token.column = int(start - lineStart) + 1; // 别忘了列号也要 +1
+    token.column = static_cast<uint16_t>(start - lineStart + 1);
     return token;
 };
 } // namespace niki::syntax

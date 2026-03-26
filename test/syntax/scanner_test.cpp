@@ -95,28 +95,28 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         Scanner scanner(source);
         Token t = scanner.scanToken();
         EXPECT_EQ(t.type, TokenType::TOKEN_ERROR);
-        EXPECT_STREQ(std::string(t.start, t.length).c_str(), "Scanner:未知字符串!");
+        EXPECT_STREQ(std::string(t.start_offset, t.length).c_str(), "Scanner:未知字符串!");
     }
     {
         std::string source = "\"未闭合的字符串";
         Scanner scanner(source);
         Token t = scanner.scanToken();
         EXPECT_EQ(t.type, TokenType::TOKEN_ERROR);
-        EXPECT_STREQ(std::string(t.start, t.length).c_str(), "Scanner:未闭合字符串(string.)");
+        EXPECT_STREQ(std::string(t.start_offset, t.length).c_str(), "Scanner:未闭合字符串(string.)");
     }
     {
         std::string source = "\'";
         Scanner scanner(source);
         Token t = scanner.scanToken();
         EXPECT_EQ(t.type, TokenType::TOKEN_ERROR);
-        EXPECT_STREQ(std::string(t.start, t.length).c_str(), "Scanner:未闭合字符(char.)");
+        EXPECT_STREQ(std::string(t.start_offset, t.length).c_str(), "Scanner:未闭合字符(char.)");
     }
     {
         std::string source = "\'ab\'";
         Scanner scanner(source);
         Token t = scanner.scanToken();
         EXPECT_EQ(t.type, TokenType::TOKEN_ERROR);
-        EXPECT_STREQ(std::string(t.start, t.length).c_str(), "Scanner:未闭合字符(char)或字符(char)过长");
+        EXPECT_STREQ(std::string(t.start_offset, t.length).c_str(), "Scanner:未闭合字符(char)或字符(char)过长");
     }
 }
 

@@ -11,8 +11,8 @@ find_package(GTest CONFIG REQUIRED)
 
 add_library(niki_core STATIC
     src/syntax/scanner.cpp
-    src/syntax/parser_expression_pratt.cpp
-    src/syntax/parser.cpp
+    src/syntax/parser_expression.cpp
+    src/syntax/parser_statement.cpp
 )
 
 target_include_directories(niki_core

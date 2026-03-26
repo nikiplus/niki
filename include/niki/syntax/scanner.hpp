@@ -1,5 +1,6 @@
 #pragma once
 #include "token.hpp"
+#include <cstdint>
 #include <string_view>
 /** @scanner:扫描器
 *首先明确一件事，我们的代码全部是写在文本文件上的文本。那么扫描器就是对这个文本进行解析，使之转化为机器能阅读的机器码的第一步。
@@ -50,10 +51,21 @@ class Scanner {
     // 从这个角度而言，简单点理解的话整个scanner事实上就是一个巨大的if else
   private:
     std::string_view source; // 定义来源
-    const char *start = nullptr;
-    const char *current = nullptr;
-    int line = 1;                    // 当前行号
-    const char *lineStart = nullptr; // 当前行的起始位置
+    /*我有必要抨击C++这个名为string的魔法，它他妈困住我好久！
+    *大致的讲，string里存的根本不是“一连串字符”的一个整体，而是“多个字符切片”。
+    *也就是说，假设我存了一个名为“cnmdC++”的字符串，它在string里事实上是这样的。
+    +-+-+-+-+-+-+-+-+
+    |w|c|n|m|d|C|+|+|
+    +-+-+-+-+-+-+-+-+
+    看到吗，事实上是多个char拼成了一个string。
+    当然，一些乱七八糟的什么长度信息啊之类的我们先不谈。
+    那再看我们下面的两个索引↓*/
+    uint32_t start = 0;
+    uint32_t current = 0;
+    /*我们的string本身就是一个连续数组，因此使用两个不同索引就可以对整个数组进行扫描和切片！*/
+
+    int line = 1;           // 当前行号
+    uint32_t lineStart = 0; // 当前行的起始位置
 
     /** @section 扫描辅助函数(判断是否到达源字符串末尾，移动游标，查看当前字符等) */
     // 为什么要有这些辅助函数呢？
@@ -124,8 +136,8 @@ class Scanner {
     Token makeStringToken();             // 构造字符串token
 
     /*具体的TOKEN构造函数*/
-    Token makeToken(TokenType type);       // 构造token
-    Token errorToken(const char *message); // 构造错误token->会返回一段错误信息哦
+    Token makeToken(TokenType type); // 构造token
+    Token errorToken();              // 构造错误token->无需返回错误信息，错误信息在parse阶段抛出
 
     // 具体的扫描逻辑
 };
