@@ -6,6 +6,10 @@
 #include "niki/vm/value.hpp"
 #include <cstdint>
 #include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <variant>
 #include <vcruntime_typeinfo.h>
 #include <vector>
@@ -445,6 +449,8 @@ struct ASTPool {
     std::vector<FunctionData> function_data; // 函数数据
     std::vector<StructData> struct_data;     // 结构体数据
     std::vector<ContextData> context_data;   // 上下文数据
+    std::vector<std::string> string_pool;
+    std::unordered_map<std::string_view, uint32_t> string_to_id;
 
     // 我们使用std::span提供了一个get_list方法，为的是方便我们获取一个列表的所有元素索引，这在我们需要遍历一个列表时非常方便。
     // std::span相当于一个指向数组的视图，只要我们提供这个数组的起始地址和长度，它就会返回一个指向这个数组的子数组的视图。
@@ -455,6 +461,12 @@ struct ASTPool {
         }
         return {lists_elements.data() + list_info.start_index, list_info.length};
     }
+    ASTNodeIndex allocateNode(NodeType type) {
+        uint32_t index = static_cast<uint32_t>(nodes.size());
+        nodes.push_back(ASTNode{type, {}});
+        locations.push_back(TokenLocation{0, 0});
+        return ASTNodeIndex{index};
+    };
     // 调用ASTListIndex，装载指定区域的astnode，并返回对应的astlist切片。
     ASTListIndex allocateList(std::span<const ASTNodeIndex> elements) {
         uint32_t start_index = static_cast<uint32_t>(lists_elements.size());
@@ -464,6 +476,11 @@ struct ASTPool {
         return ASTListIndex{start_index, static_cast<uint32_t>(elements.size())};
     };
     //---辅助函数---
+    uint32_t addConstant(vm::Value value) {
+        uint32_t index = static_cast<uint32_t>(constants.size());
+        constants.push_back(value);
+        return index;
+    };
     void clear() {
         nodes.clear();
         locations.clear();
@@ -472,6 +489,30 @@ struct ASTPool {
         function_data.clear();
         struct_data.clear();
     };
+    ASTNode &getNode(ASTNodeIndex index) {
+        if (!index.isvalid() || index >= nodes.size()) {
+            throw std::out_of_range("ASTNodeIndex is invalid or out of bounds.");
+        }
+        return nodes[index.index];
+    }
+    const ASTNode &getNode(ASTNodeIndex index) const {
+        if (!index.isvalid() || index >= nodes.size()) {
+            throw std::out_of_range("ASTNodeIndex is invalid or out of bounds.");
+        }
+        return nodes[index.index];
+    }
+
+    uint32_t internString(std::string_view str) {
+        auto it = string_to_id.find(str);
+        if (it != string_to_id.end()) {
+            return it->second;
+        }
+        uint32_t new_id = static_cast<uint32_t>(string_pool.size());
+        string_pool.emplace_back(str);
+        string_to_id[string_pool.back()] = new_id;
+        return new_id;
+    };
+    const std::string &getStringId(uint32_t id) const { return string_pool.at(id); }
 };
 
 } // namespace niki::syntax

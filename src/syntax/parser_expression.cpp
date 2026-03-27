@@ -2,10 +2,15 @@
 #include "niki/syntax/parser.hpp"
 #include "niki/syntax/parser_precedence.hpp"
 #include "niki/syntax/token.hpp"
+#include "niki/vm/value.hpp"
+#include <cstdint>
+#include <string>
+#include <string_view>
 #include <vector>
 using namespace niki::syntax;
 
 ASTNodeIndex Parser::parseExpression(Precedence precedence) {
+    advance();
     ASTNodeIndex left = parsePrefix(previous.type);
     while (precedence < getPrecedence(current.type)) {
         advance();
@@ -16,18 +21,34 @@ ASTNodeIndex Parser::parseExpression(Precedence precedence) {
 
 ASTNodeIndex Parser::parsePrefix(TokenType type) {
     ASTNodePayload payload{};
+    Token startToken = previous;
     switch (type) {
         //---字面量与标识符---
-    case TokenType::LITERAL_INT:
+    case TokenType::LITERAL_INT: {
+        std::string_view lexeme = source.substr(startToken.start_offset, startToken.length);
+        int numeric_val = std::stoi(std::string(lexeme));
+        // 将值包装进 vm::Value 并存入常量池 (需要你的 vm::Value 支持此构造)
+        // TODO: 确保 vm::Value 有对应的构造函数，目前伪代码先传 0 占位防报错
+        uint32_t const_idx = astPool.addConstant(vm::Value());
+        payload.literal.const_pool_index = const_idx;
+        return emitNode(NodeType::LiteralExpr, payload, startToken);
+    }
     case TokenType::LITERAL_FLOAT:
     case TokenType::LITERAL_STRING:
     case TokenType::LITERAL_CHAR:
     case TokenType::KEYWORD_TRUE:
     case TokenType::KEYWORD_FALSE:
     case TokenType::NIL:
-        return emitNode(NodeType::LiteralExpr, payload);
-    case TokenType::IDENTIFIER:
-        return emitNode(NodeType::IdentifierExpr, payload);
+        // TODO: 这些也需要提取实际的值存入 astPool.constants，目前暂且留空
+        return emitNode(NodeType::LiteralExpr, payload, startToken);
+    case TokenType::IDENTIFIER: {
+        std::string_view name_view = source.substr(startToken.start_offset, startToken.length);
+
+        uint32_t interned_name_id = astPool.internString(name_view);
+        payload.identifier.name_id = interned_name_id;
+
+        return emitNode(NodeType::IdentifierExpr, payload, startToken);
+    }
 
         //---一元前缀运算符
     case TokenType::SYM_MINUS:
@@ -83,6 +104,7 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         payload.map.entries = astPool.allocateList(Interleaved);
         return emitNode(NodeType::MapExpr, payload, startToken);
     }
+
     default:
         errorAtCurrent("Expected expression.");
         return emitNode(NodeType::ErrorNode, payload);
@@ -113,6 +135,38 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
         payload.binary.right = parseExpression(precedence);
         return emitNode(NodeType::BinaryExpr, payload, startToken);
     }
+    case TokenType::SYM_PAREN_L: {
+        payload.call.callee = left;
+        std::vector<ASTNodeIndex> args;
+        if (current.type != TokenType::SYM_PAREN_R) {
+            do {
+                if (current.type == TokenType::SYM_PAREN_R)
+                    break;
+
+                args.push_back(parseExpression(Precedence::None));
+            } while (match(TokenType::SYM_COMMA));
+        }
+        consume(TokenType::SYM_PAREN_R, "Expected')'after arguments.");
+        payload.call.arguments = astPool.allocateList(args);
+        return emitNode(NodeType::CallExpr, payload, startToken);
+    }
+    case TokenType::SYM_BRACKET_L: {
+        payload.index.target = left;
+        payload.index.index = parseExpression(Precedence::None);
+        consume(TokenType::SYM_BRACKET_R, "Expected ']'after index.");
+        return emitNode(NodeType::IndexExpr, payload, startToken);
+    }
+    case TokenType::SYM_DOT: {
+        payload.member.object = left;
+        consume(TokenType::IDENTIFIER, "Expected property name after'.'");
+        std::string_view property_name = source.substr(previous.start_offset, previous.length);
+        payload.member.property_id = astPool.internString(property_name);
+        return emitNode(NodeType::MemberExpr, payload, startToken);
+    }
+
+    default:
+        errorAtCurrent("Unexpected infix operator.");
+        return emitNode(NodeType::ErrorNode, payload, startToken);
     }
 };
 
