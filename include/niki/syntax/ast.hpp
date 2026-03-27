@@ -41,6 +41,7 @@ enum class NodeType : uint8_t {
     // 它们的作用是改变环境状态——如声明变量，改变内存，或改变指令流（如跳转）。
     //---基础语句---
     ExpressionStmt, // 表达式语句
+    AssignmentStmt, // 赋值语句
     VarDeclStmt,    // 变量声明语句
     BlockStmt,      // 代码块
     //---控制流---
@@ -219,6 +220,12 @@ struct ImplicitCastExprPayload {
 struct ExpressionStmtPayload {
     ASTNodeIndex expression; // 4byte: 语句体
 };
+struct AssignmentStmtPayload {
+    TokenType op;        // 1byte(自动补全为4byte): =, +=, -= 等
+    ASTNodeIndex target; // 4byte: 左侧被赋值的目标 (IdentifierExpr, IndexExpr, MemberExpr 等)
+    ASTNodeIndex value;  // 4byte: 右侧的值表达式
+    // 4 + 4 + 4 = 12byte
+};
 struct VarDeclStmtPayload {
     uint32_t name_id;       // 4byte:变量名的字符串池 ID
     ASTNodeIndex type_expr; // 4byte:类型标注的AST节点索引 (通常是一个 IdentifierExpr 或 CallExpr)
@@ -356,6 +363,7 @@ union ASTNodePayload {
     //---语句---
     TargetStmtPayload target_stmt;
     ExpressionStmtPayload expr_stmt;
+    AssignmentStmtPayload assign_stmt;
     VarDeclStmtPayload var_decl;
     BlockStmtPayload block;
     IfStmtPayload if_stmt;

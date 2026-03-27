@@ -31,6 +31,7 @@ Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &
     astPool.lists_elements.reserve(tokens.size() / 4);
     advance();
 };
+
 ASTNodeIndex Parser::parse() {
     // 创建一个临时数组以收集所有顶层声明
     std::vector<ASTNodeIndex> declarations;
@@ -38,7 +39,7 @@ ASTNodeIndex Parser::parse() {
         size_t startTokenIndex = tokenIndex;
         // 由于目前还不能解析statement，我们先仅在这里对解析式进行表达。
 
-        // 在这里，我们传入初始阈值0，并调用parseExpression对表达式进行解析。
+        // 在这里，我们传入初始阈值Precedence::None=0，并调用parseExpression对表达式进行解析。
         ASTNodeIndex decl = parseExpression(Precedence::None);
 
         // 判断是否处于恐慌模式
@@ -47,7 +48,7 @@ ASTNodeIndex Parser::parse() {
         } else {
             declarations.push_back(decl);
         }
-
+        // 打破死循环，强制跳过当前token
         if (tokenIndex == startTokenIndex) {
             errorAtCurrent("Parser bug: infinite loop detected, forcibly skipping current token.");
             advance();
@@ -180,4 +181,4 @@ void Parser::synchronize() {
         }
         advance();
     }
-};
+}

@@ -1,5 +1,5 @@
 #pragma once
-
+#include "niki/syntax/token.hpp"
 #include <cstdint>
 
 namespace niki::syntax {
@@ -8,7 +8,6 @@ namespace niki::syntax {
 // 构建过程是自顶向下递归下降，结果树中高优先级节点更深；后续求值/生成字节码常用后序遍历，才会表现出“先子后父”的效果
 enum class Precedence : uint8_t {
     None,       // 0
-    Assignment, // =
     Or,         // ||
     And,        // &&
     Equality,   // == !=
@@ -19,4 +18,5 @@ enum class Precedence : uint8_t {
     Call,       // () [] .
     Primary     // 标识符、数字、字符串、括号等
 };
+
 } // namespace niki::syntax
