@@ -38,10 +38,12 @@ class Parser {
     bool match(TokenType type);
 
     //---AST节点生成器---
-    ASTNodeIndex emitNode(NodeType type, const ASTNodePayload &payload);
+    // 这里我们传入一个空token，用来进行长函数定位
+    ASTNodeIndex emitNode(NodeType type, const ASTNodePayload &payload,
+                          Token startToken = Token(0, 0, 0, 0, TokenType::TOKEN_EOF));
 
     //---错误处理---
-    void errorAtCurrent(const char *message);
+    void errorAtCurrent(const char *message); // 处理parse阶段遇到的错误信息
     void synchronize();
 
     //---Pratt 表达式解析引擎---

@@ -1,4 +1,5 @@
 #include "niki/syntax/compiler.hpp"
+#include "niki/syntax/ast.hpp"
 #include "niki/syntax/parser.hpp"
 #include "niki/syntax/scanner.hpp"
 #include "niki/syntax/token.hpp"
@@ -8,6 +9,8 @@
 using namespace niki::syntax;
 bool Compiler::compile(std::string_view source) {
     tokens.clear();
+    astPool.clear();
+    // 预估大小，提前申请一块区域进行token存储
     tokens.reserve(source.length() / 4);
     Scanner s(source);
     for (;;) {

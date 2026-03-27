@@ -243,7 +243,7 @@ TokenType Scanner::isKeyword(std::string_view keyword, TokenType keywordtype) {
     return TokenType::IDENTIFIER;
 };
 
-// 检查是否为标识符->@TokenType: 返回的是（TOKEN_IDENTIFIER）
+// 检查是否为标识符
 TokenType Scanner::checkIdentifierType() {
     // 看，我们上面刚刚构建好的isKeyword就在这里用到了。
     // 这儿用了树状思路来判断那些前几个字符类似的标识符，比如"false""flow"。

@@ -411,7 +411,23 @@ struct ASTPool {
     // 所有的变长子节点索引都紧凑地存储在这里
     std::vector<ASTNodeIndex> lists_elements;
     //---旁侧表---
+    /*为什么这里不把位置信息和node存在一起？
+    我们来画图。
+              node coming!↓
+          +----+----+----+↓---+---
+    nodes:|nod0|nod1|nod2|type|...
+          +----+----+----+↓---+---
+    sametime:             ↓
+          +----+----+----+↓---+---
+    locat:|loc0|loc1|loc2|HERE|...
+          +----+----+----+----+---
+    看到吗？由于location信息和type信息是同时被记录的，因此它们在数组上的位置也一定是同步的，这就好像我们用一根尺子推过并排的两个凹槽，这两个凹槽被填满的进度一定是相同的。
+    也正因为如此，我们进行数据清理的时候要记住同时清理两个数组否则就会索引错位，也因如此，我们在清理的时候事实上通常不会单个单个清理，而是一次性销毁两个数组内的所有内容。
+    这样只要保证数组是只进不出的，其数据就一定是同步的——除非有傻子传完第一个不传第其它的，这样的人是要被打屁股的
+    我们的旁侧表等信息也都是用这个手段进行存储的。
+    */
     std::vector<TokenLocation> locations; // 报错时使用，用于报错定位。
+
     // 前端常量池（Side-buffer）：
     // 为了保证 ASTNode 严格维持 16 字节大小（4字节对齐），我们绝对不能把包含 8 字节对齐（double/void*）的 vm::Value
     // 直接塞进 ASTNodePayload。 这会导致整个 ASTNode 被迫 8 字节对齐，并产生 4 字节 padding，体积膨胀 50%（从 16 变成
@@ -431,6 +447,23 @@ struct ASTPool {
         }
         return {lists_elements.data() + list_info.start_index, list_info.length};
     }
+    // 调用ASTListIndex，装载指定区域的astnode，并返回对应的astlist切片。
+    ASTListIndex allocateList(std::span<const ASTNodeIndex> elements) {
+        uint32_t start_index = static_cast<uint32_t>(lists_elements.size());
+        // 这里之所以不使用for循环，而是使用std::vector::insert,是因为insert方法会预先计算elements的大小，使vector只需进行一次内存再分配即可容纳所有元素。
+        // 而如果使用push_back，每当存储的elements量超出vector当前申请的内存大小，便会使std::vector在底层使用memove进行内存的批量拷贝，这是极消耗性能的
+        lists_elements.insert(lists_elements.end(), elements.begin(), elements.end());
+        return ASTListIndex{start_index, static_cast<uint32_t>(elements.size())};
+    };
+    //---辅助函数---
+    void clear() {
+        nodes.clear();
+        locations.clear();
+        lists_elements.clear();
+        constants.clear();
+        function_data.clear();
+        struct_data.clear();
+    };
 };
 
 } // namespace niki::syntax
