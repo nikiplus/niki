@@ -51,5 +51,41 @@ class Parser {
     ASTNodeIndex parsePrefix(TokenType type);
     ASTNodeIndex parseInfix(TokenType type, ASTNodeIndex left);
     Precedence getPrecedence(TokenType type) const;
+
+    //---顶层声明解析 (parser_declaration.cpp) ---
+    ASTNodeIndex parseDeclaration();
+    ASTNodeIndex parseFunctionDecl();
+    ASTNodeIndex parseStructDecl();
+    ASTNodeIndex parseEnumDecl();
+    ASTNodeIndex parseTypeAliasDecl();
+    ASTNodeIndex parseInterfaceDecl();
+    ASTNodeIndex parseModuleDecl();
+    ASTNodeIndex parseSystemDecl();
+    ASTNodeIndex parseComponentDecl();
+    ASTNodeIndex parseFlowDecl();
+    ASTNodeIndex parseContextDecl();
+    ASTNodeIndex parseTagDecl();
+    ASTNodeIndex parseTagGroupDecl();
+
+    //---语句解析 (parser_statement.cpp) ---
+    ASTNodeIndex parseStatement();
+    ASTNodeIndex parseExpressionStmt();
+    ASTNodeIndex parseAssignmentStmt();
+    ASTNodeIndex parseVarDeclStmt();
+    ASTNodeIndex parseConstDeclStmt();
+    ASTNodeIndex parseBlockStmt();
+    ASTNodeIndex parseIfStmt();
+    ASTNodeIndex parseLoopStmt();
+    ASTNodeIndex parseMatchStmt();
+    ASTNodeIndex parseMatchCaseStmt();
+    ASTNodeIndex parseContinueStmt();
+    ASTNodeIndex parseBreakStmt();
+    ASTNodeIndex parseReturnStmt();
+    ASTNodeIndex parseNockStmt();
+    ASTNodeIndex parseAttachStmt();
+    ASTNodeIndex parseDetachStmt();
+    ASTNodeIndex parseTargetStmt();
+    ASTNodeIndex parseThrowStmt();
+    ASTNodeIndex parseTryCatchStmt();
 };
 } // namespace niki::syntax

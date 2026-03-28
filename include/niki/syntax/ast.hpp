@@ -47,6 +47,7 @@ enum class NodeType : uint8_t {
     ExpressionStmt, // 表达式语句
     AssignmentStmt, // 赋值语句
     VarDeclStmt,    // 变量声明语句
+    ConstDeclStmt,  // 常量声明语句 (复用VarDecl的Payload，避免破坏12字节限制)
     BlockStmt,      // 代码块
     //---控制流---
     IfStmt,        // if语句
@@ -54,8 +55,8 @@ enum class NodeType : uint8_t {
     MatchStmt,     // match语句
     MatchCaseStmt, // match分支语句
     //---跳转与中断---
-    // ContinueStmt, // continue语句
-    // BreakStmt,    // break语句
+    ContinueStmt, // continue语句 (零负载节点)
+    BreakStmt,    // break语句 (零负载节点)
     ReturnStmt, // return语句
     NockStmt,   // nock语句
     //---组件挂载与卸载---
@@ -216,8 +217,8 @@ struct AwaitExprPayload {
 //---隐式节点---
 struct ImplicitCastExprPayload {
     ASTNodeIndex operand; // 4byte: 被转换的原始表达式
-    NKType to_type;       // 8byte: 目标类型 (必须是完整类型，不能只是BaseType)
-    // 4 + 8 = 12byte
+    NKType to_type;       // 4byte: 目标类型 (底层已优化为4字节的 handle)
+    // 4 + 4 = 8byte (完全符合 12 字节限制)
 };
 /*---语句---*/
 // 基础语句
@@ -455,64 +456,17 @@ struct ASTPool {
     // 我们使用std::span提供了一个get_list方法，为的是方便我们获取一个列表的所有元素索引，这在我们需要遍历一个列表时非常方便。
     // std::span相当于一个指向数组的视图，只要我们提供这个数组的起始地址和长度，它就会返回一个指向这个数组的子数组的视图。
     // 注意！std::span不负责管理内存，是只读的，我们不能用它来修改数组的内容。这样同时导致其是安全和高性能的。
-    std::span<const ASTNodeIndex> get_list(ASTListIndex list_info) const {
-        if (!list_info.isvalid() || list_info.length == 0) {
-            return {};
-        }
-        return {lists_elements.data() + list_info.start_index, list_info.length};
-    }
-    ASTNodeIndex allocateNode(NodeType type) {
-        uint32_t index = static_cast<uint32_t>(nodes.size());
-        nodes.push_back(ASTNode{type, {}});
-        locations.push_back(TokenLocation{0, 0});
-        return ASTNodeIndex{index};
-    };
+    std::span<const ASTNodeIndex> get_list(ASTListIndex list_info) const;
+    ASTNodeIndex allocateNode(NodeType type);
     // 调用ASTListIndex，装载指定区域的astnode，并返回对应的astlist切片。
-    ASTListIndex allocateList(std::span<const ASTNodeIndex> elements) {
-        uint32_t start_index = static_cast<uint32_t>(lists_elements.size());
-        // 这里之所以不使用for循环，而是使用std::vector::insert,是因为insert方法会预先计算elements的大小，使vector只需进行一次内存再分配即可容纳所有元素。
-        // 而如果使用push_back，每当存储的elements量超出vector当前申请的内存大小，便会使std::vector在底层使用memove进行内存的批量拷贝，这是极消耗性能的
-        lists_elements.insert(lists_elements.end(), elements.begin(), elements.end());
-        return ASTListIndex{start_index, static_cast<uint32_t>(elements.size())};
-    };
+    ASTListIndex allocateList(std::span<const ASTNodeIndex> elements);
     //---辅助函数---
-    uint32_t addConstant(vm::Value value) {
-        uint32_t index = static_cast<uint32_t>(constants.size());
-        constants.push_back(value);
-        return index;
-    };
-    void clear() {
-        nodes.clear();
-        locations.clear();
-        lists_elements.clear();
-        constants.clear();
-        function_data.clear();
-        struct_data.clear();
-    };
-    ASTNode &getNode(ASTNodeIndex index) {
-        if (!index.isvalid() || index >= nodes.size()) {
-            throw std::out_of_range("ASTNodeIndex is invalid or out of bounds.");
-        }
-        return nodes[index.index];
-    }
-    const ASTNode &getNode(ASTNodeIndex index) const {
-        if (!index.isvalid() || index >= nodes.size()) {
-            throw std::out_of_range("ASTNodeIndex is invalid or out of bounds.");
-        }
-        return nodes[index.index];
-    }
-
-    uint32_t internString(std::string_view str) {
-        auto it = string_to_id.find(str);
-        if (it != string_to_id.end()) {
-            return it->second;
-        }
-        uint32_t new_id = static_cast<uint32_t>(string_pool.size());
-        string_pool.emplace_back(str);
-        string_to_id[string_pool.back()] = new_id;
-        return new_id;
-    };
-    const std::string &getStringId(uint32_t id) const { return string_pool.at(id); }
+    uint32_t addConstant(vm::Value value);
+    void clear();
+    ASTNode &getNode(ASTNodeIndex index);
+    const ASTNode &getNode(ASTNodeIndex index) const;
+    uint32_t internString(std::string_view str);
+    const std::string &getStringId(uint32_t id) const;
 };
 
 } // namespace niki::syntax
