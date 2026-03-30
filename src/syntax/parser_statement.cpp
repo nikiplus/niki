@@ -16,6 +16,22 @@ ASTNodeIndex Parser::parseExpressionStmt() {
 
     ASTNodeIndex expr = parseExpression(Precedence::None);
     // 提前拦截赋值语句，将之变形为表达式。
+    // 注意，我们在match方法中包含了一个advance方法，
+    // 假设我们传入的是一个a =1+2;的表达式,图表如下。
+
+    /*p= previous, c=current
+      p↓c↓
+      +↓+↓+-+-+-+-+---
+      |a|=|1|+|2|;|...
+      +-+-+-+-+-+-+---
+      在match之后，我们的p和c向前挪移一位。
+        p↓c↓
+      +-+↓+↓+-+-+-+---
+      |a|=|1|+|2|;|...
+      +-+-+-+-+-+-+---
+      因此，我们应记录的OP应以previous而非current。
+      之所以这样做，是因为，我们的一些局部解析当中，需要“往前看一位”而不破坏整体指针位置。
+    */
     if (match(TokenType::SYM_EQUAL) || match(TokenType::SYM_BIT_AND_EQUAL) || match(TokenType::SYM_BIT_OR_EQUAL) ||
         match(TokenType::SYM_BIT_XOR_EQUAL) || match(TokenType::SYM_PLUS_EQUAL) || match(TokenType::SYM_MINUS_EQUAL) ||
         match(TokenType::SYM_STAR_EQUAL) || match(TokenType::SYM_SLASH_EQUAL) || match(TokenType::SYM_MOD_EQUAL) ||
@@ -43,7 +59,29 @@ ASTNodeIndex Parser::parseVarDeclStmt() {};
 ASTNodeIndex Parser::parseConstDeclStmt() {};
 ASTNodeIndex Parser::parseBlockStmt() {};
 //---控制流
-ASTNodeIndex Parser::parseIfStmt() {};
+ASTNodeIndex Parser::parseIfStmt() {
+    Token startToken = previous;
+
+    ASTNodePayload IfStmtPayload{};
+
+    consume(TokenType::SYM_PAREN_L, "Expected'('after 'if'.");
+
+    IfStmtPayload.if_stmt.condition = parseExpression(Precedence::None);
+
+    consume(TokenType::SYM_PAREN_R, "Expected')'after 'if condition'.");
+
+    IfStmtPayload.if_stmt.then_branch = parseStatement();
+
+    if (match(TokenType::KEYWORD_ELSE)) {
+        if (match(TokenType::KEYWORD_IF)) {
+            IfStmtPayload.if_stmt.else_branch = parseIfStmt();
+        } else {
+            IfStmtPayload.if_stmt.else_branch = parseStatement();
+        }
+    }
+
+    return emitNode(NodeType::IfStmt, IfStmtPayload, startToken);
+}
 ASTNodeIndex Parser::parseLoopStmt() {};
 ASTNodeIndex Parser::parseMatchStmt() {};
 ASTNodeIndex Parser::parseMatchCaseStmt() {};
