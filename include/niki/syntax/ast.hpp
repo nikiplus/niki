@@ -31,9 +31,9 @@ enum class NodeType : uint8_t {
     MapExpr,   // 映射表达式
     IndexExpr, // 对象表达式
     //---对象与方法---
-    CallExpr,   // 函数调用表达式
-    MemberExpr, // 成员表达式
-    InvokeExpr, // 调用表达式
+    CallExpr,     // 函数调用表达式
+    MemberExpr,   // 成员表达式
+    DispatchExpr, // 异步派发表达式
     //---闭包与高级特性--
     ClosureExpr, // 闭包表达式
     AwaitExpr,   // 等待表达式
@@ -50,15 +50,15 @@ enum class NodeType : uint8_t {
     ConstDeclStmt,  // 常量声明语句 (复用VarDecl的Payload，避免破坏12字节限制)
     BlockStmt,      // 代码块
     //---控制流---
-    IfStmt,        // if语句
-    LoopStmt,      // 循环语句
-    MatchStmt,     // match语句
-    MatchCaseStmt, // match分支语句
+    IfStmt,    // if语句
+    LoopStmt,  // 循环语句
+    MatchStmt, // match语句
+    MatchCase, // match分支语句
     //---跳转与中断---
     ContinueStmt, // continue语句 (零负载节点)
     BreakStmt,    // break语句 (零负载节点)
-    ReturnStmt, // return语句
-    NockStmt,   // nock语句
+    ReturnStmt,   // return语句
+    NockStmt,     // nock语句
     //---组件挂载与卸载---
     AttachStmt, // 挂载语句
     DetachStmt, // 取消挂载语句
@@ -199,7 +199,7 @@ struct MemberExprPayload {
     uint32_t property_id; // 4byte: 属性 (比如 0 或 "key")
     // 4 + 4 = 8byte
 };
-struct InvocationExprPayload {
+struct DispatchExprPayload {
     ASTNodeIndex callee;    // 被调用的函数或方法
     ASTListIndex arguments; // 调用时的函数列表
 };
@@ -360,7 +360,7 @@ union ASTNodePayload {
     IndexExprPayload index;
     CallExprPayload call;
     MemberExprPayload member;
-    InvocationExprPayload invocation;
+    DispatchExprPayload dispatch;
     ClosureExprPayload closure;
     AwaitExprPayload await_expr;
     ImplicitCastExprPayload implicit_cast;

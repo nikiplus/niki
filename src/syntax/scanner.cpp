@@ -236,79 +236,186 @@ void Scanner::skipWhitespace() {
 
 /** @section 判断标识符 */
 // 检查是否为关键词。如果是，返回对应的 TokenType；否则返回普通的 IDENTIFIER。
-TokenType Scanner::isKeyword(std::string_view keyword, TokenType keywordtype) {
-    if (source.substr(start, current - start) == keyword) {
-        return keywordtype;
+TokenType Scanner::checkKeyword(int startOffset, int length, const char *rest, TokenType type) {
+    if (this->current - this->start == startOffset + length &&
+        source.compare(this->start + startOffset, length, rest) == 0) {
+        return type;
     }
     return TokenType::IDENTIFIER;
-};
+}
 
 // 检查是否为标识符
 TokenType Scanner::checkIdentifierType() {
-    // 看，我们上面刚刚构建好的isKeyword就在这里用到了。
-    // 这儿用了树状思路来判断那些前几个字符类似的标识符，比如"false""flow"。
-    // 我们对各类关键字以长度进行分类。
     int length = static_cast<int>(current - start);
-    switch (length) {
-    case 2:
-        isKeyword("if", TokenType::KEYWORD_IF);
+    char c0 = source[start]; // 获取首字母
+
+    // 极致的硬编码 Trie 树，O(1) 无哈希无循环查找
+    switch (c0) {
+    case 'a':
+        if (length == 3)
+            return checkKeyword(1, 2, "ny", TokenType::KEYWORD_ANY);
+        if (length == 5) {
+            if (source[start + 1] == 'w')
+                return checkKeyword(2, 3, "ait", TokenType::NK_FLOW_AWAIT);
+            if (source[start + 1] == 's')
+                return checkKeyword(2, 3, "ync", TokenType::NK_FLOW_ASYNC);
+        }
         break;
-    case 3:
-        isKeyword("var", TokenType::KEYWORD_VAR);
-        isKeyword("any", TokenType::KEYWORD_ANY);
-        isKeyword("tag", TokenType::NK_TAG);
-        isKeyword("nil", TokenType::NIL);
-        isKeyword("int", TokenType::KEYWORD_INT);
-        isKeyword("set", TokenType::NK_SET);
+    case 'b':
+        if (length > 1) {
+            switch (source[start + 1]) {
+            case 'o':
+                return checkKeyword(2, 2, "ol", TokenType::KEYWORD_BOOL);
+            case 'r':
+                return checkKeyword(2, 3, "eak", TokenType::KEYWORD_BREAK);
+            }
+        }
         break;
-    case 4:
-        isKeyword("true", TokenType::KEYWORD_TRUE);
-        isKeyword("else", TokenType::KEYWORD_ELSE);
-        isKeyword("loop", TokenType::KEYWORD_LOOP);
-        isKeyword("func", TokenType::KEYWORD_FUNC);
-        isKeyword("bool", TokenType::KEYWORD_BOOL);
-        isKeyword("void", TokenType::KEYWORD_VOID);
-        isKeyword("flow", TokenType::NK_FLOW);
-        isKeyword("nock", TokenType::NK_FLOW_NOCK);
-        isKeyword("type", TokenType::KEYWORD_TYPE);
-        isKeyword("with", TokenType::NK_WITH);
-        isKeyword("read", TokenType::NK_READ);
-        isKeyword("enum", TokenType::NK_ENUM);
+    case 'c':
+        if (length > 1) {
+            switch (source[start + 1]) {
+            case 'o':
+                if (length > 2) {
+                    switch (source[start + 2]) {
+                    case 'n': // const, continue, context
+                        if (length > 3 && source[start + 3] == 's')
+                            return checkKeyword(4, 1, "t", TokenType::KEYWORD_CONST);
+                        if (length > 3 && source[start + 3] == 't') {
+                            if (length == 7)
+                                return checkKeyword(4, 3, "ext", TokenType::NK_CONTEXT);
+                            if (length == 8)
+                                return checkKeyword(4, 4, "inue", TokenType::KEYWORD_CONTINUE);
+                        }
+                        break;
+                    case 'm':
+                        return checkKeyword(3, 6, "ponent", TokenType::NK_COMPONENT);
+                    }
+                }
+                break;
+            }
+        }
         break;
-    case 5:
-        isKeyword("false", TokenType::KEYWORD_FALSE);
-        isKeyword("break", TokenType::KEYWORD_BREAK);
-        isKeyword("const", TokenType::KEYWORD_CONST);
-        isKeyword("match", TokenType::KEYWORD_MATCH);
-        isKeyword("await", TokenType::NK_FLOW_AWAIT);
-        isKeyword("async", TokenType::NK_FLOW_ASYNC);
-        isKeyword("float", TokenType::KEYWORD_FLOAT);
-        isKeyword("unset", TokenType::NK_UNSET);
-        isKeyword("write", TokenType::NK_WRITE);
+    case 'e':
+        if (length == 4) {
+            if (source[start + 1] == 'l')
+                return checkKeyword(2, 2, "se", TokenType::KEYWORD_ELSE);
+            if (source[start + 1] == 'n')
+                return checkKeyword(2, 2, "um", TokenType::NK_ENUM);
+        }
+        if (length == 9)
+            return checkKeyword(1, 8, "xclusive", TokenType::NK_EXCLUSIVE);
         break;
-    case 6:
-        isKeyword("return", TokenType::KEYWORD_RETURN);
-        isKeyword("struct", TokenType::NK_STRUCT);
-        isKeyword("target", TokenType::NK_TARGET);
-        isKeyword("system", TokenType::NK_SYSTEM);
-        isKeyword("string", TokenType::KEYWORD_STRING);
-        isKeyword("module", TokenType::NK_MODULE);
+    case 'f':
+        if (length > 1) {
+            switch (source[start + 1]) {
+            case 'a':
+                return checkKeyword(2, 3, "lse", TokenType::KEYWORD_FALSE);
+            case 'l':
+                if (length > 2 && source[start + 2] == 'o') {
+                    switch (source[start + 3]) {
+                    case 'a':
+                        return checkKeyword(4, 1, "t", TokenType::KEYWORD_FLOAT);
+                    case 'w':
+                        return checkKeyword(4, 0, "", TokenType::NK_FLOW);
+                    }
+                }
+                break;
+            case 'u':
+                return checkKeyword(2, 2, "nc", TokenType::KEYWORD_FUNC);
+            }
+        }
         break;
-    case 7:
-        isKeyword("context", TokenType::NK_CONTEXT);
+    case 'i':
+        if (length > 1) {
+            switch (source[start + 1]) {
+            case 'f':
+                return checkKeyword(2, 0, "", TokenType::KEYWORD_IF);
+            case 'n':
+                if (length == 3)
+                    return checkKeyword(2, 1, "t", TokenType::KEYWORD_INT);
+                if (length == 9)
+                    return checkKeyword(2, 7, "terface", TokenType::KEYWORD_INTERFACE);
+                break;
+            }
+        }
         break;
-    case 8:
-        isKeyword("continue", TokenType::KEYWORD_CONTINUE);
-        isKeyword("taggroup", TokenType::NK_TAGGROUP);
+    case 'l':
+        return checkKeyword(1, 3, "oop", TokenType::KEYWORD_LOOP);
+    case 'm':
+        if (length == 5)
+            return checkKeyword(1, 4, "atch", TokenType::KEYWORD_MATCH);
+        if (length == 6)
+            return checkKeyword(1, 5, "odule", TokenType::NK_MODULE);
         break;
-    case 9:
-        isKeyword("component", TokenType::NK_COMPONENT);
-        isKeyword("interface", TokenType::KEYWORD_INTERFACE);
-        isKeyword("exclusive", TokenType::NK_EXCLUSIVE);
+    case 'n':
+        if (length == 3)
+            return checkKeyword(1, 2, "il", TokenType::NIL);
+        if (length == 4)
+            return checkKeyword(1, 3, "ock", TokenType::NK_FLOW_NOCK);
+        break;
+    case 'r':
+        if (length == 4)
+            return checkKeyword(1, 3, "ead", TokenType::NK_READ);
+        if (length == 6)
+            return checkKeyword(1, 5, "eturn", TokenType::KEYWORD_RETURN);
+        break;
+    case 's':
+        if (length > 1) {
+            switch (source[start + 1]) {
+            case 'e':
+                return checkKeyword(2, 1, "t", TokenType::NK_SET);
+            case 't':
+                if (length == 6) {
+                    if (source[start + 2] == 'r') {
+                        if (source[start + 3] == 'i')
+                            return checkKeyword(4, 2, "ng", TokenType::KEYWORD_STRING);
+                        if (source[start + 3] == 'u')
+                            return checkKeyword(4, 2, "ct", TokenType::NK_STRUCT);
+                    }
+                }
+                break;
+            case 'y':
+                return checkKeyword(2, 4, "stem", TokenType::NK_SYSTEM);
+            }
+        }
+        break;
+    case 't':
+        if (length > 1) {
+            switch (source[start + 1]) {
+            case 'a':
+                if (length == 3)
+                    return checkKeyword(2, 1, "g", TokenType::NK_TAG);
+                if (length == 6)
+                    return checkKeyword(2, 4, "rget", TokenType::NK_TARGET);
+                if (length == 8)
+                    return checkKeyword(2, 6, "ggroup", TokenType::NK_TAGGROUP);
+                break;
+            case 'r':
+                return checkKeyword(2, 2, "ue", TokenType::KEYWORD_TRUE);
+            case 'y':
+                return checkKeyword(2, 2, "pe", TokenType::KEYWORD_TYPE);
+            }
+        }
+        break;
+    case 'u':
+        return checkKeyword(1, 4, "nset", TokenType::NK_UNSET);
+    case 'v':
+        if (length > 1) {
+            switch (source[start + 1]) {
+            case 'a':
+                return checkKeyword(2, 1, "r", TokenType::KEYWORD_VAR);
+            case 'o':
+                return checkKeyword(2, 2, "id", TokenType::KEYWORD_VOID);
+            }
+        }
+        break;
+    case 'w':
+        if (length == 4)
+            return checkKeyword(1, 3, "ith", TokenType::NK_WITH);
+        if (length == 5)
+            return checkKeyword(1, 4, "rite", TokenType::NK_WRITE);
         break;
     }
-
-#undef CHECK_KW
 
     return TokenType::IDENTIFIER;
 };

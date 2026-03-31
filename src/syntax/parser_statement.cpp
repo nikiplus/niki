@@ -1,11 +1,13 @@
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/parser.hpp"
+#include "niki/syntax/parser_precedence.hpp"
 #include "niki/syntax/token.hpp"
 #include <cmath>
 #include <iostream>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace niki::syntax;
 
@@ -55,9 +57,57 @@ ASTNodeIndex Parser::parseExpressionStmt() {
 // parseAssignmentStmt无需存在，因为我们已在parseExpressionStmt中完成了对赋值语句的拦截。
 // 事实上，由于赋值语句没有专门的开头关键字，因此我们实际上也是无法仅通过开头关键字判断一段字符是否是赋值语句，只有当左值token被解析完毕后，来到第二个toke，我们看到其为任意赋值语句时
 // 才能将其作为赋值语句返回。
-ASTNodeIndex Parser::parseVarDeclStmt() {};
-ASTNodeIndex Parser::parseConstDeclStmt() {};
-ASTNodeIndex Parser::parseBlockStmt() {};
+ASTNodeIndex Parser::parseVarDeclStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::IDENTIFIER, "Expected'value name'after'var'.");
+    std::string_view str = source.substr(previous.start_offset, previous.length);
+    payload.var_decl.name_id = astPool.internString(str);
+    if (match(TokenType::SYM_COLON)) {
+        payload.var_decl.type_expr = parseExpression(Precedence::None);
+    } else {
+        payload.var_decl.type_expr = ASTNodeIndex::invalid();
+    }
+    consume(TokenType::SYM_EQUAL, "Expected'='after 'var'.");
+    payload.var_decl.init_expr = parseExpression(Precedence::None);
+
+    consume(TokenType::SYM_SEMICOLON, "Expected';'after expression.");
+
+    return emitNode(NodeType::VarDeclStmt, payload, startToken);
+};
+// 我们使用vardeclpayload来承载const——因为它们是一样的
+ASTNodeIndex Parser::parseConstDeclStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::IDENTIFIER, "Expected 'constant name' after 'const'.");
+    std::string_view str = source.substr(previous.start_offset, previous.length);
+    payload.var_decl.name_id = astPool.internString(str);
+    if (match(TokenType::SYM_COLON)) {
+        payload.var_decl.type_expr = parseExpression(Precedence::None);
+    } else {
+        payload.var_decl.type_expr = ASTNodeIndex::invalid();
+    }
+    consume(TokenType::SYM_EQUAL, "Expected '=' after constant declaration.");
+    payload.var_decl.init_expr = parseExpression(Precedence::None);
+
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after constant declaration.");
+
+    return emitNode(NodeType::ConstDeclStmt, payload, startToken);
+};
+
+ASTNodeIndex Parser::parseBlockStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    std::vector<ASTNodeIndex> statements;
+    while (!check(TokenType::SYM_BRACE_R) && !check(TokenType::TOKEN_EOF)) {
+        statements.push_back(parseDeclaration());
+    }
+
+    consume(TokenType::SYM_BRACE_R, "Expected '}' after block.");
+
+    payload.block.statements = astPool.allocateList(statements);
+    return emitNode(NodeType::BlockStmt, payload, startToken);
+};
 //---控制流
 ASTNodeIndex Parser::parseIfStmt() {
     Token startToken = previous;
@@ -86,8 +136,18 @@ ASTNodeIndex Parser::parseLoopStmt() {};
 ASTNodeIndex Parser::parseMatchStmt() {};
 ASTNodeIndex Parser::parseMatchCaseStmt() {};
 //---跳转中断---
-ASTNodeIndex Parser::parseContinueStmt() {};
-ASTNodeIndex Parser::parseBreakStmt() {};
+ASTNodeIndex Parser::parseContinueStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::SYM_COLON, "Expected ';' after 'continue'.");
+    return emitNode(NodeType::ContinueStmt, payload, startToken);
+};
+ASTNodeIndex Parser::parseBreakStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{}; // 零负载！
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after 'break'.");
+    return emitNode(NodeType::BreakStmt, payload, startToken);
+};
 ASTNodeIndex Parser::parseReturnStmt() {};
 ASTNodeIndex Parser::parseNockStmt() {};
 //---组件挂载与卸载---

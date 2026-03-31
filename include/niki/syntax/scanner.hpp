@@ -127,13 +127,12 @@ class Scanner {
      */
     // (source)数据注入以下三个函数↓
     // 详细解释我会放在具体函数实现中，可按住ctrl+点击函数名查看
-    TokenType isKeyword(std::string_view str,
-                        TokenType type); // 检查是否为关键词
-    TokenType checkIdentifierType();     // 检查是否为标识符
-    Token makeIdentifierToken();         // 构造标识符token
-    Token makeNumberToken();             // 构造数字token
-    Token makeCharToken();               // 构造字符token
-    Token makeStringToken();             // 构造字符串token
+    TokenType checkKeyword(int startOffset, int length, const char *rest, TokenType type); // 检查是否为关键词
+    TokenType checkIdentifierType();                                                       // 检查是否为标识符
+    Token makeIdentifierToken();                                                           // 构造标识符token
+    Token makeNumberToken();                                                               // 构造数字token
+    Token makeCharToken();                                                                 // 构造字符token
+    Token makeStringToken();                                                               // 构造字符串token
 
     /*具体的TOKEN构造函数*/
     Token makeToken(TokenType type); // 构造token
