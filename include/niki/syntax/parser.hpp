@@ -66,7 +66,7 @@ class Parser {
     ASTNodeIndex parseSystemDecl();
     ASTNodeIndex parseComponentDecl();
     ASTNodeIndex parseFlowDecl();
-    ASTNodeIndex parseContextDecl();
+    ASTNodeIndex parseKitsDecl();
     ASTNodeIndex parseTagDecl();
     ASTNodeIndex parseTagGroupDecl();
 

@@ -120,10 +120,10 @@ enum class TokenType : uint8_t {
     NK_SET,       // set 设置
     NK_UNSET,     // unset 取消设置
     // 环境与权限
-    NK_CONTEXT, // context 上下文
-    NK_WITH,    // with 引入模块
-    NK_READ,    // read 读取模块
-    NK_WRITE,   // write 写入模块
+    NK_KITS,  // kits
+    NK_WITH,  // with 引入模块
+    NK_READ,  // read 读取模块
+    NK_WRITE, // write 写入模块
     // 结构
     NK_MODULE, // module (模块)
     NK_STRUCT, // struct (结构体)

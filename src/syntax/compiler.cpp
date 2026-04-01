@@ -50,19 +50,19 @@ void Compiler::freeIfTemp(const ExprResult &res) {
         regAlloc.free(res.reg);
     }
 }
-uint8_t Compiler::makeConstant(vm::Value value, uint32_t line, uint32_t column) {
+uint16_t Compiler::makeConstant(vm::Value value, uint32_t line, uint32_t column) {
     compilingChunk.constants.push_back(value);
 
     size_t index = compilingChunk.constants.size() - 1;
 
-    if (index > 255) {
+    if (index > 65535) {
         // 在未来的工业级实现中，这里应该返回一个特殊的标识，
         // 让调用者知道必须改用 OP_LOAD_CONST_W (宽指令)。
         // 但目前，我们直接硬阻断。
         reportError(line, column, "Too many constants in one chunk.");
         return 0;
     }
-    return static_cast<uint8_t>(index);
+    return static_cast<uint16_t>(index);
 };
 
 void Compiler::endScope() {
@@ -91,9 +91,31 @@ void Compiler::emitByte(uint8_t byte, uint32_t line, uint32_t column) {
 void Compiler::emitOp(vm::OPCODE op, uint32_t line, uint32_t column) {
     emitByte(static_cast<uint8_t>(op), line, column);
 };
-void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint32_t line, uint32_t column) {};
-void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint32_t line, uint32_t column) {};
-void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint32_t line, uint32_t column) {};
+void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint32_t line, uint32_t column) {
+    emitByte(static_cast<uint8_t>(op), line, column);
+    emitByte(a, line, column);
+};
+void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint32_t line, uint32_t column) {
+    emitByte(static_cast<uint8_t>(op), line, column);
+    emitByte(a, line, column);
+    emitByte(b, line, column);
+};
+void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint32_t line, uint32_t column) {
+    emitByte(static_cast<uint8_t>(op), line, column);
+    emitByte(a, line, column);
+    emitByte(b, line, column);
+    emitByte(c, line, column);
+};
+void Compiler::emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column) {
+    uint16_t index = makeConstant(value, line, column);
+    if (index < 255) {
+        emitOp(vm::OPCODE::OP_LOAD_CONST, targetReg, static_cast<uint8_t>(index), line, column);
+    } else {
+        uint8_t high_byte = static_cast<uint8_t>((index >> 8) & 0xFF);
+        uint8_t low_byte = static_cast<uint8_t>(index & 0xFF);
+        emitOp(vm::OPCODE::OP_LOAD_CONST_W, targetReg, high_byte, low_byte, column);
+    }
+};
 
 //---AST遍历核心(Visitor)---
 ExprResult Compiler::compileNode(ASTNodeIndex nodeIdx) {
@@ -446,6 +468,7 @@ void Compiler::compileThrowStmt(ASTNodeIndex nodeIdx) {};
 void Compiler::compileTryCatchStmt(ASTNodeIndex nodeIdx) {};
 //---顶层声明编译---
 void Compiler::compileDeclaration(ASTNodeIndex nodeIdx) {};
+void Compiler::compileKitsDecl(ASTNodeIndex nodeIdx) {};
 // todo: 其他声明类型编译
 //---错误处理---
 void Compiler::reportError(const Token &token, std::string_view message) {};

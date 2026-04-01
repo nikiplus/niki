@@ -80,7 +80,7 @@ enum class NodeType : uint8_t {
     SystemDecl,    // 系统声明
     ComponentDecl, // 组件声明
     FlowDecl,      // 流程声明
-    ContextDecl,   // 上下文声明 (数据隔离作用域)
+    KitsDecl,      // kits
     TagDecl,       // 标签声明
     TagGroupDecl,  // 标签组声明
     //---程序根---
@@ -137,7 +137,7 @@ struct StructData {
     uint32_t name_id;    // 4byte
     ASTListIndex fields; // 8byte:交错列表 [name, type, name, type...]
 };
-struct ContextData {
+struct KitsData {
     uint32_t name_id;     // 4byte: 上下文名字
     ASTListIndex members; // 8byte: 上下文内部的影子数据或成员声明
 };
@@ -211,7 +211,7 @@ struct ClosureExprPayload {
 };
 struct AwaitExprPayload {
     ASTNodeIndex operand; // 4byte: 被等待的表达式 (如任务、时间、动画)
-    ASTNodeIndex context; // 4byte: 上下文 (如在哪个队列或实体上等待)
+    ASTNodeIndex kits;    // 4byte: 所属的 Kits (如在哪个队列或实体上等待)
     // 4 + 4 = 8byte
 };
 //---隐式节点---
@@ -326,8 +326,9 @@ struct FlowDeclPayload {
     uint32_t name_id;  // 4byte: 流程名的字符串池 ID
     ASTNodeIndex body; // 4byte: 流程体
 };
-struct ContextDeclPayload {
-    uint32_t context_index; // 4byte: 指向 ASTPool::context_data 的索引
+struct KitsDeclPayload {
+    uint32_t name_id;
+    uint32_t kits_data_index;
 };
 struct TagDeclPayload {
     uint32_t name_id; // 4byte: 标签名的字符串池 ID
@@ -392,7 +393,7 @@ union ASTNodePayload {
     SystemDeclPayload system_decl;
     ComponentDeclPayload component_decl;
     FlowDeclPayload flow_decl;
-    ContextDeclPayload context_decl;
+    KitsDeclPayload kits_decl;
     TagDeclPayload tag_decl;
     TagGroupDeclPayload tag_group;
     ProgramRootPayload program_root;
@@ -449,7 +450,7 @@ struct ASTPool {
 
     std::vector<FunctionData> function_data; // 函数数据
     std::vector<StructData> struct_data;     // 结构体数据
-    std::vector<ContextData> context_data;   // 上下文数据
+    std::vector<KitsData> kits_data;
     std::vector<std::string> string_pool;
     std::unordered_map<std::string_view, uint32_t> string_to_id;
 

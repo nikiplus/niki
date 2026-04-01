@@ -68,7 +68,7 @@ TEST(ScannerTest, AllSymbolsCoverage) {
 TEST(ScannerTest, AllKeywordsCoverage) {
     std::string source = "true false if else loop match break continue return var func const int float string bool "
                          "void any type interface flow await nock async system component target tag taggroup exclusive "
-                         "set unset context with read write module struct enum";
+                         "set unset kits with read write module struct enum";
     Scanner scanner(source);
 
     std::vector<TokenType> expectedTokens = {
@@ -80,7 +80,7 @@ TEST(ScannerTest, AllKeywordsCoverage) {
         TokenType::NK_FLOW,        TokenType::NK_FLOW_AWAIT, TokenType::NK_FLOW_NOCK,   TokenType::NK_FLOW_ASYNC,
         TokenType::NK_SYSTEM,      TokenType::NK_COMPONENT,  TokenType::NK_TARGET,      TokenType::NK_TAG,
         TokenType::NK_TAGGROUP,    TokenType::NK_EXCLUSIVE,  TokenType::NK_SET,         TokenType::NK_UNSET,
-        TokenType::NK_CONTEXT,     TokenType::NK_WITH,       TokenType::NK_READ,        TokenType::NK_WRITE,
+        TokenType::NK_KITS,        TokenType::NK_WITH,       TokenType::NK_READ,        TokenType::NK_WRITE,
         TokenType::NK_MODULE,      TokenType::NK_STRUCT,     TokenType::NK_ENUM,        TokenType::TOKEN_EOF};
 
     for (auto expected : expectedTokens) {

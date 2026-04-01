@@ -35,6 +35,7 @@ void ASTPool::clear() {
     constants.clear();
     function_data.clear();
     struct_data.clear();
+    kits_data.clear();
 };
 ASTNode &ASTPool::getNode(ASTNodeIndex index) {
     if (!index.isvalid() || index >= nodes.size()) {

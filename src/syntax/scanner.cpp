@@ -277,12 +277,10 @@ TokenType Scanner::checkIdentifierType() {
             case 'o':
                 if (length > 2) {
                     switch (source[start + 2]) {
-                    case 'n': // const, continue, context
+                    case 'n': // const, continue
                         if (length > 3 && source[start + 3] == 's')
                             return checkKeyword(4, 1, "t", TokenType::KEYWORD_CONST);
                         if (length > 3 && source[start + 3] == 't') {
-                            if (length == 7)
-                                return checkKeyword(4, 3, "ext", TokenType::NK_CONTEXT);
                             if (length == 8)
                                 return checkKeyword(4, 4, "inue", TokenType::KEYWORD_CONTINUE);
                         }
@@ -339,6 +337,8 @@ TokenType Scanner::checkIdentifierType() {
             }
         }
         break;
+    case 'k':
+        return checkKeyword(1, 3, "its", TokenType::NK_KITS);
     case 'l':
         return checkKeyword(1, 3, "oop", TokenType::KEYWORD_LOOP);
     case 'm':

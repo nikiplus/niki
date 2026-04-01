@@ -142,6 +142,7 @@ enum class OPCODE : uint8_t {
     OP_FALSE,          // 压入 false 常量
     OP_NIL,            // 无操作指令
     OP_LOAD_CONST,     // 加载常量
+    OP_LOAD_CONST_W,   // 加载宽常量
     OP_MOVE,
     __DATA_CTRL_END, // 常用数据操作指令结束
     _DATA_END,       // 数据操作指令结束

@@ -85,9 +85,27 @@ class Compiler {
     std::vector<Local> locals;
     int scopeDepth = 0;
 
+    /*在这里有个关键的设计决策点——constants的索引长度究竟应该是8bit还是16bit
+    如果我们为了体积和速度，让索引长度为8bit，那么不可避免的问题就是字面量很快就会达到2^8=256的上限。
+    如果我们将所有constants定长为16bit，使其高八位位于b寄存器，低八位位于c寄存器，使用时再把它们拼成一个16位的值可不可行呢？
+    |<-   reg:B   ->|<-   reg:B   ->|
+    |-+-+-+-+-+-+-+-|-+-+-+-+-+-+-+-|
+    |0|0|0|0|0|0|0|0|0|1|1|1|0|1|0|1|
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    似乎可行！问题似乎解决了！
+    不仅如此，我们还可以让所有指令都变成16bit，让他们宽度一致来保证cpu扫描时能连续快速的遍历所有opcode，来保证极高的访问效率！
+    然而真的如此吗……？
+    ——————
+    首先我们要知道，现代cpu的缓存结构类似一个金字塔，越靠近cpu的缓存速度越快，可使用内存越小，而越远离cpu的缓存速度越慢，可用内存越大。
+    这也就导致，我们想要导向高效率，就必须在这个狭小的最靠近cpu的地方(l1缓存)存下尽可能多的可执行opcode！
+    而我们如果想要让我们的指令都在存在L1=，那么要做的最重要的事就是
+    压 缩 指 令 大 小
+    不仅要把opcode的大小牢牢限定在8bit=1byte的大小，还要尽可能压缩constants的大小！
+    那我们返回那个用8bit寄存器储存constant的设计？但这样的话又会很快导致那个上限过少的老问题……能不能结合两个方案？让constant小的时候使用8bit存储，大的时候使用16bit存储……？
+    没错！这正式现代绝大多数寄存器都在使用的指令设计方案——变长指令。*/
     //---辅助函数---
     void freeIfTemp(const ExprResult &res);
-    uint8_t makeConstant(vm::Value value, uint32_t line, uint32_t column);
+    uint16_t makeConstant(vm::Value value, uint32_t line, uint32_t column);
     void beginScope() { scopeDepth++; };
     void endScope();
     uint8_t resolveLocal(uint32_t name_id, uint32_t line, uint32_t column);
@@ -98,6 +116,7 @@ class Compiler {
     void emitOp(vm::OPCODE op, uint8_t a, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint32_t line, uint32_t column);
+    void emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column);
 
     //---AST遍历核心(Visitor)---
     ExprResult compileNode(ASTNodeIndex nodeIdx);
@@ -149,6 +168,7 @@ class Compiler {
     void compileTryCatchStmt(ASTNodeIndex nodeIdx);
     //---顶层声明编译---
     void compileDeclaration(ASTNodeIndex nodeIdx);
+    void compileKitsDecl(ASTNodeIndex nodeIdx);
 
     //---错误处理---
     void reportError(const Token &token, std::string_view message);

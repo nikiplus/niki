@@ -15,6 +15,6 @@ ASTNodeIndex Parser::parseModuleDecl() {};
 ASTNodeIndex Parser::parseSystemDecl() {};
 ASTNodeIndex Parser::parseComponentDecl() {};
 ASTNodeIndex Parser::parseFlowDecl() {};
-ASTNodeIndex Parser::parseContextDecl() {};
+ASTNodeIndex Parser::parseKitsDecl() {};
 ASTNodeIndex Parser::parseTagDecl() {};
 ASTNodeIndex Parser::parseTagGroupDecl() {};
