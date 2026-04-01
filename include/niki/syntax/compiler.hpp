@@ -119,7 +119,7 @@ class Compiler {
     void emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column);
 
     //---AST遍历核心(Visitor)---
-    ExprResult compileNode(ASTNodeIndex nodeIdx);
+    void compileNode(ASTNodeIndex nodeIdx);
 
     //---表达式编译 (返回装载结果的物理寄存器编号)---
     ExprResult compileExpression(ASTNodeIndex exprIdx);
