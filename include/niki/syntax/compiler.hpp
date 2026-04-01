@@ -6,6 +6,7 @@
 #include "token.hpp"
 
 #include <cstdint>
+#include <expected>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -38,6 +39,7 @@ struct ExprResult {
 true 表示该槽位已被局部变量或临时计算占用，false 表示空闲。
 */
 class RegisterAllocator {
+    // 首先得让寄存器是空的，因此我们将其设为0
     bool registers[256] = {false};
 
   public:
@@ -57,14 +59,28 @@ class RegisterAllocator {
     }
 };
 
+struct CompileError {
+    uint32_t line;
+    uint32_t column;
+    std::string message;
+};
+struct CompileResultError {
+    std::vector<CompileError> errors;
+};
 class Compiler {
   public:
-    bool compile(const ASTPool &pool, ASTNodeIndex root, niki::Chunk &out_chunk);
+    /*哼哼，std::expected,新时代的好东西(C++23方法)。
+    可以看到，我们返回了两个结构体，前者包含了我们实际要发射的信息，而后者则包含了一个错误信息。
+    注意，我们在传入参数是，提前传入了一个空的chunk结构体，这是为了防止每次我们调用compile方法时，编译器都会在实际执行时申请一个空间以初始化chunk，这会导致昂贵的内存再分配。
+    */
+    std::expected<niki::Chunk, CompileResultError> compile(const ASTPool &pool, ASTNodeIndex root,
+                                                           niki::Chunk initial_chunk = niki::Chunk{});
 
   private:
     const ASTPool *currentPool = nullptr;
-    niki::Chunk *compilingChunk = nullptr;
+    niki::Chunk compilingChunk; // 编译器自己持有这个篮子
     bool hadError = false;
+    std::vector<CompileError> errorPool;
     RegisterAllocator regAlloc;
     std::vector<Local> locals;
     int scopeDepth = 0;

@@ -4,28 +4,46 @@
 #include "niki/syntax/token.hpp"
 #include "niki/vm/opcode.hpp"
 #include "niki/vm/value.hpp"
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <span>
 #include <string>
 
 using namespace niki::syntax;
-bool Compiler::compile(const ASTPool &pool, ASTNodeIndex root, niki::Chunk &out_chunk) {
+std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &pool, ASTNodeIndex root,
+                                                                 niki::Chunk initial_chunk) {
     if (!root.isvalid()) {
-        return false;
+        return std::unexpected(CompileResultError{{{0, 0, "Invalid AST root node."}}});
     }
+
     currentPool = &pool;
-    compilingChunk = &out_chunk;
     hadError = false;
+    errorPool.clear();
 
+    // 核心动作：把外部传进来的（可能已经 reserve 过内存的）Chunk
+    // 移动（Move）到编译器内部。这里没有任何深拷贝，只有指针的转移。
+    compilingChunk = std::move(initial_chunk);
+    // 确保它是干净的，但保留了其底层 capacity
+    compilingChunk.code.clear();
+    compilingChunk.constants.clear();
+
+    // 执行编译...
     compileNode(root);
-
     emitOp(vm::OPCODE::OP_RETURN, 0, 0);
 
     currentPool = nullptr;
-    compilingChunk = nullptr;
-    return !hadError;
-};
+
+    if (hadError) {
+        // 如果失败，这个 compilingChunk 就随风消散了，它的内存会被正常回收。
+        return std::unexpected(CompileResultError{std::move(errorPool)});
+    }
+
+    // 编译成功！再次通过 Move 语义，把填满数据的 Chunk 移交出去。
+    return std::move(compilingChunk);
+}
 //---辅助函数---
 void Compiler::freeIfTemp(const ExprResult &res) {
     if (res.is_temp) {
@@ -33,9 +51,9 @@ void Compiler::freeIfTemp(const ExprResult &res) {
     }
 }
 uint8_t Compiler::makeConstant(vm::Value value, uint32_t line, uint32_t column) {
-    compilingChunk->constants.push_back(value);
+    compilingChunk.constants.push_back(value);
 
-    size_t index = compilingChunk->constants.size() - 1;
+    size_t index = compilingChunk.constants.size() - 1;
 
     if (index > 255) {
         // 在未来的工业级实现中，这里应该返回一个特殊的标识，
@@ -66,9 +84,9 @@ uint8_t Compiler::resolveLocal(uint32_t name_id, uint32_t line, uint32_t column)
 
 //---字节码发射器---
 void Compiler::emitByte(uint8_t byte, uint32_t line, uint32_t column) {
-    compilingChunk->code.push_back(byte);
-    compilingChunk->lines.push_back(line);
-    compilingChunk->columns.push_back(column);
+    compilingChunk.code.push_back(byte);
+    compilingChunk.lines.push_back(line);
+    compilingChunk.columns.push_back(column);
 };
 void Compiler::emitOp(vm::OPCODE op, uint32_t line, uint32_t column) {
     emitByte(static_cast<uint8_t>(op), line, column);
@@ -122,7 +140,7 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
     // ...
     default:
         reportError(line, column, "Expected an expression.");
-        return {};
+        return ExprResult{0, true};
     }
 };
 
@@ -431,4 +449,7 @@ void Compiler::compileDeclaration(ASTNodeIndex nodeIdx) {};
 // todo: 其他声明类型编译
 //---错误处理---
 void Compiler::reportError(const Token &token, std::string_view message) {};
-void Compiler::reportError(uint32_t line, uint32_t column, std::string_view message) {};
+void Compiler::reportError(uint32_t line, uint32_t column, std::string_view message) {
+    errorPool.push_back({line, column, std::string(message)});
+    hadError = true;
+};

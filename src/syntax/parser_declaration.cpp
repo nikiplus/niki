@@ -1,6 +1,7 @@
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/parser.hpp"
 using namespace niki::syntax;
+// 还没写，后面有空再写，先把表达式解析跑通再说
 ASTNodeIndex Parser::parseDeclaration() {};
 
 //---基础声明---

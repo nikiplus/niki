@@ -46,6 +46,9 @@ class Parser {
     void errorAtCurrent(const char *message); // 处理parse阶段遇到的错误信息
     void synchronize();
 
+    // 下面的各类解析方法我就不在这里做介绍和解释了，我们到实际的实现里面再讨论。
+    // 为了防止单个文件内有过多代码行数，我们将实现以“主实现”，”顶层声明”，“语句”和“表达式”进行分类↓
+    // 分别对应parser.cpp|parser_declaration.cpp|parser_statement.cpp|parser_expression.cpp四个实现文件。
     //---Pratt 表达式解析引擎---
     ASTNodeIndex parseExpression(Precedence precedence);
     ASTNodeIndex parsePrefix(TokenType type);
