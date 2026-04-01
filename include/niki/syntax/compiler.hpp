@@ -8,12 +8,35 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
 
 namespace niki::syntax {
+/*我们使用寄存器式虚拟机，因此我们需要控制和调度各分配器。
+在这种类型的虚拟机中，我们的各类数据是被保存在寄存器中的，因此知道每个数据被保存在哪个寄存器中，其在寄存器中的位置就尤为重要。
+因此我们声明一个local结构体，用于记录数据所在位置。
+*/
+struct Local {
+    uint32_t name_id; // AST 中标识符的字符串 ID
+    uint8_t reg;      // 绑定的物理寄存器
+    int depth;        // 作用域深度（处理大括号块的变量覆盖和销毁）
+};
+/*表达式结果的物理载体与生命周期描述符。
+
+在寄存器机器中，表达式求值会返回存放结果的物理寄存器编号。
+但编译器必须区分这个寄存器的【所有权】：
+1. 临时计算结果（如 1+2 产生的寄存器）：用完即弃，必须立刻 free，否则导致寄存器泄漏。 -> is_temp = true
+2. 局部变量读取（如直接读取变量 a 所在的寄存器）：其生命周期由作用域(Scope)管理，绝不能在表达式求值后被 free！ ->
+is_temp = false
+*/
 struct ExprResult {
     uint8_t reg;
-    bool is_temp; // 核心：所有权标记
+    bool is_temp; // 核心：生命周期/所有权标记，决定用完后是否 free
 };
+/*寄存器分配器
+寄存器分配器（Register Allocator）
+注意：这不是物理寄存器！这是编译期用于追踪 VM 中 256 个虚拟寄存器状态的“账本”。
+true 表示该槽位已被局部变量或临时计算占用，false 表示空闲。
+*/
 class RegisterAllocator {
     bool registers[256] = {false};
 
@@ -43,8 +66,15 @@ class Compiler {
     niki::Chunk *compilingChunk = nullptr;
     bool hadError = false;
     RegisterAllocator regAlloc;
+    std::vector<Local> locals;
+    int scopeDepth = 0;
+
+    //---辅助函数---
     void freeIfTemp(const ExprResult &res);
     uint8_t makeConstant(vm::Value value, uint32_t line, uint32_t column);
+    void beginScope() { scopeDepth++; };
+    void endScope();
+    uint8_t resolveLocal(uint32_t name_id, uint32_t line, uint32_t column);
 
     //---字节码发射器---
     void emitByte(uint8_t byte, uint32_t line, uint32_t column);

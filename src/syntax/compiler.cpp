@@ -6,6 +6,8 @@
 #include "niki/vm/value.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <span>
+#include <string>
 
 using namespace niki::syntax;
 bool Compiler::compile(const ASTPool &pool, ASTNodeIndex root, niki::Chunk &out_chunk) {
@@ -24,6 +26,7 @@ bool Compiler::compile(const ASTPool &pool, ASTNodeIndex root, niki::Chunk &out_
     compilingChunk = nullptr;
     return !hadError;
 };
+//---辅助函数---
 void Compiler::freeIfTemp(const ExprResult &res) {
     if (res.is_temp) {
         regAlloc.free(res.reg);
@@ -42,6 +45,23 @@ uint8_t Compiler::makeConstant(vm::Value value, uint32_t line, uint32_t column) 
         return 0;
     }
     return static_cast<uint8_t>(index);
+};
+
+void Compiler::endScope() {
+    scopeDepth--;
+    while (locals.size() > 0 && locals.back().depth > scopeDepth) {
+        regAlloc.free(locals.back().reg);
+        locals.pop_back();
+    }
+};
+uint8_t Compiler::resolveLocal(uint32_t name_id, uint32_t line, uint32_t column) {
+    for (int i = locals.size() - 1; i >= 0; i--) {
+        if (locals[i].name_id == name_id) {
+            return locals[i].reg;
+        }
+    }
+    reportError(line, column, "Undeclared variable.");
+    return 0;
 };
 
 //---字节码发射器---
@@ -105,6 +125,7 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
         return {};
     }
 };
+
 void Compiler::compileExpressionWithTarget(ASTNodeIndex exprIdx, uint8_t targetReg) {
     if (!exprIdx.isvalid()) {
         return;
@@ -119,6 +140,7 @@ void Compiler::compileExpressionWithTarget(ASTNodeIndex exprIdx, uint8_t targetR
             vm::Value val = currentPool->constants[pool_idx];
             uint8_t chunk_idx = makeConstant(val, line, column);
             emitOp(vm::OPCODE::OP_LOAD_CONST, targetReg, chunk_idx, line, column);
+            return;
         }
         case TokenType::LITERAL_FLOAT:
         case TokenType::LITERAL_STRING: {
@@ -147,6 +169,7 @@ void Compiler::compileExpressionWithTarget(ASTNodeIndex exprIdx, uint8_t targetR
     }
     freeIfTemp(resultReg);
 };
+
 // 基础计算
 ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid()) {
@@ -257,8 +280,8 @@ ExprResult Compiler::compileIdentifierExpr(ASTNodeIndex nodeIdx) {
     const ASTNode &node = currentPool->getNode(nodeIdx);
     uint32_t line = currentPool->locations[nodeIdx.index].line;
     uint32_t column = currentPool->locations[nodeIdx.index].column;
-
-    compileNode(node.payload.if_stmt.condition);
+    uint8_t reg = resolveLocal(node.payload.identifier.name_id, line, column);
+    return ExprResult{reg, false};
 };
 // 复杂数据结构
 ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {};
@@ -300,10 +323,92 @@ void Compiler::compileExpressionStmt(ASTNodeIndex nodeIdx) {
 
     freeIfTemp(resultReg);
 };
-void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {};
-void Compiler::compileVarDeclStmt(ASTNodeIndex nodeIdx) {};
+void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    ASTNodeIndex targetIdx = node.payload.assign_stmt.target;
+    if (!targetIdx.isvalid()) {
+        return;
+    }
+
+    const ASTNode &targetNode = currentPool->getNode(targetIdx);
+    if (targetNode.type == NodeType::IdentifierExpr) {
+        uint32_t name_id = targetNode.payload.identifier.name_id;
+        uint8_t targetReg = resolveLocal(name_id, line, column);
+        TokenType op = node.payload.assign_stmt.op;
+
+        if (op == TokenType::SYM_EQUAL) {
+            compileExpressionWithTarget(node.payload.assign_stmt.value, targetReg);
+        } else {
+            ExprResult rightRes = compileExpression(node.payload.assign_stmt.value);
+
+            switch (op) {
+            case TokenType::SYM_PLUS_EQUAL:
+                emitOp(vm::OPCODE::OP_IADD, targetReg, targetReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_MINUS_EQUAL:
+                emitOp(vm::OPCODE::OP_ISUB, targetReg, targetReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_STAR_EQUAL:
+                emitOp(vm::OPCODE::OP_IMUL, targetReg, targetReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_SLASH_EQUAL:
+                emitOp(vm::OPCODE::OP_IDIV, targetReg, targetReg, rightRes.reg, line, column);
+                break;
+            // ... 可以继续扩展位运算等复合赋值 ...
+            default:
+                reportError(line, column, "Unsupported assignment operator.");
+                break;
+            }
+            freeIfTemp(rightRes);
+        }
+    } else {
+        reportError(line, column, "Invalid assignment target. Only simple variables are supported currently.");
+    }
+    uint8_t targetReg = resolveLocal(node.payload.assign_stmt.target, line, column);
+
+    compileExpressionWithTarget(node.payload.assign_stmt.value, targetReg);
+};
+void Compiler::compileVarDeclStmt(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    uint32_t name_id = node.payload.var_decl.name_id;
+    // 【修正】：只在当前作用域深度查找是否重复声明！
+    for (int i = (int)locals.size() - 1; i >= 0; i--) {
+        // 如果已经退到了外层作用域，就不用查了，因为允许 Shadowing
+        if (locals[i].depth != scopeDepth)
+            break;
+
+        if (locals[i].name_id == name_id) {
+            reportError(line, column, "Variable already declared in this scope.");
+            break; // 报错后跳出
+        }
+    }
+
+    uint8_t varReg = regAlloc.allocate();
+    locals.push_back({name_id, varReg, scopeDepth});
+
+    if (node.payload.var_decl.init_expr.isvalid()) {
+        compileExpressionWithTarget(node.payload.var_decl.init_expr, varReg);
+    } else {
+        emitOp(vm::OPCODE::OP_NIL, varReg, line, column);
+    }
+};
 void Compiler::compileConstDeclStmt(ASTNodeIndex nodeIdx) {};
-void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {};
+void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
+    const ASTNode &node = currentPool->getNode(stmtIdx);
+    uint32_t line = currentPool->locations[stmtIdx.index].line;
+    uint32_t column = currentPool->locations[stmtIdx.index].column;
+    beginScope();
+
+    std::span<const ASTNodeIndex> stmts = currentPool->get_list(node.payload.block.statements);
+    for (ASTNodeIndex stmt : stmts) {
+        compileStatement(stmt);
+    }
+    endScope();
+};
 // 控制流
 void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {};
 void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {};
