@@ -11,7 +11,30 @@
 
 using namespace niki::syntax;
 
-ASTNodeIndex Parser::parseStatement() {};
+// 语句解析的分发入口，类似于 parseDeclaration 的逻辑
+ASTNodeIndex Parser::parseStatement() {
+    if (match(TokenType::SYM_BRACE_L)) {
+        return parseBlockStmt();
+    } else if (match(TokenType::KEYWORD_IF)) {
+        return parseIfStmt();
+    } else if (match(TokenType::KEYWORD_LOOP)) {
+        return parseLoopStmt();
+    } else if (match(TokenType::KEYWORD_MATCH)) {
+        return parseMatchStmt();
+    } else if (match(TokenType::KEYWORD_CONTINUE)) {
+        return parseContinueStmt();
+    } else if (match(TokenType::KEYWORD_BREAK)) {
+        return parseBreakStmt();
+    } else if (match(TokenType::KEYWORD_RETURN)) {
+        return parseReturnStmt();
+    } else if (match(TokenType::NK_FLOW_NOCK)) {
+        return parseNockStmt();
+    }
+    // ... 其他语句类型
+
+    // 如果没有任何控制流关键字，则默认解析为表达式语句
+    return parseExpressionStmt();
+}
 
 ASTNodeIndex Parser::parseExpressionStmt() {
     Token startToken = current;

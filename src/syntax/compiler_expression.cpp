@@ -1,5 +1,8 @@
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
+#include "niki/vm/opcode.hpp"
+#include "niki/vm/value.hpp"
+#include <cstdint>
 
 namespace niki::syntax {
 
@@ -44,7 +47,13 @@ void Compiler::compileExpressionWithTarget(ASTNodeIndex exprIdx, uint8_t targetR
             emitOp(vm::OPCODE::OP_LOAD_CONST, targetReg, chunk_idx, line, column);
             return;
         }
-        case TokenType::LITERAL_FLOAT:
+        case TokenType::LITERAL_FLOAT: {
+            uint32_t pool_idx = node.payload.literal.const_pool_index;
+            vm::Value val = currentPool->constants[pool_idx];
+            uint8_t chunk_idx = makeConstant(val, line, column);
+            emitOp(vm::OPCODE::OP_LOAD_CONST, targetReg, chunk_idx, line, column);
+            return;
+        }
         case TokenType::LITERAL_STRING: {
             uint32_t pool_idx = node.payload.literal.const_pool_index;
             vm::Value val = currentPool->constants[pool_idx];

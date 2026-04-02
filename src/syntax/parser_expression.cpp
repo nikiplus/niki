@@ -26,21 +26,44 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         //---字面量与标识符---
     case TokenType::LITERAL_INT: {
         std::string_view lexeme = source.substr(startToken.start_offset, startToken.length);
-        int numeric_val = std::stoi(std::string(lexeme));
-        // 将值包装进 vm::Value 并存入常量池 (需要你的 vm::Value 支持此构造)
-        // TODO: 确保 vm::Value 有对应的构造函数，目前伪代码先传 0 占位防报错
-        uint32_t const_idx = astPool.addConstant(vm::Value());
+        int64_t numeric_val = std::stoll(std::string(lexeme));
+        uint32_t const_idx = astPool.addConstant(vm::Value::makeInt(numeric_val));
+        payload.literal.literal_type = TokenType::LITERAL_INT;
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
-    case TokenType::LITERAL_FLOAT:
+    case TokenType::LITERAL_FLOAT: {
+        std::string_view lexeme = source.substr(startToken.start_offset, startToken.length);
+        int64_t numeric_val = std::stoll(std::string(lexeme));
+        uint32_t const_idx = astPool.addConstant(vm::Value::makeFloat(numeric_val));
+        payload.literal.literal_type = TokenType::LITERAL_FLOAT;
+        payload.literal.const_pool_index = const_idx;
+        return emitNode(NodeType::LiteralExpr, payload, startToken);
+    }
     case TokenType::LITERAL_STRING:
     case TokenType::LITERAL_CHAR:
-    case TokenType::KEYWORD_TRUE:
-    case TokenType::KEYWORD_FALSE:
-    case TokenType::NIL:
-        // TODO: 这些也需要提取实际的值存入 astPool.constants，目前暂且留空
+        // 目前内存设计尚未完成，字符串和字符暂用空对象，但需提前标明类型
+        payload.literal.literal_type = type;
+        payload.literal.const_pool_index = astPool.addConstant(vm::Value::makeNil());
         return emitNode(NodeType::LiteralExpr, payload, startToken);
+    case TokenType::KEYWORD_TRUE: {
+        uint32_t const_idx = astPool.addConstant(vm::Value::makeBool(true));
+        payload.literal.literal_type = TokenType::KEYWORD_TRUE;
+        payload.literal.const_pool_index = const_idx;
+        return emitNode(NodeType::LiteralExpr, payload, startToken);
+    }
+    case TokenType::KEYWORD_FALSE: {
+        uint32_t const_idx = astPool.addConstant(vm::Value::makeBool(false));
+        payload.literal.literal_type = TokenType::KEYWORD_FALSE;
+        payload.literal.const_pool_index = const_idx;
+        return emitNode(NodeType::LiteralExpr, payload, startToken);
+    }
+    case TokenType::NIL: {
+        uint32_t const_idx = astPool.addConstant(vm::Value::makeNil());
+        payload.literal.literal_type = TokenType::NIL;
+        payload.literal.const_pool_index = const_idx;
+        return emitNode(NodeType::LiteralExpr, payload, startToken);
+    }
     case TokenType::IDENTIFIER: {
         std::string_view name_view = source.substr(startToken.start_offset, startToken.length);
 

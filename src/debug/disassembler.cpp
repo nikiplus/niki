@@ -252,6 +252,15 @@ size_t Disassembler::simpleInstruction(const char *name, size_t offset) {
     std::cout << name << "\n";
     return offset + 1;
 };
+// 处理字面量
+size_t Disassembler::literalInstruction(const char *name, const Chunk &chunk, size_t offset) {
+
+};
+// 一元表达式
+size_t Disassembler::unaryInstruction(const char *name, const Chunk &chunk, size_t offset) {};
+// 跳转相关指令
+size_t Disassembler::jumpInstruction(const char *name, int sign, const Chunk &chunk, size_t offset) {};
+
 size_t Disassembler::registerInstruction(const char *name, const Chunk &chunk, size_t offset) {
     uint8_t dst = chunk.code[offset + 1];
     uint8_t src1 = chunk.code[offset + 2];
@@ -260,9 +269,19 @@ size_t Disassembler::registerInstruction(const char *name, const Chunk &chunk, s
               << "\n";
     return offset + 4;
 };
+
 size_t Disassembler::constantInstruction(const char *name, const Chunk &chunk, size_t offset) {
     uint8_t dst = chunk.code[offset + 1];
     uint8_t constant = chunk.code[offset + 2];
     std::cout << std::left << std::setw(16) << name << " R" << (int)dst << ", Const[" << (int)constant << "]\n";
     return offset + 3;
+};
+
+size_t Disassembler::constantWideInstruction(const char *name, const Chunk &chunk, size_t offset) {
+    uint8_t dst = chunk.code[offset + 1];
+    uint8_t high_byte = chunk.code[offset + 2];
+    uint8_t low_byte = chunk.code[offset + 3];
+    uint16_t constant = (static_cast<uint16_t>(high_byte) << 8) | low_byte;
+    std::cout << std::left << std::setw(16) << name << " R" << (int)dst << ", Const[" << (int)constant << "]\n";
+    return offset + 4;
 };

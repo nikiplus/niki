@@ -38,8 +38,11 @@ class Disassembler {
     static size_t disassembleInstruction(const Chunk &chunk, size_t offset);
     // 打印不带参数的指令(如return，Op_add等)
     static size_t simpleInstruction(const char *name, size_t offset);
+    // 处理字面量
     static size_t literalInstruction(const char *name, const Chunk &chunk, size_t offset);
+    // 一元表达式
     static size_t unaryInstruction(const char *name, const Chunk &chunk, size_t offset);
+    // 跳转相关指令
     static size_t jumpInstruction(const char *name, int sign, const Chunk &chunk, size_t offset);
     // 处理寄存器操作相关指令(如move等)
     static size_t registerInstruction(const char *name, const Chunk &chunk, size_t offset);

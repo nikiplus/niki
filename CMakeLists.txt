@@ -20,6 +20,7 @@ add_library(niki_core STATIC
     src/syntax/compiler_expression.cpp
     src/syntax/compiler_statement.cpp
     src/syntax/compiler_declaration.cpp
+    src/vm/vm.cpp
 )
 
 target_include_directories(niki_core

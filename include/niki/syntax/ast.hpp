@@ -441,6 +441,10 @@ struct ASTPool {
     我们的旁侧表等信息也都是用这个手段进行存储的。
     */
     std::vector<TokenLocation> locations; // 报错时使用，用于报错定位。
+    // --- 新增：类型检查期的旁侧表 ---
+    // 为什么不在 ASTNode 里加 NKType？因为会破坏 16 字节对齐，导致体积膨胀 50%！
+    // 使用 DOD 的旁侧表模式，与 nodes 同步增长，实现缓存友好的按需遍历。
+    std::vector<NKType> node_types;
 
     // 前端常量池（Side-buffer）：
     // 为了保证 ASTNode 严格维持 16 字节大小（4字节对齐），我们绝对不能把包含 8 字节对齐（double/void*）的 vm::Value

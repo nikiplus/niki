@@ -37,10 +37,10 @@ ASTNodeIndex Parser::parse() {
     std::vector<ASTNodeIndex> declarations;
     while (current.type != TokenType::TOKEN_EOF) {
         size_t startTokenIndex = tokenIndex;
-        // 由于目前还不能解析statement，我们先仅在这里对解析式进行表达。
 
-        // 在这里，我们传入初始阈值Precedence::None=0，并调用parseExpression对表达式进行解析。
-        ASTNodeIndex decl = parseExpression(Precedence::None);
+        // 顶层入口：解析声明（Declaration）
+        // 如果不是 var/func 等声明关键字，它会自动降级为语句（Statement）甚至表达式（Expression）
+        ASTNodeIndex decl = parseDeclaration();
 
         // 判断是否处于恐慌模式
         if (panicMode) {
@@ -142,17 +142,17 @@ void Parser::errorAtCurrent(const char *message) {
     if (panicMode)
         return;
     panicMode = true;
-    std::cerr << "[line " << current.line << "] Error";
+    std::cerr << "[line " << current.line << "] Error ";
     if (current.type == TokenType::TOKEN_EOF) {
-        std::cerr << "at end";
+        std::cerr << " at end";
     } else {
         std::string_view lexeme = source.substr(current.start_offset, current.length);
 
         if (lexeme.length() > 20) {
-            std::cerr << "at'" << lexeme.substr(0, 17) << "...'";
+            std::cerr << " at'" << lexeme.substr(0, 17) << "...'";
 
         } else {
-            std::cerr << "at'" << lexeme << "'";
+            std::cerr << " at'" << lexeme << "'";
         }
     }
     std::cerr << ":" << message << "\n";

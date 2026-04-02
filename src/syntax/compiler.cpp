@@ -23,7 +23,9 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
     currentPool = &pool;
     hadError = false;
     errorPool.clear();
-
+    regAlloc.reset();
+    locals.clear();
+    scopeDepth = 0;
     // 核心动作：把外部传进来的（可能已经 reserve 过内存的）Chunk
     // 移动（Move）到编译器内部。这里没有任何深拷贝，只有指针的转移。
     compilingChunk = std::move(initial_chunk);
