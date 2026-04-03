@@ -106,6 +106,8 @@ bool Parser::match(TokenType type) {
     return true;
 };
 
+bool Parser::isAtEnd(TokenType type) { return current.type == type; };
+
 //---AST节点生成器---
 ASTNodeIndex Parser::emitNode(NodeType type, const ASTNodePayload &payload, Token startToken) {
     /*我们首先通过一套类型体操获取将传入的astnode 的位置。

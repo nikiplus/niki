@@ -36,6 +36,7 @@ class Parser {
     void consume(TokenType type, const char *message);
     bool check(TokenType type) const;
     bool match(TokenType type);
+    bool isAtEnd(TokenType type);
 
     //---AST节点生成器---
     // 这里我们传入一个空token，用来进行长函数定位
@@ -89,7 +90,5 @@ class Parser {
     ASTNodeIndex parseAttachStmt();
     ASTNodeIndex parseDetachStmt();
     ASTNodeIndex parseTargetStmt();
-    ASTNodeIndex parseThrowStmt();
-    ASTNodeIndex parseTryCatchStmt();
 };
 } // namespace niki::syntax

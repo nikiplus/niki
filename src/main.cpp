@@ -42,7 +42,7 @@ void runRepl() {
 
         if (!chunkResult.has_value()) {
             std::cerr << "Compile Error:\n";
-            for (const auto& err : chunkResult.error().errors) {
+            for (const auto &err : chunkResult.error().errors) {
                 std::cerr << "  [line " << err.line << ", column " << err.column << "] " << err.message << "\n";
             }
             continue;

@@ -35,9 +35,10 @@ enum class NodeType : uint8_t {
     MemberExpr,   // 成员表达式
     DispatchExpr, // 异步派发表达式
     //---闭包与高级特性--
-    ClosureExpr, // 闭包表达式
-    AwaitExpr,   // 等待表达式
-    BorrowExpr,  // 借用表达式 (&x 或 &mut x)
+    ClosureExpr,  // 闭包表达式
+    AwaitExpr,    // 等待表达式
+    BorrowExpr,   // 借用表达式 (&x 或 &mut x)
+    WildcardExpr, // 用于 match 语句中的 _
     //---隐式节点---
     ImplicitCastExpr, // 隐式类型转换表达式
     /*---语句---*/
@@ -51,10 +52,10 @@ enum class NodeType : uint8_t {
     ConstDeclStmt,  // 常量声明语句 (复用VarDecl的Payload，避免破坏12字节限制)
     BlockStmt,      // 代码块
     //---控制流---
-    IfStmt,    // if语句
-    LoopStmt,  // 循环语句
-    MatchStmt, // match语句
-    MatchCase, // match分支语句
+    IfStmt,        // if语句
+    LoopStmt,      // 循环语句
+    MatchStmt,     // match语句
+    MatchCaseStmt, // match分支语句
     //---跳转与中断---
     ContinueStmt, // continue语句 (零负载节点)
     BreakStmt,    // break语句 (零负载节点)
@@ -65,8 +66,6 @@ enum class NodeType : uint8_t {
     DetachStmt, // 取消挂载语句
     TargetStmt, // 目标语句 (ECS副作用修改)
     //---异常处理---
-    ThrowStmt,    // throw语句
-    TryCatchStmt, // try-catch语句
 
     /*---顶层声明---*/
     // 通常只出现在文件的最外层，用于定义数据结构和执行单元
@@ -775,7 +774,7 @@ struct MatchStmtPayload {
  *   ASTPool::nodes       ASTPool::nodes
  */
 struct MatchCaseStmtPayload {
-    ASTNodeIndex pattern; // 4byte: 匹配模式
+    ASTListIndex pattern; // 4byte: 匹配模式
     ASTNodeIndex body;    // 4byte: 匹配体
 };
 
@@ -881,42 +880,6 @@ struct TargetStmtPayload {
 
 //---异常处理---
 
-/**
- * @brief 【ThrowStmtPayload】抛出异常语句负载
- * 物理大小：4 Bytes
- *
- * [ 内存物理映射图 ]
- * ASTNodePayload.throw_stmt
- * +-------------------+
- * | expression (4B)   |
- * | (ASTNodeIndex)    |
- * +-------------------+
- *         |
- *         v
- *   ASTPool::nodes
- */
-struct ThrowStmtPayload {
-    ASTNodeIndex expression; // 4byte: 异常值表达式
-};
-
-/**
- * @brief 【TryStmtPayload】Try-Catch语句负载
- * 物理大小：8 Bytes
- *
- * [ 内存物理映射图 ]
- * ASTNodePayload.try_stmt
- * +---------------------------------------+
- * | try_body (4B)      | catch_body (4B)  |
- * | (ASTNodeIndex)     | (ASTNodeIndex)   |
- * +--------------------+------------------+
- *         |                    |
- *         v                    v
- *   ASTPool::nodes       ASTPool::nodes
- */
-struct TryStmtPayload {
-    ASTNodeIndex try_body;   // 4byte: 尝试执行的代码块
-    ASTNodeIndex catch_body; // 4byte: 捕获异常后的处理代码块
-};
 /*---顶层声明---*/
 //---基础声明---
 
@@ -1131,10 +1094,6 @@ struct ErrorPayload {
     uint32_t error_index; // 4byte: 指向 ASTPool::errors 的索引
 };
 
-// 使用union来存储不同类型的 payload,这是一种比较常用的设计模式。
-//  它的存在主要是为了避免我们在设计ast节点时，为了支持不同类型的payload而导致的代码冗余。
-//  同时，union的大小是由其内部最大的类型来决定的，这一特性让我们保证payload的定长——这是极便于cpu的访问的
-// 已知我们上面最长的payload是12byte，那么我们的union就会占用12byte的空间。
 union ASTNodePayload {
     //---表达式---
     BinaryExprPayload binary;
@@ -1161,14 +1120,12 @@ union ASTNodePayload {
     // BlockStmtPayload 合并至 ListPayload
     IfStmtPayload if_stmt;
     LoopStmtPayload loop;
-    MatchStmtPayload match;
+    MatchStmtPayload match_stmt;
     MatchCaseStmtPayload match_case;
     ReturnStmtPayload return_stmt;
     NockStmtPayload nock;
     AttachStmtPayload attach;
     DetachStmtPayload detach;
-    ThrowStmtPayload throw_stmt;
-    TryStmtPayload try_stmt;
 
     //---顶层声明---
     FunctionDeclPayload func_decl;

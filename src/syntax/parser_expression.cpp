@@ -209,7 +209,7 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         Token startToken = previous;
         std::vector<ASTNodeIndex> elements;
 
-        if (current.type != TokenType::SYM_BRACKET_R) {
+        if (!check(TokenType::SYM_BRACKET_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
             do {
                 if (current.type == TokenType::SYM_BRACKET_R)
                     break;
@@ -225,7 +225,7 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
     case TokenType::SYM_BRACE_L: {
         Token startToken = previous;
         std::vector<ASTNodeIndex> Interleaved;
-        if (current.type != TokenType::SYM_BRACE_R) {
+        if (!check(TokenType::SYM_BRACKET_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
             do {
                 if (current.type == TokenType::SYM_BRACE_R)
                     break;
@@ -274,7 +274,7 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     case TokenType::SYM_PAREN_L: {
         payload.call.callee = left;
         std::vector<ASTNodeIndex> args;
-        if (current.type != TokenType::SYM_PAREN_R) {
+        if (!check(TokenType::SYM_PAREN_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
             do {
                 if (current.type == TokenType::SYM_PAREN_R)
                     break;

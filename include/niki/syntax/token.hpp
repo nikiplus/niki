@@ -81,6 +81,7 @@ enum class TokenType : uint8_t {
     KEYWORD_ELSE,     // else 否则
     KEYWORD_LOOP,     // loop 循环
     KEYWORD_MATCH,    // match 匹配
+    KEYWORD_CASE,     // case 匹配分支
     KEYWORD_BREAK,    // break 跳出循环
     KEYWORD_CONTINUE, // continue 继续循环
     KEYWORD_RETURN,   // return 返回值
@@ -99,6 +100,7 @@ enum class TokenType : uint8_t {
 
     KEYWORD_INTERFACE, // interface (接口)
     KEYWORD_IMPL,      // impl (实现)
+    KEYWORD_WILDCARD,  // _ (通配符)
 
     /*---[control]控制标记---*/
     TOKEN_EOF,   // 结束标记

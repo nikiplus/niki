@@ -139,8 +139,7 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
 void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileMatchStmt(ASTNodeIndex nodeIdx) {}
-void Compiler::compileMatchCase(ASTNodeIndex nodeIdx) {}
-
+void Compiler::compileMatchCaseStmt(ASTNodeIndex nodeIdx) {}
 // 跳转与中断
 void Compiler::compileContinueStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileBreakStmt(ASTNodeIndex nodeIdx) {}
@@ -153,7 +152,5 @@ void Compiler::compileDetachStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileTargetStmt(ASTNodeIndex nodeIdx) {}
 
 // 异常处理
-void Compiler::compileThrowStmt(ASTNodeIndex nodeIdx) {}
-void Compiler::compileTryCatchStmt(ASTNodeIndex nodeIdx) {}
 
 } // namespace niki::syntax

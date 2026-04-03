@@ -140,6 +140,7 @@ class Compiler {
     ExprResult compileClosureExpr(ASTNodeIndex nodeIdx);
     ExprResult compileAwaitExpr(ASTNodeIndex nodeIdx);
     ExprResult compileBorrowExpr(ASTNodeIndex nodeIdx);
+    ExprResult compileWildcardExpr(ASTNodeIndex nodeIdx);
     ExprResult compileImplicitCastExpr(ASTNodeIndex nodeIdx);
 
     //---语句编译 (不返回物理寄存器)---
@@ -154,7 +155,7 @@ class Compiler {
     void compileIfStmt(ASTNodeIndex nodeIdx);
     void compileLoopStmt(ASTNodeIndex nodeIdx);
     void compileMatchStmt(ASTNodeIndex nodeIdx);
-    void compileMatchCase(ASTNodeIndex nodeIdx);
+    void compileMatchCaseStmt(ASTNodeIndex nodeIdx);
     // 跳转与中断
     void compileContinueStmt(ASTNodeIndex nodeIdx);
     void compileBreakStmt(ASTNodeIndex nodeIdx);
@@ -165,8 +166,7 @@ class Compiler {
     void compileDetachStmt(ASTNodeIndex nodeIdx);
     void compileTargetStmt(ASTNodeIndex nodeIdx);
     // 异常处理
-    void compileThrowStmt(ASTNodeIndex nodeIdx);
-    void compileTryCatchStmt(ASTNodeIndex nodeIdx);
+
     //---顶层声明编译---
     void compileDeclaration(ASTNodeIndex nodeIdx);
     // 基础声明

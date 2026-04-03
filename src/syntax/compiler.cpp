@@ -147,6 +147,7 @@ void Compiler::compileNode(ASTNodeIndex nodeIdx) {
     case NodeType::ClosureExpr:
     case NodeType::AwaitExpr:
     case NodeType::BorrowExpr:
+    case NodeType::WildcardExpr:
     case NodeType::ImplicitCastExpr: {
         ExprResult res = compileExpression(nodeIdx);
         freeIfTemp(res); // 顶层表达式不赋值给任何东西，求值后直接销毁
@@ -162,16 +163,14 @@ void Compiler::compileNode(ASTNodeIndex nodeIdx) {
     case NodeType::IfStmt:
     case NodeType::LoopStmt:
     case NodeType::MatchStmt:
-    case NodeType::MatchCase:
+    case NodeType::MatchCaseStmt:
     case NodeType::ContinueStmt:
     case NodeType::BreakStmt:
     case NodeType::ReturnStmt:
     case NodeType::NockStmt:
     case NodeType::AttachStmt:
     case NodeType::DetachStmt:
-    case NodeType::TargetStmt:
-    case NodeType::ThrowStmt:
-    case NodeType::TryCatchStmt: {
+    case NodeType::TargetStmt: {
         compileStatement(nodeIdx);
         break;
     }

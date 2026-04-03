@@ -181,8 +181,51 @@ ASTNodeIndex Parser::parseLoopStmt() {
     return emitNode(NodeType::LoopStmt, payload, startToken);
 }
 
-ASTNodeIndex Parser::parseMatchStmt() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseMatchCaseStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseMatchCaseStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    std::vector<ASTNodeIndex> patterns;
+    do {
+        if (match(TokenType::KEYWORD_WILDCARD)) {
+            ASTNodePayload wildcard_payload{};
+            patterns.push_back(emitNode(NodeType::WildcardExpr, wildcard_payload, startToken));
+        } else {
+            patterns.push_back(parseExpression(Precedence::None));
+        }
+    } while (match(TokenType::SYM_COMMA));
+
+    consume(TokenType::SYM_FAT_ARROW, "Expected'=>'after match patterns");
+    payload.match_case.pattern = astPool.allocateList(patterns);
+
+    payload.match_case.body = parseStatement();
+
+    return emitNode(NodeType::MatchCaseStmt, payload, startToken);
+}
+
+ASTNodeIndex Parser::parseMatchStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+
+    consume(TokenType::SYM_PAREN_L, "Expected '(' after 'match'.");
+    payload.match_stmt.expression = parseExpression(Precedence::None);
+    consume(TokenType::SYM_PAREN_R, "Expected ')' after 'match target.'");
+
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before match cases.");
+
+    std::vector<ASTNodeIndex> cases;
+    while (!check(TokenType::SYM_BRACE_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
+        if (match(TokenType::KEYWORD_CASE)) {
+            cases.push_back(parseMatchCaseStmt());
+        } else {
+            errorAtCurrent("Expected 'case' keyword inside match block.");
+
+            synchronize();
+        }
+    }
+    consume(TokenType::SYM_BRACE_R, "Expected '}' after match cases.");
+    payload.match_stmt.cases = astPool.allocateList(cases);
+    return emitNode(NodeType::MatchStmt, payload, startToken);
+}
 //---跳转中断---
 ASTNodeIndex Parser::parseContinueStmt() {
     Token startToken = previous;
@@ -196,11 +239,18 @@ ASTNodeIndex Parser::parseBreakStmt() {
     consume(TokenType::SYM_SEMICOLON, "Expected ';' after 'break'.");
     return emitNode(NodeType::BreakStmt, payload, startToken);
 };
-ASTNodeIndex Parser::parseReturnStmt() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseNockStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseReturnStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::SYM_COLON, "Expected ';' after 'return'.");
+    return emitNode(NodeType::ReturnStmt, payload, startToken);
+}
+ASTNodeIndex Parser::parseNockStmt() {
+    Token startToken = previous;
+
+    return ASTNodeIndex{};
+}
 //---组件挂载与卸载---
 ASTNodeIndex Parser::parseAttachStmt() { return ASTNodeIndex{}; }
 ASTNodeIndex Parser::parseDetachStmt() { return ASTNodeIndex{}; }
 ASTNodeIndex Parser::parseTargetStmt() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseThrowStmt() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseTryCatchStmt() { return ASTNodeIndex{}; }

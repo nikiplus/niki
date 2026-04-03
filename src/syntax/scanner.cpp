@@ -36,6 +36,16 @@ Token Scanner::scanToken() {
     }
     // 4.读取当前字符并前进指针。
     char c = advance();
+
+    // 识别下划线通配符（必须单独作为一个Token，而不是Identifier的一部分）
+    // 注意：如果是 `_foo` 这种，它依然应该被识别为 Identifier。
+    // 只有单独的一个 `_` 且后面不跟字母/数字时，才是通配符。
+    if (c == '_') {
+        if (!isAlpha(peek()) && !isDigit(peek())) {
+            return makeToken(TokenType::KEYWORD_WILDCARD);
+        }
+    }
+
     // 5.进行数字和字面量判断
     if (isAlpha(c))
         return makeIdentifierToken();
@@ -181,7 +191,7 @@ bool Scanner::match(char expected) {
 }; // 匹配当前字符并移动游标
 
 /** @section 判断辅助函数(数字，字母，空格等) */
-bool Scanner::isAlpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+bool Scanner::isAlpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_'); }
 bool Scanner::isDigit(char c) { return c >= '0' && c <= '9'; }
 void Scanner::skipWhitespace() {
     while (true) {
@@ -274,6 +284,10 @@ TokenType Scanner::checkIdentifierType() {
     case 'c':
         if (length > 1) {
             switch (source[start + 1]) {
+            case 'a':
+                if (length == 4)
+                    return checkKeyword(2, 2, "se", TokenType::KEYWORD_CASE);
+                break;
             case 'o':
                 if (length > 2) {
                     switch (source[start + 2]) {
