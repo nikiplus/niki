@@ -98,6 +98,7 @@ enum class TokenType : uint8_t {
     KEYWORD_TYPE,   // type (类型别名)
 
     KEYWORD_INTERFACE, // interface (接口)
+    KEYWORD_IMPL,      // impl (实现)
 
     /*---[control]控制标记---*/
     TOKEN_EOF,   // 结束标记

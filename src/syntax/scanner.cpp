@@ -328,6 +328,10 @@ TokenType Scanner::checkIdentifierType() {
             switch (source[start + 1]) {
             case 'f':
                 return checkKeyword(2, 0, "", TokenType::KEYWORD_IF);
+            case 'm':
+                if (length == 4)
+                    return checkKeyword(2, 2, "pl", TokenType::KEYWORD_IMPL);
+                break;
             case 'n':
                 if (length == 3)
                     return checkKeyword(2, 1, "t", TokenType::KEYWORD_INT);

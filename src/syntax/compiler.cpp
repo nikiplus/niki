@@ -145,7 +145,9 @@ void Compiler::compileNode(ASTNodeIndex nodeIdx) {
     case NodeType::MemberExpr:
     case NodeType::DispatchExpr:
     case NodeType::ClosureExpr:
-    case NodeType::AwaitExpr: {
+    case NodeType::AwaitExpr:
+    case NodeType::BorrowExpr:
+    case NodeType::ImplicitCastExpr: {
         ExprResult res = compileExpression(nodeIdx);
         freeIfTemp(res); // 顶层表达式不赋值给任何东西，求值后直接销毁
         break;

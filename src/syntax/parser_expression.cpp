@@ -104,7 +104,7 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
             } while (match(TokenType::SYM_COMMA));
         }
         consume(TokenType::SYM_BRACKET_R, "Expected']'at end of array.");
-        payload.array.elements = astPool.allocateList(elements);
+        payload.list.elements = astPool.allocateList(elements);
         return emitNode(NodeType::ArrayExpr, payload, startToken);
     }
     // 在parse期，我们不对传入map的数据类型进行检测。
@@ -124,7 +124,7 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
             } while (match(TokenType::SYM_COMMA));
         }
         consume(TokenType::SYM_BRACE_R, "Expected '}'after map elements.");
-        payload.map.entries = astPool.allocateList(Interleaved);
+        payload.map.map_data_index = astPool.addMapData(Interleaved);
         return emitNode(NodeType::MapExpr, payload, startToken);
     }
 

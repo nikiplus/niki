@@ -128,7 +128,7 @@ ASTNodeIndex Parser::parseBlockStmt() {
 
     consume(TokenType::SYM_BRACE_R, "Expected '}' after block.");
 
-    payload.block.statements = astPool.allocateList(statements);
+    payload.list.elements = astPool.allocateList(statements);
     return emitNode(NodeType::BlockStmt, payload, startToken);
 };
 //---控制流
@@ -155,9 +155,9 @@ ASTNodeIndex Parser::parseIfStmt() {
 
     return emitNode(NodeType::IfStmt, IfStmtPayload, startToken);
 }
-ASTNodeIndex Parser::parseLoopStmt() {};
-ASTNodeIndex Parser::parseMatchStmt() {};
-ASTNodeIndex Parser::parseMatchCaseStmt() {};
+ASTNodeIndex Parser::parseLoopStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseMatchStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseMatchCaseStmt() { return ASTNodeIndex{}; }
 //---跳转中断---
 ASTNodeIndex Parser::parseContinueStmt() {
     Token startToken = previous;
@@ -171,11 +171,11 @@ ASTNodeIndex Parser::parseBreakStmt() {
     consume(TokenType::SYM_SEMICOLON, "Expected ';' after 'break'.");
     return emitNode(NodeType::BreakStmt, payload, startToken);
 };
-ASTNodeIndex Parser::parseReturnStmt() {};
-ASTNodeIndex Parser::parseNockStmt() {};
+ASTNodeIndex Parser::parseReturnStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseNockStmt() { return ASTNodeIndex{}; }
 //---组件挂载与卸载---
-ASTNodeIndex Parser::parseAttachStmt() {};
-ASTNodeIndex Parser::parseDetachStmt() {};
-ASTNodeIndex Parser::parseTargetStmt() {};
-ASTNodeIndex Parser::parseThrowStmt() {};
-ASTNodeIndex Parser::parseTryCatchStmt() {};
+ASTNodeIndex Parser::parseAttachStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseDetachStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseTargetStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseThrowStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseTryCatchStmt() { return ASTNodeIndex{}; }

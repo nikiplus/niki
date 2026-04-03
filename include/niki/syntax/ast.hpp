@@ -71,11 +71,14 @@ enum class NodeType : uint8_t {
     /*---顶层声明---*/
     // 通常只出现在文件的最外层，用于定义数据结构和执行单元
     //---基础声明---
-    FunctionDecl,  // 函数声明
-    StructDecl,    // 结构体声明
-    EnumDecl,      // 枚举声明
-    TypeAliasDecl, // 类型别名声明
-    InterfaceDecl, // 接口定义
+    FunctionDecl,    // 函数声明
+    InterfaceMethod, // 接口方法声明
+    StructDecl,      // 结构体声明
+    EnumDecl,        // 枚举声明
+    TypeAliasDecl,   // 类型别名声明
+    InterfaceDecl,   // 接口定义
+    ImplDecl,        // 实现声明 (impl块)
+
     //---NIKI特有---
     ModuleDecl,    // 模块声明
     SystemDecl,    // 系统声明
@@ -88,7 +91,7 @@ enum class NodeType : uint8_t {
     ProgramRoot, // 程序根节点
     //---错误---
     ErrorNode, // 错误声明
-};
+}; // namespace niki::syntax
 
 /**
  * ============================================================================
@@ -169,56 +172,110 @@ struct ASTListIndex {
 
 /**
  * @brief 【FunctionData】函数定义 (Fat Node Side-Table Pattern)
- * 物理大小：16 Bytes (无内存对齐碎片)
+ * 物理大小：20 Bytes (无内存对齐碎片)
+ * 统一了普通函数和接口方法签名。如果 body 无效，则为接口签名。
  *
  * [ 内存物理映射图 ]
  *
  * ASTPool::function_data (std::vector<FunctionData>)
- * +---------------------------------------------------+
- * | name_id (4B) | params (8B)        | body (4B)     |
- * | (uint32_t)   | (ASTListIndex)     | (ASTNodeIndex)|
- * +--------------+--------------------+---------------+
- *       |                  |                  |
- *       |                  |                  v
- *       |                  |          ASTPool::nodes (std::vector<ASTNode>)
- *       |                  |          +-----------------------------------------------+
- *       |                  |          | NodeType (1B) | pad (3B) | BlockPayload (12B) | = 16B
- *       |                  |          +-----------------------------------------------+
- *       v                  v
- * ASTPool::string_pool  ASTPool::lists_elements (std::vector<ASTNodeIndex>)
- * "my_func"             +---------------------------------------------------+
- *                       | idx_0 | idx_1 | idx_2 | ...                       |
- *                       +---------------------------------------------------+
- *                         ^-- start_index          ^-- start_index + length
+ * +-----------------------------------------------------------------------+
+ * | name_id (4B) | return_type (4B) | params (8B)        | body (4B)      |
+ * | (uint32_t)   | (ASTNodeIndex)   | (ASTListIndex)     | (ASTNodeIndex) |
+ * +--------------+------------------+--------------------+----------------+
  */
 struct FunctionData {
-    uint32_t name_id;    // 4byte
-    ASTListIndex params; // 8byte
-    ASTNodeIndex body;   // 4byte
+    uint32_t name_id;         // 4byte: 名字
+    ASTNodeIndex return_type; // 4byte: 返回值类型
+    ASTListIndex params;      // 8byte: 参数列表
+    ASTNodeIndex body;        // 4byte: 函数体 (如果无效，说明是接口签名或extern)
+};
+/**
+ * @brief 【FunctionDeclPayload】函数声明负载
+ * 物理大小：4 Bytes (指向胖节点表)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.func_decl
+ * +------------------------+
+ * | function_index (4B)    |
+ * | (uint32_t)             |
+ * +------------------------+
+ *             |
+ *             v
+ *   ASTPool::function_data (std::vector<FunctionData>)
+ */
+struct FunctionDeclPayload {
+    uint32_t function_index; // 4byte: 指向 ASTPool::functions 的索引
 };
 
 /**
  * @brief 【StructData】结构体定义 (Fat Node Side-Table Pattern)
- * 物理大小：12 Bytes (4B 对齐，无碎片)
+ * 物理大小：20 Bytes (name_id 4B + names 8B + types 8B)
  *
  * [ 内存物理映射图 ]
  *
  * ASTPool::struct_data (std::vector<StructData>)
- * +---------------------------------------+
- * | name_id (4B) | fields (8B)            |
- * | (uint32_t)   | (ASTListIndex)         |
- * +--------------+------------------------+
- *       |                  |
- *       v                  v
- * ASTPool::string_pool  ASTPool::lists_elements (交错列表 Interleaved List)
- * "MyStruct"            +---------------------------------------------------+
- *                       | name_idx | type_idx | name_idx | type_idx | ...   |
- *                       +---------------------------------------------------+
- *                         ^-- start_index                            ^-- start_index + length
+ * +---------------------------------------------------+
+ * | name_id (4B) | names (8B)         | types (8B)    |
+ * | (uint32_t)   | (ASTListIndex)     | (ASTListIndex)|
+ * +--------------+--------------------+---------------+
+ *       |                  |                  |
+ *       v                  v                  v
+ * ASTPool::string_pool  ASTPool::lists_elements
+ * "MyStruct"            [n1, n2, n3...]      [t1, t2, t3...]
  */
 struct StructData {
-    uint32_t name_id;    // 4byte
-    ASTListIndex fields; // 8byte:交错列表 [name, type, name, type...]
+    uint32_t name_id;   // 4byte
+    ASTListIndex names; // 8byte: 纯净的字段名列表
+    ASTListIndex types; // 8byte: 纯净的字段类型列表
+};
+/**
+ * @brief 【StructDeclPayload】结构体声明负载
+ * 物理大小：4 Bytes (指向胖节点表)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.struct_decl
+ * +------------------------+
+ * | struct_index (4B)      |
+ * | (uint32_t)             |
+ * +------------------------+
+ *             |
+ *             v
+ *   ASTPool::struct_data (std::vector<StructData>)
+ */
+struct StructDeclPayload {
+    uint32_t struct_index; // 4byte: 指向 ASTPool::structs 的索引
+};
+
+// --- 已废弃：InterfaceMethodData 合并至 FunctionData ---
+// 接口方法签名和普通函数一样，都是指向 ASTPool::function_data 的 4 字节索引。
+// 区别在于：接口方法对应的 FunctionData 的 body 字段为 invalid()。
+
+/**
+ * @brief 【ImplData】实现块数据 (Fat Node Side-Table Pattern)
+ * 物理大小：16 Bytes
+ * 用于将外部方法挂载到指定的结构体或组件上。
+ *
+ * [ 内存物理映射图 ]
+ * ASTPool::impl_data (std::vector<ImplData>)
+ * +---------------------------------------------------+
+ * | target_type (4B)   | trait_type (4B)| methods (8B)|
+ * | (ASTNodeIndex)     | (ASTNodeIndex) |(ASTListIdx) |
+ * +--------------------+----------------+-------------+
+ *       |                  |                  |
+ *       v                  v                  v
+ * ASTPool::nodes     ASTPool::nodes    ASTPool::lists_elements (FunctionDecl 索引)
+ */
+struct ImplData {
+    ASTNodeIndex target_type; // 4byte: 为哪个类型实现 (如 Player)
+    ASTNodeIndex trait_type;  // 4byte: 实现了哪个接口 (无效值代表普通的方法实现)
+    ASTListIndex methods;     // 8byte: 方法列表 (指向 NodeType::FunctionDecl 节点)
+};
+/**
+ * @brief 【ImplDeclPayload】实现声明负载
+ * 物理大小：4 Bytes (指向胖节点表)
+ */
+struct ImplDeclPayload {
+    uint32_t impl_index; // 指向 ASTPool::impl_data
 };
 
 /**
@@ -244,6 +301,67 @@ struct KitsData {
     uint32_t name_id;     // 4byte: 上下文名字
     ASTListIndex members; // 8byte: 上下文内部的影子数据或成员声明
 };
+/**
+ * @brief 【KitsDeclPayload】Kits声明负载
+ * 物理大小：8 Bytes (指向胖节点表)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.kits_decl
+ * +---------------------------------------+
+ * | name_id (4B)       | kits_data_index  |
+ * | (uint32_t)         | (uint32_t)       |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::string_pool   ASTPool::kits_data (std::vector<KitsData>)
+ */
+struct KitsDeclPayload {
+    uint32_t name_id;
+    uint32_t kits_data_index;
+};
+
+/**
+ * @brief 【MapData】映射/字典数据 (Fat Node Side-Table Pattern)
+ * 物理大小：16 Bytes
+ * 放弃交错列表，采用纯粹的 SOA (Structure of Arrays) 布局以优化类型检查和遍历。
+ *
+ * [ 内存物理映射图 ]
+ * ASTPool::map_data (std::vector<MapData>)
+ * +---------------------------------------+
+ * | keys (8B)          | values (8B)      |
+ * | (ASTListIndex)     | (ASTListIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::lists_elements  ASTPool::lists_elements
+ * [k1, k2, k3...]          [v1, v2, v3...]
+ */
+struct MapData {
+    ASTListIndex keys;
+    ASTListIndex values;
+};
+/**
+ * @brief 【MapExprPayload】映射表达式负载
+ * 物理大小：4 Bytes (指向胖节点表)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.map
+ * +------------------------+
+ * | map_data_index (4B)    |
+ * | (uint32_t)             |
+ * +------------------------+
+ *             |
+ *             v
+ *     ASTPool::map_data
+ */
+/*在设计mappayload的时候，我曾经思考要不要用交错数据存储，也就是下面这样
+[key][value][key][value][key][value]...
+但是想了想，感觉不如直接像function等payload一样，直接建立一个mappayload，然后使用旁侧表来管理
+*/
+struct MapExprPayload {
+    uint32_t map_data_index; // 指向 ASTPool::map_data
+};
+
 // payload，实际用来装载节点索引和其他数据的结构体，我们所有的payload大小都被严格限制在12字节。
 // 这是为了方便我们在后续的序列化中，直接将ast节点的索引和其他数据打包成16字节的结构体，然后直接写入文件。
 // 这让我们每个struct的大小变得定长，这极大的方便了我们后续的序列化！同时极大的提高了cpu在扫描ast时的效率。
@@ -343,33 +461,6 @@ struct IdentifierExprPayload {
  */
 struct ArrayExprPayload {
     ASTListIndex elements; // 8byte
-};
-
-/**
- * @brief 【MapExprPayload】映射表达式负载
- * 物理大小：8 Bytes
- *
- * 为什么不存 keys 和 values 两个 ASTListIndex？
- * 因为 8 + 8 = 16 字节！它会直接撑爆我们定好的 12 字节 Payload 上限！
- * 解决方案：使用单一的交错列表 (Interleaved List)。
- * 在 lists_elements 数组中，我们连续存放 [key1, value1, key2, value2...]
- * 这样只需要 1 个 ASTListIndex (8 字节)，完美塞入 12 字节限制中。
- *
- * [ 内存物理映射图 ]
- * ASTNodePayload.map
- * +---------------------------------------+
- * | entries (8B)                          |
- * | (ASTListIndex)                        |
- * +---------------------------------------+
- *         |
- *         v
- * ASTPool::lists_elements (交错列表 Interleaved List)
- * +---------------------------------------------------+
- * | key1_idx | val1_idx | key2_idx | val2_idx | ...   |
- * +---------------------------------------------------+
- */
-struct MapExprPayload {
-    ASTListIndex entries;
 };
 
 /**
@@ -830,42 +921,6 @@ struct TryStmtPayload {
 //---基础声明---
 
 /**
- * @brief 【FunctionDeclPayload】函数声明负载
- * 物理大小：4 Bytes (指向胖节点表)
- *
- * [ 内存物理映射图 ]
- * ASTNodePayload.func_decl
- * +------------------------+
- * | function_index (4B)    |
- * | (uint32_t)             |
- * +------------------------+
- *             |
- *             v
- *   ASTPool::function_data (std::vector<FunctionData>)
- */
-struct FunctionDeclPayload {
-    uint32_t function_index; // 4byte: 指向 ASTPool::functions 的索引
-};
-
-/**
- * @brief 【StructDeclPayload】结构体声明负载
- * 物理大小：4 Bytes (指向胖节点表)
- *
- * [ 内存物理映射图 ]
- * ASTNodePayload.struct_decl
- * +------------------------+
- * | struct_index (4B)      |
- * | (uint32_t)             |
- * +------------------------+
- *             |
- *             v
- *   ASTPool::struct_data (std::vector<StructData>)
- */
-struct StructDeclPayload {
-    uint32_t struct_index; // 4byte: 指向 ASTPool::structs 的索引
-};
-
-/**
  * @brief 【EnumDeclPayload】枚举声明负载
  * 物理大小：4 Bytes
  *
@@ -914,11 +969,11 @@ struct TypeAliasDeclPayload {
  * +--------------------+------------------+
  *         |                    |
  *         v                    v
- * ASTPool::string_pool   ASTPool::lists_elements
+ * ASTPool::string_pool   ASTPool::lists_elements (存放 InterfaceMethod 节点索引)
  */
 struct InterfaceDeclPayload {
     uint32_t name_id;     // 4byte: 接口名的字符串池 ID
-    ASTListIndex methods; // 8byte: 方法列表（指向一个Array节点）
+    ASTListIndex methods; // 8byte: 方法声明列表 (指向 NodeType::InterfaceMethod 节点)
 };
 
 //---NIKI特有---
@@ -1001,25 +1056,6 @@ struct FlowDeclPayload {
 };
 
 /**
- * @brief 【KitsDeclPayload】Kits声明负载
- * 物理大小：8 Bytes (指向胖节点表)
- *
- * [ 内存物理映射图 ]
- * ASTNodePayload.kits_decl
- * +---------------------------------------+
- * | name_id (4B)       | kits_data_index  |
- * | (uint32_t)         | (uint32_t)       |
- * +--------------------+------------------+
- *         |                    |
- *         v                    v
- * ASTPool::string_pool   ASTPool::kits_data (std::vector<KitsData>)
- */
-struct KitsDeclPayload {
-    uint32_t name_id;
-    uint32_t kits_data_index;
-};
-
-/**
  * @brief 【TagDeclPayload】标签声明负载
  * 物理大小：4 Bytes
  *
@@ -1059,21 +1095,20 @@ struct TagGroupDeclPayload {
 //---程序根---
 
 /**
- * @brief 【ProgramRootPayload】程序根节点负载
+ * @brief 【ListPayload】通用列表包裹负载
  * 物理大小：8 Bytes
+ * 用于所有“仅包裹一个节点列表”的 AST 节点，以减少 Payload 结构体的无意义重复。
+ * 适用节点：BlockStmt, ArrayExpr, ProgramRoot 等。
  *
  * [ 内存物理映射图 ]
- * ASTNodePayload.program_root
+ * ASTNodePayload.list
  * +---------------------------------------+
- * | declarations (8B)                     |
+ * | elements (8B)                         |
  * | (ASTListIndex)                        |
  * +---------------------------------------+
- *         |
- *         v
- * ASTPool::lists_elements
  */
-struct ProgramRootPayload {
-    ASTListIndex declarations; // 8byte: 声明列表
+struct ListPayload {
+    ASTListIndex elements;
 };
 
 //---错误---
@@ -1106,7 +1141,8 @@ union ASTNodePayload {
     UnaryExprPayload unary;
     LiteralExprPayload literal;
     IdentifierExprPayload identifier;
-    ArrayExprPayload array;
+    //---复杂数据结构---
+    // ArrayExprPayload 合并至 ListPayload
     MapExprPayload map;
     IndexExprPayload index;
     CallExprPayload call;
@@ -1122,7 +1158,7 @@ union ASTNodePayload {
     ExpressionStmtPayload expr_stmt;
     AssignmentStmtPayload assign_stmt;
     VarDeclStmtPayload var_decl;
-    BlockStmtPayload block;
+    // BlockStmtPayload 合并至 ListPayload
     IfStmtPayload if_stmt;
     LoopStmtPayload loop;
     MatchStmtPayload match;
@@ -1136,10 +1172,12 @@ union ASTNodePayload {
 
     //---顶层声明---
     FunctionDeclPayload func_decl;
+    // InterfaceMethodPayload 合并至 FunctionDeclPayload
     StructDeclPayload struct_decl;
     EnumDeclPayload enum_decl;
     TypeAliasDeclPayload type_alias;
     InterfaceDeclPayload interface_decl;
+    ImplDeclPayload impl_decl;
     ModuleDeclPayload module_decl;
     SystemDeclPayload system_decl;
     ComponentDeclPayload component_decl;
@@ -1147,7 +1185,10 @@ union ASTNodePayload {
     KitsDeclPayload kits_decl;
     TagDeclPayload tag_decl;
     TagGroupDeclPayload tag_group;
-    ProgramRootPayload program_root;
+
+    // 通用包裹列表
+    ListPayload list;
+
     ErrorPayload error;
 };
 
@@ -1205,7 +1246,9 @@ struct ASTPool {
 
     std::vector<FunctionData> function_data; // 函数数据
     std::vector<StructData> struct_data;     // 结构体数据
+    std::vector<ImplData> impl_data;         // Impl实现数据
     std::vector<KitsData> kits_data;
+    std::vector<MapData> map_data; // Map字典数据
     std::vector<std::string> string_pool;
     std::unordered_map<std::string_view, uint32_t> string_to_id;
 
@@ -1223,6 +1266,25 @@ struct ASTPool {
     const ASTNode &getNode(ASTNodeIndex index) const;
     uint32_t internString(std::string_view str);
     const std::string &getStringId(uint32_t id) const;
+
+    // --- Map Data Allocation ---
+    uint32_t addMapData(const std::vector<ASTNodeIndex> &interleaved) {
+        std::vector<ASTNodeIndex> keys;
+        std::vector<ASTNodeIndex> values;
+        keys.reserve(interleaved.size() / 2);
+        values.reserve(interleaved.size() / 2);
+        for (size_t i = 0; i < interleaved.size(); i += 2) {
+            keys.push_back(interleaved[i]);
+            values.push_back(interleaved[i + 1]);
+        }
+
+        MapData data;
+        data.keys = allocateList(keys);
+        data.values = allocateList(values);
+
+        map_data.push_back(data);
+        return static_cast<uint32_t>(map_data.size() - 1);
+    }
 };
 
 } // namespace niki::syntax

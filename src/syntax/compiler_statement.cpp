@@ -58,7 +58,11 @@ void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
         TokenType op = node.payload.assign_stmt.op;
 
         if (op == TokenType::SYM_EQUAL) {
-            compileExpressionWithTarget(node.payload.assign_stmt.value, targetReg);
+            ExprResult valRes = compileExpression(node.payload.assign_stmt.value);
+            if (valRes.reg != targetReg) {
+                emitOp(vm::OPCODE::OP_MOVE, targetReg, valRes.reg, line, column);
+            }
+            freeIfTemp(valRes);
         } else {
             ExprResult rightRes = compileExpression(node.payload.assign_stmt.value);
 
@@ -108,7 +112,11 @@ void Compiler::compileVarDeclStmt(ASTNodeIndex nodeIdx) {
     locals.push_back({name_id, varReg, scopeDepth});
 
     if (node.payload.var_decl.init_expr.isvalid()) {
-        compileExpressionWithTarget(node.payload.var_decl.init_expr, varReg);
+        ExprResult initRes = compileExpression(node.payload.var_decl.init_expr);
+        if (initRes.reg != varReg) {
+            emitOp(vm::OPCODE::OP_MOVE, varReg, initRes.reg, line, column);
+        }
+        freeIfTemp(initRes);
     } else {
         emitOp(vm::OPCODE::OP_NIL, varReg, line, column);
     }
@@ -120,7 +128,7 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
     const ASTNode &node = currentPool->getNode(stmtIdx);
     beginScope();
 
-    std::span<const ASTNodeIndex> stmts = currentPool->get_list(node.payload.block.statements);
+    std::span<const ASTNodeIndex> stmts = currentPool->get_list(node.payload.list.elements);
     for (ASTNodeIndex stmt : stmts) {
         compileStatement(stmt);
     }

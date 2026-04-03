@@ -25,61 +25,30 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
         return compileLiteralExpr(exprIdx);
     case NodeType::IdentifierExpr:
         return compileIdentifierExpr(exprIdx);
-    // ...
+    case NodeType::ArrayExpr:
+        return compileArrayExpr(exprIdx);
+    case NodeType::MapExpr:
+        return compileMapExpr(exprIdx);
+    case NodeType::IndexExpr:
+        return compileIndexExpr(exprIdx);
+    case NodeType::CallExpr:
+        return compileCallExpr(exprIdx);
+    case NodeType::MemberExpr:
+        return compileMemberExpr(exprIdx);
+    case NodeType::DispatchExpr:
+        return compileDispatchExpr(exprIdx);
+    case NodeType::ClosureExpr:
+        return compileClosureExpr(exprIdx);
+    case NodeType::AwaitExpr:
+        return compileAwaitExpr(exprIdx);
+    case NodeType::BorrowExpr:
+        return compileBorrowExpr(exprIdx);
+    case NodeType::ImplicitCastExpr:
+        return compileImplicitCastExpr(exprIdx);
     default:
         reportError(line, column, "Expected an expression.");
         return ExprResult{0, true};
     }
-}
-
-void Compiler::compileExpressionWithTarget(ASTNodeIndex exprIdx, uint8_t targetReg) {
-    if (!exprIdx.isvalid()) {
-        return;
-    }
-    const ASTNode &node = currentPool->getNode(exprIdx);
-    uint32_t line = currentPool->locations[exprIdx.index].line;
-    uint32_t column = currentPool->locations[exprIdx.index].column;
-    if (node.type == NodeType::LiteralExpr) {
-        switch (node.payload.literal.literal_type) {
-        case TokenType::LITERAL_INT: { // 此处未来可以优化，减少一次搬运
-            uint32_t pool_idx = node.payload.literal.const_pool_index;
-            vm::Value val = currentPool->constants[pool_idx];
-            uint8_t chunk_idx = makeConstant(val, line, column);
-            emitOp(vm::OPCODE::OP_LOAD_CONST, targetReg, chunk_idx, line, column);
-            return;
-        }
-        case TokenType::LITERAL_FLOAT: {
-            uint32_t pool_idx = node.payload.literal.const_pool_index;
-            vm::Value val = currentPool->constants[pool_idx];
-            uint8_t chunk_idx = makeConstant(val, line, column);
-            emitOp(vm::OPCODE::OP_LOAD_CONST, targetReg, chunk_idx, line, column);
-            return;
-        }
-        case TokenType::LITERAL_STRING: {
-            uint32_t pool_idx = node.payload.literal.const_pool_index;
-            vm::Value val = currentPool->constants[pool_idx];
-            uint8_t chunk_idx = makeConstant(val, line, column);
-            emitOp(vm::OPCODE::OP_LOAD_CONST, targetReg, chunk_idx, line, column);
-            return;
-        }
-        case TokenType::KEYWORD_TRUE:
-            emitOp(vm::OPCODE::OP_TRUE, targetReg, line, column);
-            return;
-        case TokenType::KEYWORD_FALSE:
-            emitOp(vm::OPCODE::OP_FALSE, targetReg, line, column);
-            return;
-        case TokenType::NIL:
-            emitOp(vm::OPCODE::OP_NIL, targetReg, line, column);
-            return;
-        default:
-            reportError(line, column, "Expected an expression.");
-        }
-    }
-    ExprResult resultReg = compileExpression(exprIdx);
-    if (resultReg.reg != targetReg) {
-        emitOp(vm::OPCODE::OP_MOVE, targetReg, resultReg.reg, line, column);
-    }
-    freeIfTemp(resultReg);
 }
 
 // 基础计算
@@ -205,7 +174,7 @@ ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {
     uint32_t line = currentPool->locations[nodeIdx.index].line;
     uint32_t column = currentPool->locations[nodeIdx.index].column;
 
-    uint32_t arr_len = node.payload.array.elements.length;
+    uint32_t arr_len = node.payload.list.elements.length;
     uint8_t arrayReg = regAlloc.allocate();
 
     // 限制预分配容量在 255 以内
@@ -215,7 +184,7 @@ ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {
     emitOp(vm::OPCODE::OP_NEW_ARRAY, arrayReg, initial_capacity, line, column);
 
     for (uint32_t i = 0; i < arr_len; ++i) {
-        ASTNodeIndex elementIdx = {node.payload.array.elements.start_index + i};
+        ASTNodeIndex elementIdx = {node.payload.list.elements.start_index + i};
         ExprResult res = compileExpression(elementIdx);
 
         emitOp(vm::OPCODE::OP_PUSH_ARRAY, arrayReg, res.reg, line, column);
@@ -227,7 +196,33 @@ ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {
 
     return {arrayReg, true};
 }
-ExprResult Compiler::compileMapExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
+ExprResult Compiler::compileMapExpr(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    uint32_t map_idx = node.payload.map.map_data_index;
+    const MapData &map_data = currentPool->map_data[map_idx];
+    uint32_t entry_count = map_data.keys.length;
+    uint8_t mapReg = regAlloc.allocate();
+
+    uint8_t initial_capacity = entry_count > 255 ? 255 : static_cast<uint8_t>(entry_count);
+
+    emitOp(vm::OPCODE::OP_NEW_MAP, mapReg, initial_capacity, line, column);
+    for (uint32_t i = 0; i < entry_count; ++i) {
+        ASTNodeIndex keyIdx = {map_data.keys.start_index + i};
+        ASTNodeIndex valIdx = {map_data.values.start_index + i};
+
+        ExprResult keyRes = compileExpression(keyIdx);
+        ExprResult valRes = compileExpression(valIdx);
+
+        emitOp(vm::OPCODE::OP_SET_MAP, mapReg, keyRes.reg, valRes.reg, line, column);
+
+        freeIfTemp(keyRes);
+        freeIfTemp(valRes);
+    }
+
+    return {mapReg, true};
+}
 ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
 // 对象与方法
 ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
@@ -236,5 +231,7 @@ ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) { return {0, true
 // 闭包与高级特性
 ExprResult Compiler::compileClosureExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
 ExprResult Compiler::compileAwaitExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
+ExprResult Compiler::compileBorrowExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
+ExprResult Compiler::compileImplicitCastExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
 
 } // namespace niki::syntax

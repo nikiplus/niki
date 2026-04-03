@@ -62,6 +62,7 @@ class Parser {
     ASTNodeIndex parseEnumDecl();
     ASTNodeIndex parseTypeAliasDecl();
     ASTNodeIndex parseInterfaceDecl();
+    ASTNodeIndex parseImplDecl();
     ASTNodeIndex parseModuleDecl();
     ASTNodeIndex parseSystemDecl();
     ASTNodeIndex parseComponentDecl();

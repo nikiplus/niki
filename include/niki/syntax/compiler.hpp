@@ -123,7 +123,6 @@ class Compiler {
 
     //---表达式编译 (返回装载结果的物理寄存器编号)---
     ExprResult compileExpression(ASTNodeIndex exprIdx);
-    void compileExpressionWithTarget(ASTNodeIndex exprIdx, uint8_t targetReg);
     // 基础计算
     ExprResult compileBinaryExpr(ASTNodeIndex nodeIdx);
     ExprResult compileUnaryExpr(ASTNodeIndex nodeIdx);
@@ -140,6 +139,8 @@ class Compiler {
     // 闭包与高级特性
     ExprResult compileClosureExpr(ASTNodeIndex nodeIdx);
     ExprResult compileAwaitExpr(ASTNodeIndex nodeIdx);
+    ExprResult compileBorrowExpr(ASTNodeIndex nodeIdx);
+    ExprResult compileImplicitCastExpr(ASTNodeIndex nodeIdx);
 
     //---语句编译 (不返回物理寄存器)---
     void compileStatement(ASTNodeIndex stmtIdx);
@@ -168,7 +169,25 @@ class Compiler {
     void compileTryCatchStmt(ASTNodeIndex nodeIdx);
     //---顶层声明编译---
     void compileDeclaration(ASTNodeIndex nodeIdx);
+    // 基础声明
+    void compileFunctionDecl(ASTNodeIndex nodeIdx);
+    void compileInterfaceMethod(ASTNodeIndex nodeIdx);
+    void compileStructDecl(ASTNodeIndex nodeIdx);
+    void compileEnumDecl(ASTNodeIndex nodeIdx);
+    void compileTypeAliasDecl(ASTNodeIndex nodeIdx);
+    void compileInterfaceDecl(ASTNodeIndex nodeIdx);
+    void compileImplDecl(ASTNodeIndex nodeIdx);
+    // NIKI特有
+    void compileModuleDecl(ASTNodeIndex nodeIdx);
+    void compileSystemDecl(ASTNodeIndex nodeIdx);
+    void compileComponentDecl(ASTNodeIndex nodeIdx);
+    void compileFlowDecl(ASTNodeIndex nodeIdx);
     void compileKitsDecl(ASTNodeIndex nodeIdx);
+    void compileTagDecl(ASTNodeIndex nodeIdx);
+    void compileTagGroupDecl(ASTNodeIndex nodeIdx);
+    // 程序根与错误
+    void compileProgramRoot(ASTNodeIndex nodeIdx);
+    void compileErrorNode(ASTNodeIndex nodeIdx);
 
     //---错误处理---
     void reportError(const Token &token, std::string_view message);
