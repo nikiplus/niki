@@ -155,7 +155,32 @@ ASTNodeIndex Parser::parseIfStmt() {
 
     return emitNode(NodeType::IfStmt, IfStmtPayload, startToken);
 }
-ASTNodeIndex Parser::parseLoopStmt() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseLoopStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+
+    // 1. 可选的条件表达式 (condition)
+    if (match(TokenType::SYM_PAREN_L)) {
+        payload.loop.condition = parseExpression(Precedence::None);
+        consume(TokenType::SYM_PAREN_R, "Expected ')' after loop condition.");
+    } else {
+        // 如果没有条件，说明是无限循环，用 invalid() 标记为空
+        payload.loop.condition = ASTNodeIndex::invalid();
+    }
+
+    // 2. 强制要求代码块
+    // 我们不手动吃掉 '{'，而是通过 check() 探视一下，确保接下来的是个代码块。
+    if (!check(TokenType::SYM_BRACE_L)) {
+        errorAtCurrent("Expected '{' after 'loop'. Loop body must be a block.");
+        return emitNode(NodeType::ErrorNode, payload);
+    }
+
+    // 然后放心地把控制权交给 parseStatement，它内部遇到 '{' 自然会路由到 parseBlockStmt
+    payload.loop.body = parseStatement();
+
+    return emitNode(NodeType::LoopStmt, payload, startToken);
+}
+
 ASTNodeIndex Parser::parseMatchStmt() { return ASTNodeIndex{}; }
 ASTNodeIndex Parser::parseMatchCaseStmt() { return ASTNodeIndex{}; }
 //---跳转中断---
