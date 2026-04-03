@@ -3,6 +3,7 @@
 #include "niki/vm/opcode.hpp"
 #include "niki/vm/value.hpp"
 #include <cstdint>
+#include <cstdlib>
 
 namespace niki::syntax {
 
@@ -199,7 +200,33 @@ ExprResult Compiler::compileIdentifierExpr(ASTNodeIndex nodeIdx) {
 }
 
 // 复杂数据结构
-ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
+ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+
+    uint32_t arr_len = node.payload.array.elements.length;
+    uint8_t arrayReg = regAlloc.allocate();
+
+    // 限制预分配容量在 255 以内
+    uint8_t initial_capacity = arr_len > 255 ? 255 : static_cast<uint8_t>(arr_len);
+
+    // OP_NEW_ARRAY R_dst, initial_capacity
+    emitOp(vm::OPCODE::OP_NEW_ARRAY, arrayReg, initial_capacity, line, column);
+
+    for (uint32_t i = 0; i < arr_len; ++i) {
+        ASTNodeIndex elementIdx = {node.payload.array.elements.start_index + i};
+        ExprResult res = compileExpression(elementIdx);
+
+        emitOp(vm::OPCODE::OP_PUSH_ARRAY, arrayReg, res.reg, line, column);
+
+        if (res.is_temp) {
+            freeIfTemp(res);
+        }
+    }
+
+    return {arrayReg, true};
+}
 ExprResult Compiler::compileMapExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
 ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
 // 对象与方法

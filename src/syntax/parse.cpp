@@ -144,15 +144,15 @@ void Parser::errorAtCurrent(const char *message) {
     panicMode = true;
     std::cerr << "[line " << current.line << "] Error ";
     if (current.type == TokenType::TOKEN_EOF) {
-        std::cerr << " at end";
+        std::cerr << "at end";
     } else {
         std::string_view lexeme = source.substr(current.start_offset, current.length);
 
         if (lexeme.length() > 20) {
-            std::cerr << " at'" << lexeme.substr(0, 17) << "...'";
+            std::cerr << "at'" << lexeme.substr(0, 17) << "...'";
 
         } else {
-            std::cerr << " at'" << lexeme << "'";
+            std::cerr << "at'" << lexeme << "'";
         }
     }
     std::cerr << ":" << message << "\n";

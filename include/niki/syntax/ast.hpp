@@ -37,6 +37,7 @@ enum class NodeType : uint8_t {
     //---闭包与高级特性--
     ClosureExpr, // 闭包表达式
     AwaitExpr,   // 等待表达式
+    BorrowExpr,  // 借用表达式 (&x 或 &mut x)
     //---隐式节点---
     ImplicitCastExpr, // 隐式类型转换表达式
     /*---语句---*/
@@ -89,11 +90,38 @@ enum class NodeType : uint8_t {
     ErrorNode, // 错误声明
 };
 
-// 这里我们通过使用struct包裹uint32_t，来完成了对该类数据类型的类型定义
-// 若无struct包裹，我们会直接使用
-// using ASTNodeIndex = uint32_t;
-// 当我们使用上面缩写的using而非struct包裹，我们将在代码里看到大量的~0u,而这会导致代码的可读性下降。
-// 同时，在实际操作时我们有可能把一个无效的索引值（如~0U）错误地解释为一个有效索引。甚至有可能让使用者错误的对索引进行值操作。
+/**
+ * ============================================================================
+ * 【编译器索引系统设计说明】
+ * * @Q:为什么我们要费劲用 struct 包装 uint32_t，而不是直接用指针或 using 定义？
+
+ * @A:
+    - 如果直接用 uint32_t，代码里会充斥着 ~0U 这种魔数,用 struct 包装后，我们可以用 .isvalid()
+ 代替判断，更像人类的语言,也能让编译器协助我们进行检查。
+    - 同时，它能防止你不小心把两个索引拿来做加减法，避免逻辑错误。
+
+ * *@Q: 为什么不用原生指针 (ASTNode*)？
+ * @A:
+    - 内存搬家：我们的节点存在 vector 里，vector
+ 扩容时会整体“搬家”,如果是物理指针，搬家后就全部失效（野指针）了；而“索引”是相对坐标，搬到哪都一样。
+    - 节省空间：64位系统指针 8 字节，uint32_t 索引只需 4 字节,用索引能让 AST 瘦身一半，缓存命中率更高。
+    - 易序列化：索引是相对位置，我们可以直接把整个 vector 丢进硬盘。下次读出来，节点间的关系还在。
+
+ * *@Q:所有变长数据(如参数列表)都在外面使用旁侧表存储，这样是为了让节点定长？为什么这样做？
+ *@A:
+  - 这涉及到现代CPU的优化原理，CPU在进行扫描时，在面对等长数据时可以一次性将其全部扫描，减少cache miss率，提高cpu效率。
+ * ================================================================================
+*/
+
+/**
+ * @brief 【定长节点索引】
+ * * 意图：我们设计好每个 ASTNode 的 Payload 都是固定的（比如 16-bit）。
+ * 这样只要知道“房号”，就能直接定位到 Node 的物理地址。
+     +-------+-------+-------+-------+-------+------
+ * * | node0 | node1 | node2 | node3 | node4 | ...
+ *   +--↑----+-------+--↑----+-------+-------+------
+ *     {0}这里是起始点   {2} ->这就是 ASTNodeIndex(0+ASTNodeIndex)
+ */
 struct ASTNodeIndex {
     uint32_t index;
     // 为了方便一些不得已而为之的特殊操作，我们留下了一个隐式的转换运算符，使未来我们可以直接将uint32_t视为ASTNodeIndex。
@@ -103,40 +131,115 @@ struct ASTNodeIndex {
     static ASTNodeIndex invalid() { return {~0U}; }
 };
 
-// 再次明确，所有的语法最终在底层都会被压缩为数据，而只要是数据，我们就能用索引访问。
-// 我们思考这样一个结构，通过设计指北，我们已知，ast语法树是一个树形结构，每一个父节点要包含多个子节点的地址。
-// 那么我们第一时间想到的肯定是——欸？那我直接用C++的指针不就好了？这样a对象直接访问bc对象，不久完成了索引吗？
-// 道理是这样没错，但指针和struct空间的占用是有开销的——若未提前声明，struct在内存上的存储是散乱的，这进而导致指针的访问也变得散乱。
-// 那如果我们不用 new ，而是直接把节点塞进 vector<ASTNode> 里让内存连续，我们能用物理指针去互相指向对方吗？
-// 答案是否定的，因为vector虽然连续了，但依旧会导致下述问题。
-// 1.指针会随着内存的跳动而失效——vector在内存空间不足时会在内存上找一块更大的空间，把原来的struct整体搬迁过去，这会导致所有指向原内存的指针都失效。
-// 2.索引通常比指针更“瘦”，在64位系统上，我们的索引Uint32_t占用4字节，而指针占用8字节。
-// 3.索引是相对坐标，相比起指针，它更易序列化——我们只需要存储整个vector，就可以同时存储struct之间的关系。
-// 那么得知了这一切，我们接下来就可以开始设计我们的ast节点了。
-// 我们来设计一个专门用来存放边长列表(如函数参数/block语句等)的结构体。
-// 可以看到，除了名字之外，该结构体和上面的ASTNodeIndex几乎没有任何区别。
-// 它的存在主要是为了方便我们在代码中对列表进行操作。
-// 比如我们可以用ASTListIndex来表示一个函数的参数列表，用ASTListIndex来表示一个block语句的语句列表等，这样的设计可以有效避免后期使用时可能的混淆。
-// 同时，要注意，我们这里会存储两类数据，一类是定长的，如二元表达式的左右操作数，另一类是变长的，如函数参数/block语句等。
-// 对这两类数据进行区分，能有效保证astnode结构大小的固定性，这让后面的std::vector<ASTNode>中的数据类型几位规整。
-// 我们直接提供了start_index和length来表示列表的起始索引和长度，这让我们在访问列表数据时可以直接获得整个数据切片，而非索引起点。
+/**
+ * @brief 【变长列表索引】
+ * * 意图：专门存放数量不定的数据（如：函数参数列表、Block 里的语句）。
+ * 我们不只给个起点，而是直接给出“起点 + 长度”，相当于拿到了一个“数据切片”。
+ * * 结构区分：
+ * - 定长数据（如二元表达式）：直接存 ASTNodeIndex。
+ * - 变长数据（如函数参数）：存 ASTListIndex。
+ * 这样能保证 std::vector<ASTNode> 里的元素永远规整对齐。
+
+              |<-   length:3  ->|
+    ----+-----+-----------------+-----------+-----+-----
+     ...| ... |  节点群 A (长度3) |  节点群 B  |节点群|...
+     ...|  5  |  6  |  7  |  8  |  9  |  10 |  11 |...
+    ----+-----|-----+-----+-----+-----+-----+-----+-----
+              ↑start_index=6
+    这就是 ASTListIndex{ .start_index = 6, .length = 3 }
+ * * * 这样做的好处：
+ * 1. 结构对齐：不管 A 群有 3 个还是 300 个节点，存它的“卡片”永远只占 8 字节。
+ * 2. 极速切片：在代码里你可以直接通过 data[start] 到 data[start + len] 拿到整组数据。
+ */
 struct ASTListIndex {
     uint32_t start_index;
     uint32_t length;
     bool isvalid() const { return start_index != ~0U; }
     static ASTListIndex invalid() { return {~0U, 0}; }
 };
+/* 再次明确：
+ * 所有的语法最终在底层都是“数据流”。
+ * 将“定长索引”与“变长切片”区分开，能让编译器在处理语法树时，
+ * 像收割机处理整齐的麦田一样，最大化发挥现代 CPU 的吞吐能力。
+ */
 
-// 胖数据结构定义
+// 我会给下面每个结构体画个图，方便理解。
+
+//  胖数据结构定义
+
+/**
+ * @brief 【FunctionData】函数定义 (Fat Node Side-Table Pattern)
+ * 物理大小：16 Bytes (无内存对齐碎片)
+ *
+ * [ 内存物理映射图 ]
+ *
+ * ASTPool::function_data (std::vector<FunctionData>)
+ * +---------------------------------------------------+
+ * | name_id (4B) | params (8B)        | body (4B)     |
+ * | (uint32_t)   | (ASTListIndex)     | (ASTNodeIndex)|
+ * +--------------+--------------------+---------------+
+ *       |                  |                  |
+ *       |                  |                  v
+ *       |                  |          ASTPool::nodes (std::vector<ASTNode>)
+ *       |                  |          +-----------------------------------------------+
+ *       |                  |          | NodeType (1B) | pad (3B) | BlockPayload (12B) | = 16B
+ *       |                  |          +-----------------------------------------------+
+ *       v                  v
+ * ASTPool::string_pool  ASTPool::lists_elements (std::vector<ASTNodeIndex>)
+ * "my_func"             +---------------------------------------------------+
+ *                       | idx_0 | idx_1 | idx_2 | ...                       |
+ *                       +---------------------------------------------------+
+ *                         ^-- start_index          ^-- start_index + length
+ */
 struct FunctionData {
     uint32_t name_id;    // 4byte
     ASTListIndex params; // 8byte
     ASTNodeIndex body;   // 4byte
 };
+
+/**
+ * @brief 【StructData】结构体定义 (Fat Node Side-Table Pattern)
+ * 物理大小：12 Bytes (4B 对齐，无碎片)
+ *
+ * [ 内存物理映射图 ]
+ *
+ * ASTPool::struct_data (std::vector<StructData>)
+ * +---------------------------------------+
+ * | name_id (4B) | fields (8B)            |
+ * | (uint32_t)   | (ASTListIndex)         |
+ * +--------------+------------------------+
+ *       |                  |
+ *       v                  v
+ * ASTPool::string_pool  ASTPool::lists_elements (交错列表 Interleaved List)
+ * "MyStruct"            +---------------------------------------------------+
+ *                       | name_idx | type_idx | name_idx | type_idx | ...   |
+ *                       +---------------------------------------------------+
+ *                         ^-- start_index                            ^-- start_index + length
+ */
 struct StructData {
     uint32_t name_id;    // 4byte
     ASTListIndex fields; // 8byte:交错列表 [name, type, name, type...]
 };
+
+/**
+ * @brief 【KitsData】上下文/组件包定义 (Fat Node Side-Table Pattern)
+ * 物理大小：12 Bytes (4B 对齐，无碎片)
+ *
+ * [ 内存物理映射图 ]
+ *
+ * ASTPool::kits_data (std::vector<KitsData>)
+ * +---------------------------------------+
+ * | name_id (4B) | members (8B)           |
+ * | (uint32_t)   | (ASTListIndex)         |
+ * +--------------+------------------------+
+ *       |                  |
+ *       v                  v
+ * ASTPool::string_pool  ASTPool::lists_elements (std::vector<ASTNodeIndex>)
+ * "MyKit"               +---------------------------------------------------+
+ *                       | decl_idx0 | decl_idx1 | decl_idx2 | ...           |
+ *                       +---------------------------------------------------+
+ *                         ^-- start_index                    ^-- start_index + length
+ */
 struct KitsData {
     uint32_t name_id;     // 4byte: 上下文名字
     ASTListIndex members; // 8byte: 上下文内部的影子数据或成员声明
@@ -146,202 +249,849 @@ struct KitsData {
 // 这让我们每个struct的大小变得定长，这极大的方便了我们后续的序列化！同时极大的提高了cpu在扫描ast时的效率。
 // 根据类型的不同，我们的每个payload结构体都有不同的字段。
 // 例如，二元表达式的payload包含了操作符类型和左右操作数的索引。
+/**
+ * @brief 【BinaryExprPayload】二元表达式负载
+ * 物理大小：12 Bytes (TokenType 1B + 3B pad + left 4B + right 4B)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.binary (12B 限制内)
+ * +---------------------------------------------------+
+ * | op (1B) | pad (3B) | left (4B)    | right (4B)    |
+ * |(TokenType)         | (ASTNodeIndex)| (ASTNodeIndex)|
+ * +--------------------+--------------+---------------+
+ *                              |              |
+ *                              v              v
+ *                      ASTPool::nodes    ASTPool::nodes
+ */
 struct BinaryExprPayload {
-    // 我们要进行一下每个字段的数据大小标记和计算。
     TokenType op;       // 1byte(底层自动补全为4byte)
     ASTNodeIndex left;  // 4byte
     ASTNodeIndex right; // 4byte
-    // 4+4+4=12byte
 };
+
+/**
+ * @brief 【UnaryExprPayload】一元表达式负载
+ * 物理大小：8 Bytes (TokenType 1B + 3B pad + operand 4B)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.unary
+ * +---------------------------------------+
+ * | op (1B) | pad (3B) | operand (4B)     |
+ * |(TokenType)         | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *                              |
+ *                              v
+ *                      ASTPool::nodes
+ */
 struct UnaryExprPayload {
     TokenType op;         // 1byte(底层自动补全为4byte)
     ASTNodeIndex operand; // 4byte
-    // 4+4=8byte
 };
+
+/**
+ * @brief 【LiteralExprPayload】字面量表达式负载
+ * 物理大小：8 Bytes (TokenType 1B + 3B pad + const_pool_index 4B)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.literal
+ * +---------------------------------------+
+ * | literal_type (1B)| pad | const_idx(4B)|
+ * | (TokenType)      |     | (uint32_t)   |
+ * +------------------------+--------------+
+ *                                 |
+ *                                 v
+ *                        ASTPool::constants (std::vector<vm::Value>)
+ */
 struct LiteralExprPayload {
     TokenType literal_type;    // 1byte(底层自动补全为4byte)
     uint32_t const_pool_index; // 4byte
-    // 4+4=8byte
 };
+
+/**
+ * @brief 【IdentifierExprPayload】标识符表达式负载
+ * 物理大小：4 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.identifier
+ * +-------------------+
+ * | name_id (4B)      |
+ * | (uint32_t)        |
+ * +-------------------+
+ *         |
+ *         v
+ * ASTPool::string_pool
+ */
 struct IdentifierExprPayload {
     uint32_t name_id; // 4byte
-    // 4byte
 };
+
 //---复杂数据结构---
+
+/**
+ * @brief 【ArrayExprPayload】数组表达式负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.array
+ * +---------------------------------------+
+ * | elements (8B)                         |
+ * | (ASTListIndex)                        |
+ * +---------------------------------------+
+ *         |
+ *         v
+ * ASTPool::lists_elements (std::vector<ASTNodeIndex>)
+ */
 struct ArrayExprPayload {
     ASTListIndex elements; // 8byte
 };
 
+/**
+ * @brief 【MapExprPayload】映射表达式负载
+ * 物理大小：8 Bytes
+ *
+ * 为什么不存 keys 和 values 两个 ASTListIndex？
+ * 因为 8 + 8 = 16 字节！它会直接撑爆我们定好的 12 字节 Payload 上限！
+ * 解决方案：使用单一的交错列表 (Interleaved List)。
+ * 在 lists_elements 数组中，我们连续存放 [key1, value1, key2, value2...]
+ * 这样只需要 1 个 ASTListIndex (8 字节)，完美塞入 12 字节限制中。
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.map
+ * +---------------------------------------+
+ * | entries (8B)                          |
+ * | (ASTListIndex)                        |
+ * +---------------------------------------+
+ *         |
+ *         v
+ * ASTPool::lists_elements (交错列表 Interleaved List)
+ * +---------------------------------------------------+
+ * | key1_idx | val1_idx | key2_idx | val2_idx | ...   |
+ * +---------------------------------------------------+
+ */
 struct MapExprPayload {
-    // 为什么不存 keys 和 values 两个 ASTListIndex？
-    // 因为 8 + 8 = 16 字节！它会直接撑爆我们定好的 12 字节 Payload 上限！
-    // 解决方案：使用单一的交错列表 (Interleaved List)。
-    // 在 lists_elements 数组中，我们连续存放 [key1, value1, key2, value2...]
-    // 这样只需要 1 个 ASTListIndex (8 字节)，完美塞入 12 字节限制中。
-    // 在读取时，只需校验 length 必须是偶数即可。
     ASTListIndex entries;
 };
 
-// 对象索引表达式（比如 arr[0] 或 map["key"]）
+/**
+ * @brief 【IndexExprPayload】对象索引表达式负载 (arr[0] / map["key"])
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.index
+ * +---------------------------------------+
+ * | target (4B)        | index (4B)       |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct IndexExprPayload {
     ASTNodeIndex target; // 4byte: 被索引的对象 (比如 arr)
     ASTNodeIndex index;  // 4byte: 索引值 (比如 0)
-    // 4 + 4 = 8byte
 };
 
 //---对象与方法---
+
+/**
+ * @brief 【CallExprPayload】函数调用表达式负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.call
+ * +---------------------------------------+
+ * | callee (4B)        | arguments (8B)   |
+ * | (ASTNodeIndex)     | (ASTListIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes   ASTPool::lists_elements
+ */
 struct CallExprPayload {
     ASTNodeIndex callee;    // 被调用的函数或方法
     ASTListIndex arguments; // 调用时的函数列表
 };
+
+/**
+ * @brief 【MemberExprPayload】成员访问表达式负载 (obj.prop)
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.member
+ * +---------------------------------------+
+ * | object (4B)        | property_id (4B) |
+ * | (ASTNodeIndex)     | (uint32_t)       |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes   ASTPool::string_pool
+ */
 struct MemberExprPayload {
     ASTNodeIndex object;  // 4byte: 对象 (比如 arr)
     uint32_t property_id; // 4byte: 属性 (比如 0 或 "key")
-    // 4 + 4 = 8byte
 };
+
+/**
+ * @brief 【DispatchExprPayload】异步派发表达式负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.dispatch
+ * +---------------------------------------+
+ * | callee (4B)        | arguments (8B)   |
+ * | (ASTNodeIndex)     | (ASTListIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes   ASTPool::lists_elements
+ */
 struct DispatchExprPayload {
     ASTNodeIndex callee;    // 被调用的函数或方法
     ASTListIndex arguments; // 调用时的函数列表
 };
+
 //---闭包与高级特性---
+
+/**
+ * @brief 【ClosureExprPayload】闭包表达式负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.closure
+ * +---------------------------------------+
+ * | function_decl (4B) | captures (8B)    |
+ * | (ASTNodeIndex)     | (ASTListIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes   ASTPool::lists_elements
+ */
 struct ClosureExprPayload {
     ASTNodeIndex function_decl; // 4byte: 指向一个匿名的 FunctionDecl 节点
     ASTListIndex captures;      // 8byte: 捕获的外部变量列表 (Upvalues)
-    // 4 + 8 = 12byte
 };
+
+/**
+ * @brief 【AwaitExprPayload】等待表达式负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.await_expr
+ * +---------------------------------------+
+ * | operand (4B)       | kits (4B)        |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct AwaitExprPayload {
     ASTNodeIndex operand; // 4byte: 被等待的表达式 (如任务、时间、动画)
     ASTNodeIndex kits;    // 4byte: 所属的 Kits (如在哪个队列或实体上等待)
-    // 4 + 4 = 8byte
 };
+
+/**
+ * @brief 【BorrowExprPayload】借用表达式负载 (&x 或 &mut x)
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.borrow
+ * +---------------------------------------+
+ * | is_mut(1B) | pad (3B) | operand (4B)  |
+ * | (bool)                | (ASTNodeIndex)|
+ * +-----------------------+---------------+
+ *                                |
+ *                                v
+ *                        ASTPool::nodes
+ */
+struct BorrowExprPayload {
+    bool is_mut;          // 1byte: 是否为可变借用 (&mut)
+    ASTNodeIndex operand; // 4byte: 被借用的目标 (比如 IdentifierExpr)
+};
+
 //---隐式节点---
+
+/**
+ * @brief 【ImplicitCastExprPayload】隐式类型转换表达式负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.implicit_cast
+ * +---------------------------------------+
+ * | operand (4B)       | to_type (4B)     |
+ * | (ASTNodeIndex)     | (NKType)         |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes     (内联的NKType Handle)
+ */
 struct ImplicitCastExprPayload {
     ASTNodeIndex operand; // 4byte: 被转换的原始表达式
     NKType to_type;       // 4byte: 目标类型 (底层已优化为4字节的 handle)
-    // 4 + 4 = 8byte (完全符合 12 字节限制)
 };
 /*---语句---*/
 // 基础语句
+
+/**
+ * @brief 【ExpressionStmtPayload】表达式语句负载
+ * 物理大小：4 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.expr_stmt
+ * +-------------------+
+ * | expression (4B)   |
+ * | (ASTNodeIndex)    |
+ * +-------------------+
+ *         |
+ *         v
+ *   ASTPool::nodes
+ */
 struct ExpressionStmtPayload {
     ASTNodeIndex expression; // 4byte: 语句体
 };
+
+/**
+ * @brief 【AssignmentStmtPayload】赋值语句负载
+ * 物理大小：12 Bytes (TokenType 1B + 3B pad + target 4B + value 4B)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.assign_stmt
+ * +---------------------------------------------------+
+ * | op (1B) | pad (3B) | target (4B)  | value (4B)    |
+ * |(TokenType)         | (ASTNodeIndex)| (ASTNodeIndex)|
+ * +--------------------+--------------+---------------+
+ *                              |              |
+ *                              v              v
+ *                      ASTPool::nodes    ASTPool::nodes
+ */
 struct AssignmentStmtPayload {
     TokenType op;        // 1byte(自动补全为4byte): =, +=, -= 等
     ASTNodeIndex target; // 4byte: 左侧被赋值的目标 (IdentifierExpr, IndexExpr, MemberExpr 等)
     ASTNodeIndex value;  // 4byte: 右侧的值表达式
-    // 4 + 4 + 4 = 12byte
 };
+
+/**
+ * @brief 【VarDeclStmtPayload】变量声明语句负载
+ * 物理大小：12 Bytes
+ * 注意：ConstDeclStmt 完美复用此 Payload，依靠外部 NodeType 区分语义。
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.var_decl
+ * +---------------------------------------------------+
+ * | name_id (4B)       | type_expr(4B)| init_expr(4B) |
+ * | (uint32_t)         | (ASTNodeIndex)| (ASTNodeIndex)|
+ * +--------------------+--------------+---------------+
+ *         |                    |              |
+ *         v                    v              v
+ * ASTPool::string_pool   ASTPool::nodes ASTPool::nodes
+ */
 struct VarDeclStmtPayload {
     uint32_t name_id;       // 4byte:变量名的字符串池 ID
     ASTNodeIndex type_expr; // 4byte:类型标注的AST节点索引 (通常是一个 IdentifierExpr 或 CallExpr)
     ASTNodeIndex init_expr; // 4byte:初始化表达式的AST节点索引
 };
+
+/**
+ * @brief 【BlockStmtPayload】代码块语句负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.block
+ * +---------------------------------------+
+ * | statements (8B)                       |
+ * | (ASTListIndex)                        |
+ * +---------------------------------------+
+ *         |
+ *         v
+ * ASTPool::lists_elements (std::vector<ASTNodeIndex>)
+ */
 struct BlockStmtPayload {
     ASTListIndex statements; // 8byte: 语句列表
 };
+
 //---控制流---
+
+/**
+ * @brief 【IfStmtPayload】If语句负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.if_stmt
+ * +---------------------------------------------------+
+ * | condition (4B)     | then_branch(4B)| else_branch(4B)|
+ * | (ASTNodeIndex)     | (ASTNodeIndex)| (ASTNodeIndex)|
+ * +--------------------+--------------+---------------+
+ *         |                    |              |
+ *         v                    v              v
+ *   ASTPool::nodes       ASTPool::nodes ASTPool::nodes
+ */
 struct IfStmtPayload {
     ASTNodeIndex condition;   // 4byte: 条件表达式
     ASTNodeIndex then_branch; // 4byte: 然后分支
     ASTNodeIndex else_branch; // 4byte: 否则分支
 };
+
+/**
+ * @brief 【LoopStmtPayload】循环语句负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.loop
+ * +---------------------------------------+
+ * | condition (4B)     | body (4B)        |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct LoopStmtPayload {
     ASTNodeIndex condition; // 4byte: 循环条件表达式
     ASTNodeIndex body;      // 4byte: 循环体
 };
+
+/**
+ * @brief 【MatchStmtPayload】Match语句负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.match
+ * +---------------------------------------+
+ * | expression (4B)    | cases (8B)       |
+ * | (ASTNodeIndex)     | (ASTListIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes   ASTPool::lists_elements
+ */
 struct MatchStmtPayload {
     ASTNodeIndex expression; // 4byte: 匹配表达式
     ASTListIndex cases;      // 8byte: 匹配分支列表
-    // 4 + 8 = 12byte
 };
+
+/**
+ * @brief 【MatchCaseStmtPayload】Match分支语句负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.match_case
+ * +---------------------------------------+
+ * | pattern (4B)       | body (4B)        |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct MatchCaseStmtPayload {
     ASTNodeIndex pattern; // 4byte: 匹配模式
     ASTNodeIndex body;    // 4byte: 匹配体
-    // 4 + 4 = 8byte
 };
+
 //---跳转与中断---
+
+/**
+ * @brief 【ReturnStmtPayload】Return语句负载
+ * 物理大小：4 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.return_stmt
+ * +-------------------+
+ * | expression (4B)   |
+ * | (ASTNodeIndex)    |
+ * +-------------------+
+ *         |
+ *         v
+ *   ASTPool::nodes
+ */
 struct ReturnStmtPayload {
     ASTNodeIndex expression; // 4byte: 返回值表达式
 };
+
+/**
+ * @brief 【NockStmtPayload】Nock(让出/休眠)语句负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.nock
+ * +---------------------------------------+
+ * | condition (4B)     | interval (4B)    |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct NockStmtPayload {
     ASTNodeIndex condition; // 4byte: 等待条件
     ASTNodeIndex interval;  // 4byte: 等待时间间隔
 };
+
 //---组件挂载与卸载---
+
+/**
+ * @brief 【AttachStmtPayload】挂载语句负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.attach
+ * +---------------------------------------+
+ * | component (4B)     | target (4B)      |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct AttachStmtPayload {
     ASTNodeIndex component; // 4byte: 组件
     ASTNodeIndex target;    // 4byte: 目标实体（1或多个）
 };
+
+/**
+ * @brief 【DetachStmtPayload】卸载语句负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.detach
+ * +---------------------------------------+
+ * | component (4B)     | target (4B)      |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct DetachStmtPayload {
     ASTNodeIndex component; // 4byte: 组件
     ASTNodeIndex target;    // 4byte: 目标实体（1或多个）
 };
+
 // 目标副作用语句
+
+/**
+ * @brief 【TargetStmtPayload】目标(副作用)语句负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.target_stmt
+ * +---------------------------------------+
+ * | targets (4B)       | body (4B)        |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct TargetStmtPayload {
     ASTNodeIndex targets; // 4byte: 目标对象（通常是带Tag的Query表达式）
     ASTNodeIndex body;    // 4byte: 作用域内的代码块，用于产生副作用
 };
+
 //---异常处理---
+
+/**
+ * @brief 【ThrowStmtPayload】抛出异常语句负载
+ * 物理大小：4 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.throw_stmt
+ * +-------------------+
+ * | expression (4B)   |
+ * | (ASTNodeIndex)    |
+ * +-------------------+
+ *         |
+ *         v
+ *   ASTPool::nodes
+ */
 struct ThrowStmtPayload {
     ASTNodeIndex expression; // 4byte: 异常值表达式
 };
+
+/**
+ * @brief 【TryStmtPayload】Try-Catch语句负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.try_stmt
+ * +---------------------------------------+
+ * | try_body (4B)      | catch_body (4B)  |
+ * | (ASTNodeIndex)     | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ *   ASTPool::nodes       ASTPool::nodes
+ */
 struct TryStmtPayload {
     ASTNodeIndex try_body;   // 4byte: 尝试执行的代码块
     ASTNodeIndex catch_body; // 4byte: 捕获异常后的处理代码块
 };
 /*---顶层声明---*/
 //---基础声明---
+
+/**
+ * @brief 【FunctionDeclPayload】函数声明负载
+ * 物理大小：4 Bytes (指向胖节点表)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.func_decl
+ * +------------------------+
+ * | function_index (4B)    |
+ * | (uint32_t)             |
+ * +------------------------+
+ *             |
+ *             v
+ *   ASTPool::function_data (std::vector<FunctionData>)
+ */
 struct FunctionDeclPayload {
     uint32_t function_index; // 4byte: 指向 ASTPool::functions 的索引
 };
+
+/**
+ * @brief 【StructDeclPayload】结构体声明负载
+ * 物理大小：4 Bytes (指向胖节点表)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.struct_decl
+ * +------------------------+
+ * | struct_index (4B)      |
+ * | (uint32_t)             |
+ * +------------------------+
+ *             |
+ *             v
+ *   ASTPool::struct_data (std::vector<StructData>)
+ */
 struct StructDeclPayload {
     uint32_t struct_index; // 4byte: 指向 ASTPool::structs 的索引
 };
+
+/**
+ * @brief 【EnumDeclPayload】枚举声明负载
+ * 物理大小：4 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.enum_decl
+ * +------------------------+
+ * | enum_data (4B)         |
+ * | (ASTNodeIndex)         |
+ * +------------------------+
+ *             |
+ *             v
+ *       ASTPool::nodes (通常指向 ArrayExpr)
+ */
 struct EnumDeclPayload {
     ASTNodeIndex enum_data; // 4byte: 枚举数据（指向一个Array节点）
 };
+
+/**
+ * @brief 【TypeAliasDeclPayload】类型别名声明负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.type_alias
+ * +---------------------------------------+
+ * | name_id (4B)       | type_expr (4B)   |
+ * | (uint32_t)         | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::string_pool   ASTPool::nodes
+ */
 struct TypeAliasDeclPayload {
     uint32_t name_id;       // 4byte: 类型别名名的字符串池 ID
     ASTNodeIndex type_expr; // 4byte: 类型表达式的AST节点索引
 };
+
+/**
+ * @brief 【InterfaceDeclPayload】接口声明负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.interface_decl
+ * +---------------------------------------+
+ * | name_id (4B)       | methods (8B)     |
+ * | (uint32_t)         | (ASTListIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::string_pool   ASTPool::lists_elements
+ */
 struct InterfaceDeclPayload {
     uint32_t name_id;     // 4byte: 接口名的字符串池 ID
     ASTListIndex methods; // 8byte: 方法列表（指向一个Array节点）
 };
+
 //---NIKI特有---
+
+/**
+ * @brief 【ModuleDeclPayload】模块声明负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.module_decl
+ * +---------------------------------------+
+ * | name_id (4B)       | exports (8B)     |
+ * | (uint32_t)         | (ASTListIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::string_pool   ASTPool::lists_elements
+ */
 struct ModuleDeclPayload {
     uint32_t name_id;     // 4byte: 模块名的字符串池 ID
     ASTListIndex exports; // 8byte: 导出列表
 };
+
+/**
+ * @brief 【SystemDeclPayload】系统声明负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.system_decl
+ * +---------------------------------------------------+
+ * | name_id (4B)       | body (4B)    | system_data(4B)|
+ * | (uint32_t)         | (ASTNodeIndex)| (ASTNodeIndex)|
+ * +--------------------+--------------+---------------+
+ *         |                    |              |
+ *         v                    v              v
+ * ASTPool::string_pool   ASTPool::nodes ASTPool::nodes (Query)
+ */
 struct SystemDeclPayload {
     uint32_t name_id;         // 4byte: 系统名的字符串池 ID
     ASTNodeIndex body;        // 4byte: 系统体
     ASTNodeIndex system_data; // 4byte: 纯函数的依赖声明(Query)
 };
+
+/**
+ * @brief 【ComponentDeclPayload】组件声明负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.component_decl
+ * +---------------------------------------+
+ * | name_id (4B)       | body (4B)        |
+ * | (uint32_t)         | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::string_pool   ASTPool::nodes
+ */
 struct ComponentDeclPayload {
     uint32_t name_id;  // 4byte: 组件名的字符串池 ID
     ASTNodeIndex body; // 4byte: 组件体
 };
+
+/**
+ * @brief 【FlowDeclPayload】流程声明负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.flow_decl
+ * +---------------------------------------+
+ * | name_id (4B)       | body (4B)        |
+ * | (uint32_t)         | (ASTNodeIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::string_pool   ASTPool::nodes
+ */
 struct FlowDeclPayload {
     uint32_t name_id;  // 4byte: 流程名的字符串池 ID
     ASTNodeIndex body; // 4byte: 流程体
 };
+
+/**
+ * @brief 【KitsDeclPayload】Kits声明负载
+ * 物理大小：8 Bytes (指向胖节点表)
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.kits_decl
+ * +---------------------------------------+
+ * | name_id (4B)       | kits_data_index  |
+ * | (uint32_t)         | (uint32_t)       |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::string_pool   ASTPool::kits_data (std::vector<KitsData>)
+ */
 struct KitsDeclPayload {
     uint32_t name_id;
     uint32_t kits_data_index;
 };
+
+/**
+ * @brief 【TagDeclPayload】标签声明负载
+ * 物理大小：4 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.tag_decl
+ * +-------------------+
+ * | name_id (4B)      |
+ * | (uint32_t)        |
+ * +-------------------+
+ *         |
+ *         v
+ * ASTPool::string_pool
+ */
 struct TagDeclPayload {
     uint32_t name_id; // 4byte: 标签名的字符串池 ID
 };
+
+/**
+ * @brief 【TagGroupDeclPayload】标签组声明负载
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.tag_group
+ * +---------------------------------------+
+ * | name_id (4B)       | tags (8B)        |
+ * | (uint32_t)         | (ASTListIndex)   |
+ * +--------------------+------------------+
+ *         |                    |
+ *         v                    v
+ * ASTPool::string_pool   ASTPool::lists_elements
+ */
 struct TagGroupDeclPayload {
     uint32_t name_id;  // 4byte: 标签组名的字符串池 ID
     ASTListIndex tags; // 8byte: 标签列表
 };
+
 //---程序根---
+
+/**
+ * @brief 【ProgramRootPayload】程序根节点负载
+ * 物理大小：8 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.program_root
+ * +---------------------------------------+
+ * | declarations (8B)                     |
+ * | (ASTListIndex)                        |
+ * +---------------------------------------+
+ *         |
+ *         v
+ * ASTPool::lists_elements
+ */
 struct ProgramRootPayload {
     ASTListIndex declarations; // 8byte: 声明列表
 };
+
 //---错误---
+
+/**
+ * @brief 【ErrorPayload】错误节点负载
+ * 物理大小：4 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.error
+ * +------------------------+
+ * | error_index (4B)       |
+ * | (uint32_t)             |
+ * +------------------------+
+ *             |
+ *             v
+ *   (未来指向 ErrorPool 或类似结构)
+ */
 struct ErrorPayload {
     uint32_t error_index; // 4byte: 指向 ASTPool::errors 的索引
 };
@@ -364,6 +1114,7 @@ union ASTNodePayload {
     DispatchExprPayload dispatch;
     ClosureExprPayload closure;
     AwaitExprPayload await_expr;
+    BorrowExprPayload borrow;
     ImplicitCastExprPayload implicit_cast;
 
     //---语句---

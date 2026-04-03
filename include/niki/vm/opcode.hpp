@@ -129,6 +129,7 @@ enum class OPCODE : uint8_t {
     OP_NEW_ARRAY,    // 新创建一个 array 类型的对象
     OP_PUSH_ARRAY,   // 向 array 类型的对象中压入一个元素
     OP_GET_ARRAY,    // 从 array 类型的对象中获取一个元素
+    OP_SET_ARRAY,    // 向array类型的对象中乱序压入一个元素
     OP_GET_PROPERTY, // 获取属性指令
     OP_SET_PROPERTY, // 设置属性指令
     OP_METHOD,       // 调用方法指令
