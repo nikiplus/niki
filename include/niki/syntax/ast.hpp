@@ -800,21 +800,20 @@ struct ReturnStmtPayload {
 
 /**
  * @brief 【NockStmtPayload】Nock(让出/休眠)语句负载
- * 物理大小：8 Bytes
+ * 物理大小：4 Bytes
  *
  * [ 内存物理映射图 ]
  * ASTNodePayload.nock
- * +---------------------------------------+
- * | condition (4B)     | interval (4B)    |
- * | (ASTNodeIndex)     | (ASTNodeIndex)   |
- * +--------------------+------------------+
- *         |                    |
- *         v                    v
- *   ASTPool::nodes       ASTPool::nodes
+ * +-------------------+
+ * | interval (4B)     |
+ * | (ASTNodeIndex)    |
+ * +-------------------+
+ *         |
+ *         v
+ *   ASTPool::nodes
  */
 struct NockStmtPayload {
-    ASTNodeIndex condition; // 4byte: 等待条件
-    ASTNodeIndex interval;  // 4byte: 等待时间间隔
+    ASTNodeIndex interval; // 4byte: 等待时间间隔 (以帧/Tick为单位)
 };
 
 //---组件挂载与卸载---

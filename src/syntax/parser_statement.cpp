@@ -247,8 +247,18 @@ ASTNodeIndex Parser::parseReturnStmt() {
 }
 ASTNodeIndex Parser::parseNockStmt() {
     Token startToken = previous;
+    ASTNodePayload payload{};
+    
+    // 如果紧跟着分号，代表无条件让出当前帧 (nock;)
+    if (check(TokenType::SYM_SEMICOLON)) {
+        payload.nock.interval = ASTNodeIndex::invalid();
+    } else {
+        // 否则解析时间间隔表达式 (nock 5;)
+        payload.nock.interval = parseExpression(Precedence::None);
+    }
 
-    return ASTNodeIndex{};
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after 'nock'.");
+    return emitNode(NodeType::NockStmt, payload, startToken);
 }
 //---组件挂载与卸载---
 ASTNodeIndex Parser::parseAttachStmt() { return ASTNodeIndex{}; }

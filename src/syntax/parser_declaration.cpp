@@ -1,5 +1,8 @@
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/parser.hpp"
+#include "niki/syntax/parser_precedence.hpp"
+#include "niki/syntax/token.hpp"
+#include <string_view>
 using namespace niki::syntax;
 
 // 顶层声明的解析入口，如果遇到声明关键字则进入对应的分支；
@@ -43,16 +46,120 @@ ASTNodeIndex Parser::parseDeclaration() {
 
 //---基础声明---
 ASTNodeIndex Parser::parseFunctionDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseStructDecl() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseStructDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+
+    // 1. 解析组件名
+    consume(TokenType::IDENTIFIER, "Expected component name.");
+    payload.component_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+
+    // 2. 解析组件体 (复用 parseBlockStmt，将语义验证留给下游 Checker)
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before component body.");
+    payload.component_decl.body = parseBlockStmt();
+
+    return emitNode(NodeType::StructDecl, payload, startToken);
+}
 ASTNodeIndex Parser::parseEnumDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseTypeAliasDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseInterfaceDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseImplDecl() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseTypeAliasDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::IDENTIFIER, "Expected alias name.");
+    payload.type_alias.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+    consume(TokenType::SYM_EQUAL, "Expected '=' after type alias name.");
+    payload.type_alias.type_expr = parseExpression(Precedence::None);
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after type alias declaration.");
+
+    return emitNode(NodeType::TypeAliasDecl, payload, startToken);
+}
+ASTNodeIndex Parser::parseInterfaceDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::IDENTIFIER, "Expected alias name.");
+    payload.interface_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before interface body.");
+    payload.interface_decl.methods = parseBlockStmt();
+    return emitNode(NodeType::InterfaceDecl, payload, startToken);
+}
+ASTNodeIndex Parser::parseImplDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    payload.impl_decl.impl_index = parseExpression(Pre)
+
+    return ASTNodeIndex{};
+}
 //---NIKI特有---
-ASTNodeIndex Parser::parseModuleDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseSystemDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseComponentDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseFlowDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseKitsDecl() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseTagDecl() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseModuleDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::IDENTIFIER, "Expected module name.");
+    payload.module_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before module body.");
+    return emitNode(NodeType::ModuleDecl, payload, startToken);
+}
+ASTNodeIndex Parser::parseSystemDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+
+    consume(TokenType::IDENTIFIER, "Expected system name.");
+    payload.component_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+
+    consume(TokenType::SYM_PAREN_L, "Expected '(' after system name to declare dependencies.");
+    payload.system_decl.system_data = parseExpression(Precedence::None);
+    consume(TokenType::SYM_PAREN_R, "Expected ')' after system dependencies.");
+
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before system body.");
+    payload.system_decl.body = parseBlockStmt();
+
+    return emitNode(NodeType::SystemDecl, payload, startToken);
+}
+ASTNodeIndex Parser::parseComponentDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+
+    // 1. 解析组件名
+    consume(TokenType::IDENTIFIER, "Expected component name.");
+    payload.component_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+
+    // 2. 解析组件体 (复用 parseBlockStmt，将语义验证留给下游 Checker)
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before component body.");
+    payload.component_decl.body = parseBlockStmt();
+
+    return emitNode(NodeType::ComponentDecl, payload, startToken);
+}
+
+ASTNodeIndex Parser::parseFlowDecl() {
+    Token startToken = previous; // 已消费 'flow'
+    ASTNodePayload payload{};
+
+    // 1. 解析流程名
+    consume(TokenType::IDENTIFIER, "Expected flow name.");
+    payload.flow_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+
+    // 2. 解析流程体 (必须是一个代码块，里面允许出现 nock 和 await)
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before flow body.");
+    payload.flow_decl.body = parseBlockStmt();
+
+    return emitNode(NodeType::FlowDecl, payload, startToken);
+}
+
+// kits具体实现未敲定，暂且先保留为类似于struct和component的数据格式。
+ASTNodeIndex Parser::parseKitsDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::IDENTIFIER, "Expected kits name.");
+    payload.kits_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before kits body.");
+    payload.kits_decl.kits_data_index = parseBlockStmt();
+    return emitNode(NodeType::KitsDecl, payload, startToken);
+}
+
+ASTNodeIndex Parser::parseTagDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+    consume(TokenType::IDENTIFIER, "Expected tag name.");
+    payload.tag_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after tag declaration.");
+    return emitNode(NodeType::TagDecl, payload, startToken);
+}
 ASTNodeIndex Parser::parseTagGroupDecl() { return ASTNodeIndex{}; }
