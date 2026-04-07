@@ -68,71 +68,61 @@ enum class TokenType : uint8_t {
     LITERAL_FLOAT,  // 浮点数
     LITERAL_STRING, // 字符串
     LITERAL_CHAR,   // 字符
-    NIL,            // nil
 
     /*---[identifier]标识符---*/
     IDENTIFIER, // 标识符
 
     /*---[keyword]关键字---*/
-    // 控制流
-    KEYWORD_TRUE,     // true 真
-    KEYWORD_FALSE,    // false 假
-    KEYWORD_IF,       // if 如果
-    KEYWORD_ELSE,     // else 否则
-    KEYWORD_LOOP,     // loop 循环
-    KEYWORD_MATCH,    // match 匹配
-    KEYWORD_CASE,     // case 匹配分支
-    KEYWORD_BREAK,    // break 跳出循环
-    KEYWORD_CONTINUE, // continue 继续循环
-    KEYWORD_RETURN,   // return 返回值
-    // 变量与函数
-    KEYWORD_VAR,   // var
-    KEYWORD_FUNC,  // func
-    KEYWORD_CONST, // const
-    // 类型系统 (静态类型检查基础设施)
-    KEYWORD_INT,    // int
-    KEYWORD_FLOAT,  // float
-    KEYWORD_STRING, // string
-    KEYWORD_BOOL,   // bool
-    KEYWORD_VOID,   // void
-    KEYWORD_ANY,    // any (逃生舱)
-    KEYWORD_TYPE,   // type (类型别名)
-
-    KEYWORD_INTERFACE, // interface (接口)
-    KEYWORD_IMPL,      // impl (实现)
-    KEYWORD_WILDCARD,  // _ (通配符)
+    KW_NIL,       // nil
+    KW_TRUE,      // true 真
+    KW_FALSE,     // false 假
+    KW_IF,        // if 如果
+    KW_ELSE,      // else 否则
+    KW_LOOP,      // loop 循环
+    KW_MATCH,     // match 匹配
+    KW_CASE,      // case 匹配分支
+    KW_BREAK,     // break 跳出循环
+    KW_CONTINUE,  // continue 继续循环
+    KW_RETURN,    // return 返回值
+    KW_FOR,       // for 介词 (用于 impl Interface for Target 等)
+    KW_VAR,       // var
+    KW_FUNC,      // func
+    KW_CONST,     // const
+    KW_INT,       // int
+    KW_FLOAT,     // float
+    KW_STRING,    // string
+    KW_BOOL,      // bool
+    KW_VOID,      // void
+    KW_ANY,       // any (逃生舱)
+    KW_TYPE,      // type (类型别名)
+    KW_INTERFACE, // interface (接口)
+    KW_IMPL,      // impl (实现)
+    KW_WILDCARD,  // _ (通配符)
+    KW_FLOW,      // flow 声明一个流程
+    KW_AWAIT,     // await 挂起并等待某结果
+    KW_NOCK,      // nock 主动放弃当前帧执行权
+    KW_ASYNC,     // async 异步函数
+    KW_SYSTEM,    // system 系统
+    KW_COMPONENT, // component 组件
+    KW_TARGET,    // target 目标
+    KW_TAG,       // tag 标签
+    KW_TAGGROUP,  // taggroup 标签组
+    KW_EXCLUSIVE, // exclusive 互斥修饰符
+    KW_SET,       // set 设置
+    KW_UNSET,     // unset 取消设置
+    KW_KITS,      // kits
+    KW_WITH,      // with 引入模块
+    KW_READ,      // read 读取模块
+    KW_WRITE,     // write 写入模块
+    KW_MODULE,    // module (模块)
+    KW_STRUCT,    // struct (结构体)
+    KW_ENUM,      // enum (枚举)
 
     /*---[control]控制标记---*/
     TOKEN_EOF,   // 结束标记
     TOKEN_ERROR, // 错误标记
 
-    /*---[advanced]高级特性---*/
-    // 逻辑编排与挂起
-    NK_FLOW,       // flow 声明一个流程
-    NK_FLOW_AWAIT, // await 挂起并等待某结果
-    NK_FLOW_NOCK,  // nock 主动放弃当前帧执行权
-    NK_FLOW_ASYNC, // async 异步函数
-    // 系统拓扑与并发
-    NK_SYSTEM,    // system 系统
-    NK_COMPONENT, // component 组件
-    // 查询与检索
-    NK_TARGET,    // target 目标
-    NK_TAG,       // tag 标签
-    NK_TAGGROUP,  // taggroup 标签组
-    NK_EXCLUSIVE, // exclusive 互斥修饰符
-    NK_SET,       // set 设置
-    NK_UNSET,     // unset 取消设置
-    // 环境与权限
-    NK_KITS,  // kits
-    NK_WITH,  // with 引入模块
-    NK_READ,  // read 读取模块
-    NK_WRITE, // write 写入模块
-    // 结构
-    NK_MODULE, // module (模块)
-    NK_STRUCT, // struct (结构体)
-    NK_ENUM,   // enum (枚举)
-
-    // 其他
+    /*---[trivia]附属标记---*/
     COMMENT, // 注释
 };
 /**

@@ -136,9 +136,6 @@ enum class OPCODE : uint8_t {
     __DS_END,        // 复杂数据结构指令结束
     // [StackOpExpr]常用数据操作（POP, DUP, SWAP, TRUE, FALSE, NIL）
     __DATA_CTRL_START, // 常用数据操作指令开始
-    OP_POP,            // 弹出栈顶元素
-    OP_DUP,            // 复制栈顶元素
-    OP_SWAP,           // 交换栈顶两个元素
     OP_TRUE,           // 压入 true 常量
     OP_FALSE,          // 压入 false 常量
     OP_NIL,            // 无操作指令

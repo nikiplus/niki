@@ -169,15 +169,15 @@ void Parser::synchronize() {
         if (previous.type == TokenType::SYM_SEMICOLON)
             return;
         switch (current.type) {
-        case TokenType::KEYWORD_VAR:
-        case TokenType::KEYWORD_FUNC:
-        case TokenType::KEYWORD_IF:
-        case TokenType::KEYWORD_RETURN:
-        case TokenType::KEYWORD_LOOP:
-        case TokenType::KEYWORD_MATCH:
-        case TokenType::NK_SYSTEM:
-        case TokenType::NK_FLOW:
-        case TokenType::NK_COMPONENT:
+        case TokenType::KW_VAR:
+        case TokenType::KW_FUNC:
+        case TokenType::KW_IF:
+        case TokenType::KW_RETURN:
+        case TokenType::KW_LOOP:
+        case TokenType::KW_MATCH:
+        case TokenType::KW_SYSTEM:
+        case TokenType::KW_FLOW:
+        case TokenType::KW_COMPONENT:
             return;
         default:;
         }

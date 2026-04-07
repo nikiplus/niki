@@ -42,7 +42,7 @@ Token Scanner::scanToken() {
     // 只有单独的一个 `_` 且后面不跟字母/数字时，才是通配符。
     if (c == '_') {
         if (!isAlpha(peek()) && !isDigit(peek())) {
-            return makeToken(TokenType::KEYWORD_WILDCARD);
+            return makeToken(TokenType::KW_WILDCARD);
         }
     }
 
@@ -263,21 +263,21 @@ TokenType Scanner::checkIdentifierType() {
     switch (c0) {
     case 'a':
         if (length == 3)
-            return checkKeyword(1, 2, "ny", TokenType::KEYWORD_ANY);
+            return checkKeyword(1, 2, "ny", TokenType::KW_ANY);
         if (length == 5) {
             if (source[start + 1] == 'w')
-                return checkKeyword(2, 3, "ait", TokenType::NK_FLOW_AWAIT);
+                return checkKeyword(2, 3, "ait", TokenType::KW_AWAIT);
             if (source[start + 1] == 's')
-                return checkKeyword(2, 3, "ync", TokenType::NK_FLOW_ASYNC);
+                return checkKeyword(2, 3, "ync", TokenType::KW_ASYNC);
         }
         break;
     case 'b':
         if (length > 1) {
             switch (source[start + 1]) {
             case 'o':
-                return checkKeyword(2, 2, "ol", TokenType::KEYWORD_BOOL);
+                return checkKeyword(2, 2, "ol", TokenType::KW_BOOL);
             case 'r':
-                return checkKeyword(2, 3, "eak", TokenType::KEYWORD_BREAK);
+                return checkKeyword(2, 3, "eak", TokenType::KW_BREAK);
             }
         }
         break;
@@ -286,21 +286,21 @@ TokenType Scanner::checkIdentifierType() {
             switch (source[start + 1]) {
             case 'a':
                 if (length == 4)
-                    return checkKeyword(2, 2, "se", TokenType::KEYWORD_CASE);
+                    return checkKeyword(2, 2, "se", TokenType::KW_CASE);
                 break;
             case 'o':
                 if (length > 2) {
                     switch (source[start + 2]) {
                     case 'n': // const, continue
                         if (length > 3 && source[start + 3] == 's')
-                            return checkKeyword(4, 1, "t", TokenType::KEYWORD_CONST);
+                            return checkKeyword(4, 1, "t", TokenType::KW_CONST);
                         if (length > 3 && source[start + 3] == 't') {
                             if (length == 8)
-                                return checkKeyword(4, 4, "inue", TokenType::KEYWORD_CONTINUE);
+                                return checkKeyword(4, 4, "inue", TokenType::KW_CONTINUE);
                         }
                         break;
                     case 'm':
-                        return checkKeyword(3, 6, "ponent", TokenType::NK_COMPONENT);
+                        return checkKeyword(3, 6, "ponent", TokenType::KW_COMPONENT);
                     }
                 }
                 break;
@@ -310,30 +310,32 @@ TokenType Scanner::checkIdentifierType() {
     case 'e':
         if (length == 4) {
             if (source[start + 1] == 'l')
-                return checkKeyword(2, 2, "se", TokenType::KEYWORD_ELSE);
+                return checkKeyword(2, 2, "se", TokenType::KW_ELSE);
             if (source[start + 1] == 'n')
-                return checkKeyword(2, 2, "um", TokenType::NK_ENUM);
+                return checkKeyword(2, 2, "um", TokenType::KW_ENUM);
         }
         if (length == 9)
-            return checkKeyword(1, 8, "xclusive", TokenType::NK_EXCLUSIVE);
+            return checkKeyword(1, 8, "xclusive", TokenType::KW_EXCLUSIVE);
         break;
     case 'f':
         if (length > 1) {
             switch (source[start + 1]) {
             case 'a':
-                return checkKeyword(2, 3, "lse", TokenType::KEYWORD_FALSE);
+                return checkKeyword(2, 3, "lse", TokenType::KW_FALSE);
             case 'l':
                 if (length > 2 && source[start + 2] == 'o') {
                     switch (source[start + 3]) {
                     case 'a':
-                        return checkKeyword(4, 1, "t", TokenType::KEYWORD_FLOAT);
+                        return checkKeyword(4, 1, "t", TokenType::KW_FLOAT);
                     case 'w':
-                        return checkKeyword(4, 0, "", TokenType::NK_FLOW);
+                        return checkKeyword(4, 0, "", TokenType::KW_FLOW);
                     }
                 }
                 break;
+            case 'o':
+                return checkKeyword(2, 1, "r", TokenType::KW_FOR);
             case 'u':
-                return checkKeyword(2, 2, "nc", TokenType::KEYWORD_FUNC);
+                return checkKeyword(2, 2, "nc", TokenType::KW_FUNC);
             }
         }
         break;
@@ -341,59 +343,59 @@ TokenType Scanner::checkIdentifierType() {
         if (length > 1) {
             switch (source[start + 1]) {
             case 'f':
-                return checkKeyword(2, 0, "", TokenType::KEYWORD_IF);
+                return checkKeyword(2, 0, "", TokenType::KW_IF);
             case 'm':
                 if (length == 4)
-                    return checkKeyword(2, 2, "pl", TokenType::KEYWORD_IMPL);
+                    return checkKeyword(2, 2, "pl", TokenType::KW_IMPL);
                 break;
             case 'n':
                 if (length == 3)
-                    return checkKeyword(2, 1, "t", TokenType::KEYWORD_INT);
+                    return checkKeyword(2, 1, "t", TokenType::KW_INT);
                 if (length == 9)
-                    return checkKeyword(2, 7, "terface", TokenType::KEYWORD_INTERFACE);
+                    return checkKeyword(2, 7, "terface", TokenType::KW_INTERFACE);
                 break;
             }
         }
         break;
     case 'k':
-        return checkKeyword(1, 3, "its", TokenType::NK_KITS);
+        return checkKeyword(1, 3, "its", TokenType::KW_KITS);
     case 'l':
-        return checkKeyword(1, 3, "oop", TokenType::KEYWORD_LOOP);
+        return checkKeyword(1, 3, "oop", TokenType::KW_LOOP);
     case 'm':
         if (length == 5)
-            return checkKeyword(1, 4, "atch", TokenType::KEYWORD_MATCH);
+            return checkKeyword(1, 4, "atch", TokenType::KW_MATCH);
         if (length == 6)
-            return checkKeyword(1, 5, "odule", TokenType::NK_MODULE);
+            return checkKeyword(1, 5, "odule", TokenType::KW_MODULE);
         break;
     case 'n':
         if (length == 3)
-            return checkKeyword(1, 2, "il", TokenType::NIL);
+            return checkKeyword(1, 2, "il", TokenType::KW_NIL);
         if (length == 4)
-            return checkKeyword(1, 3, "ock", TokenType::NK_FLOW_NOCK);
+            return checkKeyword(1, 3, "ock", TokenType::KW_NOCK);
         break;
     case 'r':
         if (length == 4)
-            return checkKeyword(1, 3, "ead", TokenType::NK_READ);
+            return checkKeyword(1, 3, "ead", TokenType::KW_READ);
         if (length == 6)
-            return checkKeyword(1, 5, "eturn", TokenType::KEYWORD_RETURN);
+            return checkKeyword(1, 5, "eturn", TokenType::KW_RETURN);
         break;
     case 's':
         if (length > 1) {
             switch (source[start + 1]) {
             case 'e':
-                return checkKeyword(2, 1, "t", TokenType::NK_SET);
+                return checkKeyword(2, 1, "t", TokenType::KW_SET);
             case 't':
                 if (length == 6) {
                     if (source[start + 2] == 'r') {
                         if (source[start + 3] == 'i')
-                            return checkKeyword(4, 2, "ng", TokenType::KEYWORD_STRING);
+                            return checkKeyword(4, 2, "ng", TokenType::KW_STRING);
                         if (source[start + 3] == 'u')
-                            return checkKeyword(4, 2, "ct", TokenType::NK_STRUCT);
+                            return checkKeyword(4, 2, "ct", TokenType::KW_STRUCT);
                     }
                 }
                 break;
             case 'y':
-                return checkKeyword(2, 4, "stem", TokenType::NK_SYSTEM);
+                return checkKeyword(2, 4, "stem", TokenType::KW_SYSTEM);
             }
         }
         break;
@@ -402,36 +404,36 @@ TokenType Scanner::checkIdentifierType() {
             switch (source[start + 1]) {
             case 'a':
                 if (length == 3)
-                    return checkKeyword(2, 1, "g", TokenType::NK_TAG);
+                    return checkKeyword(2, 1, "g", TokenType::KW_TAG);
                 if (length == 6)
-                    return checkKeyword(2, 4, "rget", TokenType::NK_TARGET);
+                    return checkKeyword(2, 4, "rget", TokenType::KW_TARGET);
                 if (length == 8)
-                    return checkKeyword(2, 6, "ggroup", TokenType::NK_TAGGROUP);
+                    return checkKeyword(2, 6, "ggroup", TokenType::KW_TAGGROUP);
                 break;
             case 'r':
-                return checkKeyword(2, 2, "ue", TokenType::KEYWORD_TRUE);
+                return checkKeyword(2, 2, "ue", TokenType::KW_TRUE);
             case 'y':
-                return checkKeyword(2, 2, "pe", TokenType::KEYWORD_TYPE);
+                return checkKeyword(2, 2, "pe", TokenType::KW_TYPE);
             }
         }
         break;
     case 'u':
-        return checkKeyword(1, 4, "nset", TokenType::NK_UNSET);
+        return checkKeyword(1, 4, "nset", TokenType::KW_UNSET);
     case 'v':
         if (length > 1) {
             switch (source[start + 1]) {
             case 'a':
-                return checkKeyword(2, 1, "r", TokenType::KEYWORD_VAR);
+                return checkKeyword(2, 1, "r", TokenType::KW_VAR);
             case 'o':
-                return checkKeyword(2, 2, "id", TokenType::KEYWORD_VOID);
+                return checkKeyword(2, 2, "id", TokenType::KW_VOID);
             }
         }
         break;
     case 'w':
         if (length == 4)
-            return checkKeyword(1, 3, "ith", TokenType::NK_WITH);
+            return checkKeyword(1, 3, "ith", TokenType::KW_WITH);
         if (length == 5)
-            return checkKeyword(1, 4, "rite", TokenType::NK_WRITE);
+            return checkKeyword(1, 4, "rite", TokenType::KW_WRITE);
         break;
     }
 

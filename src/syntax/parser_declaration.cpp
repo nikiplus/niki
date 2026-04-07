@@ -2,41 +2,43 @@
 #include "niki/syntax/parser.hpp"
 #include "niki/syntax/parser_precedence.hpp"
 #include "niki/syntax/token.hpp"
+#include <cstdint>
 #include <string_view>
+#include <vector>
 using namespace niki::syntax;
 
 // 顶层声明的解析入口，如果遇到声明关键字则进入对应的分支；
 // 否则，它认为这是一个语句（Statement），将其降级给 parseStatement 处理。
 ASTNodeIndex Parser::parseDeclaration() {
-    if (match(TokenType::KEYWORD_VAR)) {
+    if (match(TokenType::KW_VAR)) {
         return parseVarDeclStmt();
-    } else if (match(TokenType::KEYWORD_CONST)) {
+    } else if (match(TokenType::KW_CONST)) {
         return parseConstDeclStmt();
-    } else if (match(TokenType::KEYWORD_FUNC)) {
+    } else if (match(TokenType::KW_FUNC)) {
         return parseFunctionDecl();
-    } else if (match(TokenType::NK_STRUCT)) {
+    } else if (match(TokenType::KW_STRUCT)) {
         return parseStructDecl();
-    } else if (match(TokenType::NK_ENUM)) {
+    } else if (match(TokenType::KW_ENUM)) {
         return parseEnumDecl();
-    } else if (match(TokenType::KEYWORD_TYPE)) {
+    } else if (match(TokenType::KW_TYPE)) {
         return parseTypeAliasDecl();
-    } else if (match(TokenType::KEYWORD_INTERFACE)) {
+    } else if (match(TokenType::KW_INTERFACE)) {
         return parseInterfaceDecl();
-    } else if (match(TokenType::KEYWORD_IMPL)) {
+    } else if (match(TokenType::KW_IMPL)) {
         return parseImplDecl();
-    } else if (match(TokenType::NK_MODULE)) {
+    } else if (match(TokenType::KW_MODULE)) {
         return parseModuleDecl();
-    } else if (match(TokenType::NK_SYSTEM)) {
+    } else if (match(TokenType::KW_SYSTEM)) {
         return parseSystemDecl();
-    } else if (match(TokenType::NK_COMPONENT)) {
+    } else if (match(TokenType::KW_COMPONENT)) {
         return parseComponentDecl();
-    } else if (match(TokenType::NK_FLOW)) {
+    } else if (match(TokenType::KW_FLOW)) {
         return parseFlowDecl();
-    } else if (match(TokenType::NK_KITS)) {
+    } else if (match(TokenType::KW_KITS)) {
         return parseKitsDecl();
-    } else if (match(TokenType::NK_TAG)) {
+    } else if (match(TokenType::KW_TAG)) {
         return parseTagDecl();
-    } else if (match(TokenType::NK_TAGGROUP)) {
+    } else if (match(TokenType::KW_TAGGROUP)) {
         return parseTagGroupDecl();
     }
 
@@ -84,9 +86,27 @@ ASTNodeIndex Parser::parseInterfaceDecl() {
 ASTNodeIndex Parser::parseImplDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
-    payload.impl_decl.impl_index = parseExpression(Pre)
+    ImplData data{};
+    data.target_type = parseExpression(Precedence::None);
 
-    return ASTNodeIndex{};
+    if (match(TokenType::KW_FOR)) {
+        data.trait_type = parseExpression(Precedence::None);
+    } else {
+        data.trait_type = ASTNodeIndex::invalid();
+    }
+
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before impl body.");
+    std::vector<ASTNodeIndex> methods;
+    while (!check(TokenType::SYM_BRACE_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
+        methods.push_back(parseFunctionDecl());
+    }
+    consume(TokenType::SYM_BRACE_R, "Expected '}' after impl body");
+    data.methods = astPool.allocateList(methods);
+
+    uint32_t data_index = static_cast<uint32_t>(astPool.impl_data.size());
+    astPool.impl_data.push_back(data);
+    payload.impl_decl.impl_index = data_index;
+    return emitNode(NodeType::ImplDecl, payload, startToken);
 }
 //---NIKI特有---
 ASTNodeIndex Parser::parseModuleDecl() {

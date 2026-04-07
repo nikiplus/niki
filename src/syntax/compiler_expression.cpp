@@ -144,13 +144,13 @@ ExprResult Compiler::compileLiteralExpr(ASTNodeIndex nodeIdx) {
         emitOp(vm::OPCODE::OP_LOAD_CONST, resultReg.reg, chunk_idx, line, column);
         break;
     }
-    case TokenType::KEYWORD_TRUE:
+    case TokenType::KW_TRUE:
         emitOp(vm::OPCODE::OP_TRUE, resultReg.reg, line, column);
         break;
-    case TokenType::KEYWORD_FALSE:
+    case TokenType::KW_FALSE:
         emitOp(vm::OPCODE::OP_FALSE, resultReg.reg, line, column);
         break;
-    case TokenType::NIL:
+    case TokenType::KW_NIL:
         emitOp(vm::OPCODE::OP_NIL, resultReg.reg, line, column);
         break;
     default:

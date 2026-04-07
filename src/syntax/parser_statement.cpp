@@ -15,19 +15,19 @@ using namespace niki::syntax;
 ASTNodeIndex Parser::parseStatement() {
     if (match(TokenType::SYM_BRACE_L)) {
         return parseBlockStmt();
-    } else if (match(TokenType::KEYWORD_IF)) {
+    } else if (match(TokenType::KW_IF)) {
         return parseIfStmt();
-    } else if (match(TokenType::KEYWORD_LOOP)) {
+    } else if (match(TokenType::KW_LOOP)) {
         return parseLoopStmt();
-    } else if (match(TokenType::KEYWORD_MATCH)) {
+    } else if (match(TokenType::KW_MATCH)) {
         return parseMatchStmt();
-    } else if (match(TokenType::KEYWORD_CONTINUE)) {
+    } else if (match(TokenType::KW_CONTINUE)) {
         return parseContinueStmt();
-    } else if (match(TokenType::KEYWORD_BREAK)) {
+    } else if (match(TokenType::KW_BREAK)) {
         return parseBreakStmt();
-    } else if (match(TokenType::KEYWORD_RETURN)) {
+    } else if (match(TokenType::KW_RETURN)) {
         return parseReturnStmt();
-    } else if (match(TokenType::NK_FLOW_NOCK)) {
+    } else if (match(TokenType::KW_NOCK)) {
         return parseNockStmt();
     }
     // ... 其他语句类型
@@ -145,8 +145,8 @@ ASTNodeIndex Parser::parseIfStmt() {
 
     IfStmtPayload.if_stmt.then_branch = parseStatement();
 
-    if (match(TokenType::KEYWORD_ELSE)) {
-        if (match(TokenType::KEYWORD_IF)) {
+    if (match(TokenType::KW_ELSE)) {
+        if (match(TokenType::KW_IF)) {
             IfStmtPayload.if_stmt.else_branch = parseIfStmt();
         } else {
             IfStmtPayload.if_stmt.else_branch = parseStatement();
@@ -186,7 +186,7 @@ ASTNodeIndex Parser::parseMatchCaseStmt() {
     ASTNodePayload payload{};
     std::vector<ASTNodeIndex> patterns;
     do {
-        if (match(TokenType::KEYWORD_WILDCARD)) {
+        if (match(TokenType::KW_WILDCARD)) {
             ASTNodePayload wildcard_payload{};
             patterns.push_back(emitNode(NodeType::WildcardExpr, wildcard_payload, startToken));
         } else {
@@ -214,7 +214,7 @@ ASTNodeIndex Parser::parseMatchStmt() {
 
     std::vector<ASTNodeIndex> cases;
     while (!check(TokenType::SYM_BRACE_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
-        if (match(TokenType::KEYWORD_CASE)) {
+        if (match(TokenType::KW_CASE)) {
             cases.push_back(parseMatchCaseStmt());
         } else {
             errorAtCurrent("Expected 'case' keyword inside match block.");
@@ -248,7 +248,7 @@ ASTNodeIndex Parser::parseReturnStmt() {
 ASTNodeIndex Parser::parseNockStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
-    
+
     // 如果紧跟着分号，代表无条件让出当前帧 (nock;)
     if (check(TokenType::SYM_SEMICOLON)) {
         payload.nock.interval = ASTNodeIndex::invalid();
