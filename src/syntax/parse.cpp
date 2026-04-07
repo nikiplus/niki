@@ -55,10 +55,12 @@ ASTNodeIndex Parser::parse() {
         }
     }
 
-    // 初始化union
+    ASTNodePayload blockPayload{};
+    blockPayload.list.elements = astPool.allocateList(declarations);
+    ASTNodeIndex body = emitNode(NodeType::BlockStmt, blockPayload);
+
     ASTNodePayload payload{};
-    // 创建ModuleDeclPayload
-    payload.module_decl.exports = astPool.allocateList(declarations);
+    payload.module_decl.body = body;
     return emitNode(NodeType::ModuleDecl, payload);
 };
 

@@ -302,21 +302,21 @@ struct KitsData {
 };
 /**
  * @brief 【KitsDeclPayload】Kits声明负载
- * 物理大小：8 Bytes (指向胖节点表)
+ * 物理大小：8 Bytes
  *
  * [ 内存物理映射图 ]
  * ASTNodePayload.kits_decl
  * +---------------------------------------+
- * | name_id (4B)       | kits_data_index  |
- * | (uint32_t)         | (uint32_t)       |
+ * | name_id (4B)       | body (4B)        |
+ * | (uint32_t)         | (ASTNodeIndex)   |
  * +--------------------+------------------+
  *         |                    |
  *         v                    v
- * ASTPool::string_pool   ASTPool::kits_data (std::vector<KitsData>)
+ * ASTPool::string_pool   ASTPool::nodes (指向 NodeType::BlockStmt)
  */
 struct KitsDeclPayload {
-    uint32_t name_id;
-    uint32_t kits_data_index;
+    uint32_t name_id;  // 4byte: kits 名字
+    ASTNodeIndex body; // 4byte: kits 作用域体 (BlockStmt)
 };
 
 /**
@@ -921,42 +921,42 @@ struct TypeAliasDeclPayload {
 
 /**
  * @brief 【InterfaceDeclPayload】接口声明负载
- * 物理大小：12 Bytes
+ * 物理大小：8 Bytes
  *
  * [ 内存物理映射图 ]
  * ASTNodePayload.interface_decl
  * +---------------------------------------+
- * | name_id (4B)       | methods (8B)     |
- * | (uint32_t)         | (ASTListIndex)   |
+ * | name_id (4B)       | body (4B)        |
+ * | (uint32_t)         | (ASTNodeIndex)   |
  * +--------------------+------------------+
  *         |                    |
  *         v                    v
- * ASTPool::string_pool   ASTPool::lists_elements (存放 InterfaceMethod 节点索引)
+ * ASTPool::string_pool   ASTPool::nodes (指向 NodeType::BlockStmt)
  */
 struct InterfaceDeclPayload {
-    uint32_t name_id;     // 4byte: 接口名的字符串池 ID
-    ASTListIndex methods; // 8byte: 方法声明列表 (指向 NodeType::InterfaceMethod 节点)
+    uint32_t name_id;  // 4byte: 接口名的字符串池 ID
+    ASTNodeIndex body; // 4byte: 接口体 (BlockStmt)
 };
 
 //---NIKI特有---
 
 /**
  * @brief 【ModuleDeclPayload】模块声明负载
- * 物理大小：12 Bytes
+ * 物理大小：8 Bytes
  *
  * [ 内存物理映射图 ]
  * ASTNodePayload.module_decl
  * +---------------------------------------+
- * | name_id (4B)       | exports (8B)     |
- * | (uint32_t)         | (ASTListIndex)   |
+ * | name_id (4B)       | body (4B)        |
+ * | (uint32_t)         | (ASTNodeIndex)   |
  * +--------------------+------------------+
  *         |                    |
  *         v                    v
- * ASTPool::string_pool   ASTPool::lists_elements
+ * ASTPool::string_pool   ASTPool::nodes (指向 NodeType::BlockStmt)
  */
 struct ModuleDeclPayload {
-    uint32_t name_id;     // 4byte: 模块名的字符串池 ID
-    ASTListIndex exports; // 8byte: 导出列表
+    uint32_t name_id;  // 4byte: 模块名的字符串池 ID
+    ASTNodeIndex body; // 4byte: 模块体 (BlockStmt)
 };
 
 /**

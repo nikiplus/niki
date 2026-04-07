@@ -134,16 +134,16 @@ enum class OPCODE : uint8_t {
     OP_SET_PROPERTY, // 设置属性指令
     OP_METHOD,       // 调用方法指令
     __DS_END,        // 复杂数据结构指令结束
-    // [StackOpExpr]常用数据操作（POP, DUP, SWAP, TRUE, FALSE, NIL）
+    // [DataCtrlExpr]常用数据与常量装载（TRUE, FALSE, NIL, LOAD_CONST, MOVE）
     __DATA_CTRL_START, // 常用数据操作指令开始
-    OP_TRUE,           // 压入 true 常量
-    OP_FALSE,          // 压入 false 常量
-    OP_NIL,            // 无操作指令
-    OP_LOAD_CONST,     // 加载常量
-    OP_LOAD_CONST_W,   // 加载宽常量
-    OP_MOVE,
-    __DATA_CTRL_END, // 常用数据操作指令结束
-    _DATA_END,       // 数据操作指令结束
+    OP_TRUE,           // 写入 true 常量到目标寄存器
+    OP_FALSE,          // 写入 false 常量到目标寄存器
+    OP_NIL,            // 写入 nil 常量到目标寄存器
+    OP_LOAD_CONST,     // 从常量池加载到目标寄存器
+    OP_LOAD_CONST_W,   // 从常量池加载宽索引到目标寄存器
+    OP_MOVE,           // 寄存器搬运
+    __DATA_CTRL_END,   // 常用数据操作指令结束
+    _DATA_END,         // 数据操作指令结束
 
     /*---[SysExpr]系统相关指令（THROW, CATCH）---*/
     _SYS_START, // 系统相关指令开始

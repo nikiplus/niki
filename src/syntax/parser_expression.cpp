@@ -159,21 +159,21 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         payload.literal.literal_type = type;
         payload.literal.const_pool_index = astPool.addConstant(vm::Value::makeNil());
         return emitNode(NodeType::LiteralExpr, payload, startToken);
-    case TokenType::KEYWORD_TRUE: {
+    case TokenType::KW_TRUE: {
         uint32_t const_idx = astPool.addConstant(vm::Value::makeBool(true));
-        payload.literal.literal_type = TokenType::KEYWORD_TRUE;
+        payload.literal.literal_type = TokenType::KW_TRUE;
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
-    case TokenType::KEYWORD_FALSE: {
+    case TokenType::KW_FALSE: {
         uint32_t const_idx = astPool.addConstant(vm::Value::makeBool(false));
-        payload.literal.literal_type = TokenType::KEYWORD_FALSE;
+        payload.literal.literal_type = TokenType::KW_FALSE;
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
-    case TokenType::NIL: {
+    case TokenType::KW_NIL: {
         uint32_t const_idx = astPool.addConstant(vm::Value::makeNil());
-        payload.literal.literal_type = TokenType::NIL;
+        payload.literal.literal_type = TokenType::KW_NIL;
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }

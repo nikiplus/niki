@@ -81,13 +81,14 @@ void Compiler::compileImplDecl(ASTNodeIndex nodeIdx) {}
 // NIKI特有
 void Compiler::compileModuleDecl(ASTNodeIndex nodeIdx) {
     const ASTNode &node = currentPool->getNode(nodeIdx);
-    std::span<const ASTNodeIndex> exports = currentPool->get_list(node.payload.module_decl.exports);
-    for (size_t i = 0; i < exports.size(); ++i) {
-        ASTNodeIndex child = exports[i];
+    const ASTNode &bodyNode = currentPool->getNode(node.payload.module_decl.body);
+    std::span<const ASTNodeIndex> declarations = currentPool->get_list(bodyNode.payload.list.elements);
+    for (size_t i = 0; i < declarations.size(); ++i) {
+        ASTNodeIndex child = declarations[i];
         const ASTNode &childNode = currentPool->getNode(child);
 
         // 针对 REPL 最小回路：如果我们遇到的是最后一条表达式语句（ExpressionStmt）
-        if (childNode.type == NodeType::ExpressionStmt && i == exports.size() - 1) {
+        if (childNode.type == NodeType::ExpressionStmt && i == declarations.size() - 1) {
             // 取出里面真正的表达式
             uint32_t line = currentPool->locations[child.index].line;
             uint32_t column = currentPool->locations[child.index].column;
@@ -101,7 +102,7 @@ void Compiler::compileModuleDecl(ASTNodeIndex nodeIdx) {
             uint32_t line = currentPool->locations[child.index].line;
             uint32_t column = currentPool->locations[child.index].column;
             ExprResult res = compileExpression(child);
-            if (i == exports.size() - 1) {
+            if (i == declarations.size() - 1) {
                 if (res.reg != 0) {
                     emitOp(vm::OPCODE::OP_MOVE, 0, res.reg, line, column);
                 }

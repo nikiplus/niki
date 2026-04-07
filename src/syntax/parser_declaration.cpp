@@ -74,15 +74,17 @@ ASTNodeIndex Parser::parseTypeAliasDecl() {
 
     return emitNode(NodeType::TypeAliasDecl, payload, startToken);
 }
+
 ASTNodeIndex Parser::parseInterfaceDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
     consume(TokenType::IDENTIFIER, "Expected alias name.");
     payload.interface_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
     consume(TokenType::SYM_BRACE_L, "Expected '{' before interface body.");
-    payload.interface_decl.methods = parseBlockStmt();
+    payload.interface_decl.body = parseBlockStmt();
     return emitNode(NodeType::InterfaceDecl, payload, startToken);
 }
+
 ASTNodeIndex Parser::parseImplDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -115,6 +117,7 @@ ASTNodeIndex Parser::parseModuleDecl() {
     consume(TokenType::IDENTIFIER, "Expected module name.");
     payload.module_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
     consume(TokenType::SYM_BRACE_L, "Expected '{' before module body.");
+    payload.module_decl.body = parseBlockStmt();
     return emitNode(NodeType::ModuleDecl, payload, startToken);
 }
 ASTNodeIndex Parser::parseSystemDecl() {
@@ -170,7 +173,7 @@ ASTNodeIndex Parser::parseKitsDecl() {
     consume(TokenType::IDENTIFIER, "Expected kits name.");
     payload.kits_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
     consume(TokenType::SYM_BRACE_L, "Expected '{' before kits body.");
-    payload.kits_decl.kits_data_index = parseBlockStmt();
+    payload.kits_decl.body = parseBlockStmt();
     return emitNode(NodeType::KitsDecl, payload, startToken);
 }
 

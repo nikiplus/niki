@@ -144,31 +144,25 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
 
     // === [ComplexDSExpr] 复杂数据结构 ===
     case OPCODE::OP_NEW_MAP:
-        return simpleInstruction("OP_NEW_MAP", offset);
+        return unaryInstruction("OP_NEW_MAP", chunk, offset);
     case OPCODE::OP_SET_MAP:
-        return simpleInstruction("OP_SET_MAP", offset);
+        return registerInstruction("OP_SET_MAP", chunk, offset);
     case OPCODE::OP_GET_MAP:
         return simpleInstruction("OP_GET_MAP", offset);
     case OPCODE::OP_NEW_ARRAY:
-        return simpleInstruction("OP_NEW_ARRAY", offset);
+        return unaryInstruction("OP_NEW_ARRAY", chunk, offset);
     case OPCODE::OP_PUSH_ARRAY:
-        return simpleInstruction("OP_PUSH_ARRAY", offset);
+        return unaryInstruction("OP_PUSH_ARRAY", chunk, offset);
     case OPCODE::OP_GET_ARRAY:
         return simpleInstruction("OP_GET_ARRAY", offset);
+    case OPCODE::OP_SET_ARRAY:
+        return registerInstruction("OP_SET_ARRAY", chunk, offset);
     case OPCODE::OP_GET_PROPERTY:
         return simpleInstruction("OP_GET_PROPERTY", offset);
     case OPCODE::OP_SET_PROPERTY:
         return simpleInstruction("OP_SET_PROPERTY", offset);
     case OPCODE::OP_METHOD:
         return simpleInstruction("OP_METHOD", offset);
-
-    // === [StackOpExpr] 数据操作与常量装载 ===
-    case OPCODE::OP_POP:
-        return simpleInstruction("OP_POP", offset); // 寄存器机器废弃
-    case OPCODE::OP_DUP:
-        return simpleInstruction("OP_DUP", offset); // 寄存器机器废弃
-    case OPCODE::OP_SWAP:
-        return simpleInstruction("OP_SWAP", offset); // 寄存器机器废弃
 
     // 常量加载 (2字节: Op + R_dst)
     case OPCODE::OP_TRUE:
@@ -254,12 +248,24 @@ size_t Disassembler::simpleInstruction(const char *name, size_t offset) {
 };
 // 处理字面量
 size_t Disassembler::literalInstruction(const char *name, const Chunk &chunk, size_t offset) {
-
+    uint8_t dst = chunk.code[offset + 1];
+    std::cout << std::left << std::setw(16) << name << " R" << (int)dst << "\n";
+    return offset + 2;
 };
 // 一元表达式
-size_t Disassembler::unaryInstruction(const char *name, const Chunk &chunk, size_t offset) {};
+size_t Disassembler::unaryInstruction(const char *name, const Chunk &chunk, size_t offset) {
+    uint8_t dst = chunk.code[offset + 1];
+    uint8_t src = chunk.code[offset + 2];
+    std::cout << std::left << std::setw(16) << name << " R" << (int)dst << ", " << (int)src << "\n";
+    return offset + 3;
+};
 // 跳转相关指令
-size_t Disassembler::jumpInstruction(const char *name, int sign, const Chunk &chunk, size_t offset) {};
+size_t Disassembler::jumpInstruction(const char *name, int sign, const Chunk &chunk, size_t offset) {
+    uint16_t jump = (static_cast<uint16_t>(chunk.code[offset + 1]) << 8) | chunk.code[offset + 2];
+    size_t target = offset + 3 + sign * jump;
+    std::cout << std::left << std::setw(16) << name << " " << offset << " -> " << target << "\n";
+    return offset + 3;
+};
 
 size_t Disassembler::registerInstruction(const char *name, const Chunk &chunk, size_t offset) {
     uint8_t dst = chunk.code[offset + 1];
