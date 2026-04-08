@@ -4,6 +4,8 @@
 #include "niki/vm/value.hpp"
 #include <cstdint>
 #include <cstdlib>
+#include <span>
+#include <vector>
 
 namespace niki::syntax {
 
@@ -223,10 +225,94 @@ ExprResult Compiler::compileMapExpr(ASTNodeIndex nodeIdx) {
 
     return {mapReg, true};
 }
-ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
+ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) {
+    // todo:目前支持只读，后续再扩展map分发
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+
+    ExprResult targetRes = compileExpression(node.payload.index.target);
+    ExprResult indexRes = compileExpression(node.payload.index.index);
+
+    uint8_t outReg = regAlloc.allocate();
+
+    emitOp(vm::OPCODE::OP_GET_ARRAY, outReg, targetRes.reg, indexRes.reg, line, column);
+
+    freeIfTemp(targetRes);
+    freeIfTemp(indexRes);
+    return ExprResult(outReg, true);
+}
+
 // 对象与方法
-ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
-ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
+/*call 这块我做个笔记，免得以后自己看懵。
+为什么语言里必须有 call？
+因为“函数”如果不能被调用，就只是一个名字，根本不会参与执行链路。表达式系统也会断掉：
+你只能算 1+2，不能算 f(1+2)；你只能声明能力，不能真正触发能力。
+
+为什么这里这样设计？
+1) 先编译 callee：先搞清楚“要调用谁”。
+2) 再编译 arguments：参数不是寄存器列表，而是 AST 节点列表。必须逐个 compileExpression，才会变成寄存器里的运行时值。
+3) 最后发射 OP_CALL：把 outReg / calleeReg / argc 交给 VM 执行。
+
+这不是网络意义上的“远程调用”，只是运行时内部的一次可调用实体执行。*/
+ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    // 先编译被调用目标（函数值/可调用对象）
+    ExprResult calleeRes = compileExpression(node.payload.call.callee);
+    // arguments 是 AST 节点列表，不是寄存器列表
+    std::span<const ASTNodeIndex> argNodes = currentPool->get_list(node.payload.call.arguments);
+
+    // 保存参数编译结果，后续统一释放临时寄存器
+    std::vector<ExprResult> argTemps;
+    argTemps.reserve(argNodes.size());
+
+    // 按源码顺序逐个编译参数，保证副作用顺序一致
+    for (ASTNodeIndex argNode : argNodes) {
+        argTemps.push_back(compileExpression(argNode));
+    }
+
+    uint8_t outReg = regAlloc.allocate();
+    // 当前调用约定把参数数量编码为 uint8_t（0~255）
+    if (argNodes.size() > 255) {
+        reportError(line, column, "Too many call arguments.");
+
+        freeIfTemp(calleeRes);
+        for (const ExprResult &res : argTemps) {
+            freeIfTemp(res);
+        }
+        return {outReg, true};
+    }
+    emitOp(vm::OPCODE::OP_CALL, outReg, calleeRes.reg, static_cast<uint8_t>(argNodes.size()), line, column);
+
+    freeIfTemp(calleeRes);
+    for (const ExprResult &res : argTemps) {
+        freeIfTemp(res);
+    }
+
+    return {outReg, true};
+}
+/*
+- member 解决的是“ 取成员值 ”问题： obj.field / obj.method （先取到成员本身）。
+- 没有它，你只能访问裸变量，不能做对象/模块/结构体字段访问。
+- 语义上它是“取引用/取值”，不一定执行调用。
+*/
+ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+
+    ExprResult objRes = compileExpression(node.payload.member.object);
+
+    uint16_t propNameId = node.payload.member.property_id;
+
+    return {0, true};
+}
+/*- dispatch 解决的是“ 在接收者上下文中调用方法 ”： obj.method(args...) 。
+- 这里不仅是 call，还涉及接收者绑定（类似 this/self）和方法查找规则。
+- 没有 dispatch，你只能先 member 再“裸 call”，那会丢掉动态分发和接收者语义边界。
+*/
 ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
 // 闭包与高级特性
 ExprResult Compiler::compileClosureExpr(ASTNodeIndex nodeIdx) { return {0, true}; }

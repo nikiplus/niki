@@ -5,6 +5,7 @@
 #include "niki/vm/value.hpp"
 #include "token.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <stdexcept>
@@ -85,6 +86,14 @@ class Compiler {
     std::vector<Local> locals;
     int scopeDepth = 0;
 
+    struct LoopContext {
+        size_t start_pos;
+        std::vector<size_t> break_patches;
+        std::vector<size_t> continue_patches;
+    };
+
+    std::vector<LoopContext> loop_stack;
+
     /*在这里有个关键的设计决策点——constants的索引长度究竟应该是8bit还是16bit
     如果我们为了体积和速度，让索引长度为8bit，那么不可避免的问题就是字面量很快就会达到2^8=256的上限。
     如果我们将所有constants定长为16bit，使其高八位位于b寄存器，低八位位于c寄存器，使用时再把它们拼成一个16位的值可不可行呢？
@@ -109,6 +118,16 @@ class Compiler {
     void beginScope() { scopeDepth++; };
     void endScope();
     uint8_t resolveLocal(uint32_t name_id, uint32_t line, uint32_t column);
+
+    size_t currentCodePos() const;
+    size_t emitJump(vm::OPCODE op, uint32_t line, uint32_t column);
+    void patchJump(size_t patch_pos, size_t target_pos);
+    void emitLoopBack(vm::OPCODE op, size_t target_pos, uint32_t line, uint32_t column);
+
+    void beginLoop(size_t start_pos);
+    void addBreakPatch(size_t patch_pos, uint32_t line, uint32_t column);
+    void addContinuePatch(size_t patch_pos, uint32_t line, uint32_t column);
+    void endLoop(size_t loop_end_pos);
 
     //---字节码发射器---
     void emitByte(uint8_t byte, uint32_t line, uint32_t column);

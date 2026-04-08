@@ -84,7 +84,82 @@ uint8_t Compiler::resolveLocal(uint32_t name_id, uint32_t line, uint32_t column)
     reportError(line, column, "Undeclared variable.");
     return 0;
 }
+//---跳转相关---
 
+size_t Compiler::currentCodePos() const { return compilingChunk.code.size(); };
+size_t Compiler::emitJump(vm::OPCODE op, uint32_t line, uint32_t column) {
+    emitOp(op, line, column);
+    size_t patch_pos = currentCodePos();
+    emitByte(0xFF, line, column);
+    emitByte(0xFF, line, column);
+    return patch_pos;
+};
+void Compiler::patchJump(size_t patch_pos, size_t target_pos) {
+    size_t base = patch_pos + 2;
+    if (target_pos < base) {
+        reportError(0, 0, "Invalid forward jump target");
+        return;
+    }
+
+    size_t offset = target_pos - base;
+    if (offset > 0XFFFF) {
+        reportError(0, 0, "Jumpoffest too large.");
+        return;
+    }
+    compilingChunk.code[patch_pos] = static_cast<uint8_t>((offset >> 8) & 0xFF);
+    compilingChunk.code[patch_pos + 1] = static_cast<uint8_t>(offset & 0xFF);
+};
+void Compiler::emitLoopBack(vm::OPCODE op, size_t target_pos, uint32_t line, uint32_t column) {
+    emitOp(op, line, column);
+    size_t base = currentCodePos() + 2;
+    if (base < target_pos) {
+        reportError(line, column, "Invalid backward jump target.");
+        emitByte(0, line, column);
+        emitByte(0, line, column);
+        return;
+    }
+
+    size_t offset = base - target_pos;
+    if (offset > 0xFFFF) {
+        reportError(line, column, "Loop jump offset too large.");
+        emitByte(0, line, column);
+        emitByte(0, line, column);
+        return;
+    }
+
+    emitByte(static_cast<uint8_t>((offset >> 8) & 0xFF), line, column);
+    emitByte(static_cast<uint8_t>(offset & 0xFF), line, column);
+};
+
+void Compiler::beginLoop(size_t start_pos) { loop_stack.push_back({start_pos, {}, {}}); };
+void Compiler::addBreakPatch(size_t patch_pos, uint32_t line, uint32_t column) {
+    if (loop_stack.empty()) {
+        reportError(line, column, "break outside loop.");
+        return;
+    }
+    loop_stack.back().break_patches.push_back(patch_pos);
+};
+void Compiler::addContinuePatch(size_t patch_pos, uint32_t line, uint32_t column) {
+    if (loop_stack.empty()) {
+        reportError(line, column, "continue outside loop.");
+        return;
+    }
+    loop_stack.back().continue_patches.push_back(patch_pos);
+};
+void Compiler::endLoop(size_t loop_end_pos) {
+    if (loop_stack.empty()) {
+        return;
+    }
+    LoopContext ctx = loop_stack.back();
+    loop_stack.pop_back();
+
+    for (size_t p : ctx.continue_patches) {
+        patchJump(p, ctx.start_pos);
+        for (size_t p : ctx.break_patches) {
+            patchJump(p, loop_end_pos);
+        }
+    }
+};
 //---字节码发射器---
 void Compiler::emitByte(uint8_t byte, uint32_t line, uint32_t column) {
     compilingChunk.code.push_back(byte);
