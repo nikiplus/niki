@@ -2,6 +2,7 @@
 #include "niki/syntax/compiler.hpp"
 #include "niki/vm/opcode.hpp"
 #include "niki/vm/value.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <span>
@@ -99,6 +100,27 @@ ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
         break;
     case TokenType::SYM_GREATER_EQUAL:
         emitOp(vm::OPCODE::OP_IGE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_AND:
+        emitOp(vm::OPCODE::OP_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_OR:
+        emitOp(vm::OPCODE::OP_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_BIT_AND:
+        emitOp(vm::OPCODE::OP_BIT_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_BIT_OR:
+        emitOp(vm::OPCODE::OP_BIT_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_BIT_XOR:
+        emitOp(vm::OPCODE::OP_BIT_XOR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_BIT_SHL:
+        emitOp(vm::OPCODE::OP_BIT_SHL, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_BIT_SHR:
+        emitOp(vm::OPCODE::OP_BIT_SHR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     default:
         reportError(line, column, "Unknown binary operator.");
@@ -281,22 +303,33 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
     std::vector<ExprResult> argTemps;
     argTemps.reserve(argNodes.size());
 
-    // 按源码顺序逐个编译参数，保证副作用顺序一致，并且寄存器是连续分配的。
-    for (ASTNodeIndex argNode : argNodes) {
-        argTemps.push_back(compileExpression(argNode));
+    // --- 核心修复：强制分配连续的物理寄存器作为参数窗口 ---
+    // 为了保证传递给被调用者的参数寄存器是绝对连续的（base+0, base+1, base+2...），
+    // 我们必须预先分配这些连续的槽位，然后将表达式的计算结果 MOVE 进去，
+    // 而不是让表达式随意返回散落各处的旧局部变量寄存器。
+    std::vector<uint8_t> contiguous_arg_regs;
+    for (size_t i = 0; i < argNodes.size(); ++i) {
+        contiguous_arg_regs.push_back(regAlloc.allocate());
     }
-
+    // 按源码顺序逐个编译参数，并将其结果搬运（MOVE）到我们刚刚分配的连续寄存器中
+    for (size_t i = 0; i < argNodes.size(); ++i) {
+        ExprResult res = compileExpression(argNodes[i]);
+        if (res.reg != contiguous_arg_regs[i]) {
+            emitOp(vm::OPCODE::OP_MOVE, contiguous_arg_regs[i], res.reg, line, column);
+        }
+        freeIfTemp(res);
+    }
     uint8_t outReg = regAlloc.allocate();
-    // 此时 calleeRes.reg 和连续的 argTemps 都已经就位了。
-    // 我们只需要把第一个参数的寄存器告诉 VM，VM 就能顺藤摸瓜读取所有的参数（因为它们是连续的）
-    uint8_t argStartReg = argTemps.empty() ? 0 : argTemps[0].reg;
+    // 参数窗口的起始物理地址就是我们预分配的第一个连续寄存器
+    uint8_t argStartReg = contiguous_arg_regs.empty() ? 0 : contiguous_arg_regs[0];
 
     emitOp(vm::OPCODE::OP_CALL, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()), line,
            column);
 
     freeIfTemp(calleeRes);
-    for (const ExprResult &res : argTemps) {
-        freeIfTemp(res);
+    // 调用结束后，清理为参数窗口分配的临时连续寄存器
+    for (uint8_t reg : contiguous_arg_regs) {
+        regAlloc.free(reg);
     }
 
     return {outReg, true};

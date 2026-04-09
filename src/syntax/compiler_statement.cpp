@@ -137,7 +137,10 @@ void Compiler::compileVarDeclStmt(ASTNodeIndex nodeIdx) {
     }
 }
 
-void Compiler::compileConstDeclStmt(ASTNodeIndex nodeIdx) {}
+void Compiler::compileConstDeclStmt(ASTNodeIndex nodeIdx) {
+    // MVP 阶段：复用变量声明的逻辑（未来可以在语义检查期强制不可变性）
+    compileVarDeclStmt(nodeIdx);
+}
 
 void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
     const ASTNode &node = currentPool->getNode(stmtIdx);

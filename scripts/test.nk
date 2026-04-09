@@ -1,8 +1,51 @@
-func add(x, y) {
-    return x + y;
+// 1. 变量与常量声明
+var a = 10;
+const b = 20;
+var c = a + b;//30
+
+// 2. 算术运算与一元操作
+var d = (c * 2 - 5) / 5; // 结果应该是 (30 * 2 - 5) / 5 = 55 / 5 = 11
+var e = -d;              // 结果应该是 -11
+
+// 3. 布尔逻辑与比较运算
+var is_greater = c > d;  // 30 > 11 -> true
+var is_equal = (a == 10); // true
+var logic_and = is_greater && is_equal; // true && true = true
+var logic_or = !is_greater || false;    // false || false = false
+
+// 3.5. 位运算
+var bit_and = a & b;     // 10 (1010) & 20 (10100) = 0
+var bit_or = a | b;      // 10 (1010) | 20 (10100) = 30 (11110)
+var bit_xor = a ^ b;     // 10 (1010) ^ 20 (10100) = 30 (11110)
+var bit_shl = a << 1;    // 10 << 1 = 20
+var bit_shr = b >> 1;    // 20 >> 1 = 10
+
+// 4. 控制流：If-Else
+var f = 0;
+if (is_greater) {
+    f = 100;
+} else {
+    f = 200;
 }
 
-var a = 10;
-var b = 20;
-var c = add(a, b);
-return c;
+// 5. 控制流：Loop 循环
+var counter = 0;
+var sum = 0;
+loop (counter < 5) {
+    sum = sum + counter; // 0 + 1 + 2 + 3 + 4 = 10
+    counter = counter + 1;
+}
+
+// 6. 函数声明与调用
+// 架构限制：目前 VM 的滑动寄存器窗口是绝对物理隔离的。
+// 我们尚未实现全局符号表 (Global Table) 或闭包捕获 (Upvalues)，
+// 因此函数内部无法读取外层作用域的变量（如 sum）或外层声明的函数（如 multiply）。
+// 必须通过传参来跨越寄存器窗口的物理边界。
+func calculate_total(base, multiplier, offset) {
+    var temp = base * multiplier;
+    return temp + offset; 
+}
+
+var final_result = calculate_total(f, 2, sum); // 100 * 2 + 10 = 210
+
+return final_result;

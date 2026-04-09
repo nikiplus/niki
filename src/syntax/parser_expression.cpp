@@ -263,7 +263,12 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     case TokenType::SYM_LESS:
     case TokenType::SYM_LESS_EQUAL:
     case TokenType::SYM_AND:
-    case TokenType::SYM_OR: {
+    case TokenType::SYM_OR:
+    case TokenType::SYM_BIT_AND:
+    case TokenType::SYM_BIT_OR:
+    case TokenType::SYM_BIT_XOR:
+    case TokenType::SYM_BIT_SHL:
+    case TokenType::SYM_BIT_SHR: {
         payload.binary.op = type;
         payload.binary.left = left;
         Precedence precedence = getPrecedence(type);
@@ -312,6 +317,13 @@ Precedence Parser::getPrecedence(TokenType type) const {
         return Precedence::Or;
     case TokenType::SYM_AND:
         return Precedence::And;
+        
+    case TokenType::SYM_BIT_OR:
+        return Precedence::BitOr;
+    case TokenType::SYM_BIT_XOR:
+        return Precedence::BitXor;
+    case TokenType::SYM_BIT_AND:
+        return Precedence::BitAnd;
 
     case TokenType::SYM_EQUAL_EQUAL:
     case TokenType::SYM_BANG_EQUAL:
@@ -322,6 +334,10 @@ Precedence Parser::getPrecedence(TokenType type) const {
     case TokenType::SYM_LESS:
     case TokenType::SYM_LESS_EQUAL:
         return Precedence::Comparison;
+        
+    case TokenType::SYM_BIT_SHL:
+    case TokenType::SYM_BIT_SHR:
+        return Precedence::Shift;
 
     case TokenType::SYM_PLUS:
     case TokenType::SYM_MINUS:

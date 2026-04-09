@@ -128,6 +128,158 @@ InterpretResult VM::run() {
                 Value::makeInt(currentRegisters()[leftReg].as.integer / currentRegisters()[rightReg].as.integer);
             break;
         }
+        case OPCODE::OP_IMOD: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            if (currentRegisters()[rightReg].as.integer == 0) {
+                runtime_error("Modulo by zero.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] =
+                Value::makeInt(currentRegisters()[leftReg].as.integer % currentRegisters()[rightReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_NEG: {
+            uint8_t targetReg = readByte();
+            uint8_t srcReg = readByte();
+            if (currentRegisters()[srcReg].type != ValueType::Integer) {
+                runtime_error("Operand must be a number.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] = Value::makeInt(-currentRegisters()[srcReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_NOT: {
+            uint8_t targetReg = readByte();
+            uint8_t srcReg = readByte();
+            Value val = currentRegisters()[srcReg];
+            bool is_false = false;
+            if (val.type == ValueType::Nil) is_false = true;
+            else if (val.type == ValueType::Bool) is_false = !val.as.boolean;
+            else if (val.type == ValueType::Integer) is_false = (val.as.integer == 0);
+            
+            currentRegisters()[targetReg] = Value::makeBool(is_false);
+            break;
+        }
+        case OPCODE::OP_BIT_NOT: {
+            uint8_t targetReg = readByte();
+            uint8_t srcReg = readByte();
+            if (currentRegisters()[srcReg].type != ValueType::Integer) {
+                runtime_error("Operand must be an integer.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] = Value::makeInt(~currentRegisters()[srcReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_BIT_AND: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+                runtime_error("Operands must be integers.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer & currentRegisters()[rightReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_BIT_OR: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+                runtime_error("Operands must be integers.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer | currentRegisters()[rightReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_BIT_XOR: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+                runtime_error("Operands must be integers.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer ^ currentRegisters()[rightReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_BIT_SHL: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+                runtime_error("Operands must be integers.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer << currentRegisters()[rightReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_BIT_SHR: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+                runtime_error("Operands must be integers.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer >> currentRegisters()[rightReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_TRUE: {
+            uint8_t targetReg = readByte();
+            currentRegisters()[targetReg] = Value::makeBool(true);
+            break;
+        }
+        case OPCODE::OP_FALSE: {
+            uint8_t targetReg = readByte();
+            currentRegisters()[targetReg] = Value::makeBool(false);
+            break;
+        }
+        case OPCODE::OP_NIL: {
+            uint8_t targetReg = readByte();
+            currentRegisters()[targetReg] = Value::makeNil();
+            break;
+        }
+        case OPCODE::OP_AND: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            
+            Value left = currentRegisters()[leftReg];
+            Value right = currentRegisters()[rightReg];
+            
+            bool l_bool = false;
+            if (left.type == ValueType::Bool) l_bool = left.as.boolean;
+            else if (left.type == ValueType::Integer) l_bool = (left.as.integer != 0);
+            
+            bool r_bool = false;
+            if (right.type == ValueType::Bool) r_bool = right.as.boolean;
+            else if (right.type == ValueType::Integer) r_bool = (right.as.integer != 0);
+
+            currentRegisters()[targetReg] = Value::makeBool(l_bool && r_bool);
+            break;
+        }
+        case OPCODE::OP_OR: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            
+            Value left = currentRegisters()[leftReg];
+            Value right = currentRegisters()[rightReg];
+            
+            bool l_bool = false;
+            if (left.type == ValueType::Bool) l_bool = left.as.boolean;
+            else if (left.type == ValueType::Integer) l_bool = (left.as.integer != 0);
+            
+            bool r_bool = false;
+            if (right.type == ValueType::Bool) r_bool = right.as.boolean;
+            else if (right.type == ValueType::Integer) r_bool = (right.as.integer != 0);
+
+            currentRegisters()[targetReg] = Value::makeBool(l_bool || r_bool);
+            break;
+        }
         // int == int
         case OPCODE::OP_IEQ: {
             uint8_t targetReg = readByte();

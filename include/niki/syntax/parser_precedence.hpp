@@ -10,8 +10,12 @@ enum class Precedence : uint8_t {
     None,       // 0
     Or,         // ||
     And,        // &&
+    BitOr,      // |
+    BitXor,     // ^
+    BitAnd,     // &
     Equality,   // == !=
     Comparison, // < > <= >=
+    Shift,      // << >>
     Term,       // + -
     Factor,     // * / %
     Unary,      // - !
