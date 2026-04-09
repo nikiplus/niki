@@ -5,7 +5,10 @@
 #include "niki/syntax/token.hpp"
 #include "niki/vm/vm.hpp"
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -37,6 +40,11 @@ void runRepl() {
         niki::syntax::Parser parser(line, tokens, pool);
         auto rootNode = parser.parse();
 
+        if (parser.hasError()) {
+            std::cerr << "Syntax Error: Parsing failed.\n";
+            continue;
+        }
+
         niki::syntax::Compiler compiler;
         auto chunkResult = compiler.compile(pool, rootNode);
 
@@ -51,7 +59,64 @@ void runRepl() {
         vm.interpret(chunkResult.value());
     }
 }
-int main() {
-    runRepl();
+void runFile(const std::string &path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Could not open file." << path << "\n";
+        exit(74); // IO错误（文件打不开）
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+
+    niki::vm::VM vm;
+    niki::syntax::Scanner scanner(source);
+    std::vector<niki::syntax::Token> tokens;
+    while (true) {
+        auto token = scanner.scanToken();
+        tokens.push_back(token);
+        if (token.type == niki::syntax::TokenType::TOKEN_EOF || token.type == niki::syntax::TokenType::TOKEN_ERROR) {
+            break;
+        }
+    }
+    niki::syntax::ASTPool pool;
+    niki::syntax::Parser parser(source, tokens, pool);
+    auto rootNode = parser.parse();
+
+    if (parser.hasError()) {
+        std::cerr << "Syntax Error: Parsing failed.\n";
+        exit(65); // EX_DATAERR
+    }
+
+    niki::syntax::Compiler compiler;
+    auto chunkResult = compiler.compile(pool, rootNode);
+
+    if (!chunkResult.has_value()) {
+        std::cerr << "Compile Error:\n";
+        for (const auto &err : chunkResult.error().errors) {
+            std::cerr << " [line" << err.line << ", column " << err.column << "] " << err.message << "\n";
+        }
+        exit(65); // 数据格式错误（对应我们的 编译期语法错误 ）
+    }
+
+    auto result = vm.interpret(chunkResult.value());
+    if (result == niki::vm::InterpretResult::RUNTIME_ERROR) {
+        exit(70); // 内部软件错误（对应我们的 VM运行时错误 ）
+    }
+}
+/*- argc == 1 ：没有参数，启动 REPL 模式。
+- argc == 2 ：传入了文件路径，读取整个文件内容，走一次完整的编译执行流（ runFile ）。
+- argc > 2 ：抛出 Usage 错误并退出。
+*/
+int main(int argc, char *argv[]) {
+    if (argc == 1) {
+        runRepl();
+    } else if (argc == 2) {
+        runFile(argv[1]);
+    } else {
+        std::cerr << "Usage :niki[path]\n";
+        exit(64); // 用法错误（命令行参数不对）
+    }
+
     return 0;
 }

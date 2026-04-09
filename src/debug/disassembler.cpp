@@ -109,6 +109,8 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
     // === [JmpExpr] 跳转指令 (待定字节宽度，通常是 Op + Offset) ===
     case OPCODE::OP_JMP:
         return jumpInstruction("OP_JMP", 1, chunk, offset);
+    case OPCODE::OP_LOOP:
+        return jumpInstruction("OP_LOOP", -1, chunk, offset);
     case OPCODE::OP_JNZ:
         return jumpInstruction("OP_JNZ", 1, chunk, offset);
     case OPCODE::OP_JZ:

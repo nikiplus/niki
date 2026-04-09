@@ -16,6 +16,8 @@ class Parser {
     Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool);
     ASTNodeIndex parse();
 
+    bool hasError() const { return hadError; }
+
   private:
     std::string_view source; // 获取字节源
     std::span<const Token> tokens;

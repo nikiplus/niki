@@ -92,6 +92,7 @@ enum class OPCODE : uint8_t {
     // [JmpExpr]跳转指令（JMP, JNZ, JZ）
     __JMP_START, // 跳转指令开始
     OP_JMP,      // 跳转指令
+    OP_LOOP,     // 循环跳转指令（后向跳跃）
     OP_JNZ,      // 如果条件不为零则跳转指令(即为真时跳转)
     OP_JZ,       // 如果条件为零则跳转指令(即为假时跳转)
     __JMP_END,   // 跳转指令结束

@@ -1,5 +1,8 @@
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
+#include "niki/vm/opcode.hpp"
+#include <cstddef>
+#include <cstdint>
 #include <span>
 
 namespace niki::syntax {
@@ -27,6 +30,18 @@ void Compiler::compileStatement(ASTNodeIndex stmtIdx) {
         break;
     case NodeType::BlockStmt:
         compileBlockStmt(stmtIdx);
+        break;
+    case NodeType::IfStmt:
+        compileIfStmt(stmtIdx);
+        break;
+    case NodeType::LoopStmt:
+        compileLoopStmt(stmtIdx);
+        break;
+    case NodeType::BreakStmt:
+        compileBreakStmt(stmtIdx);
+        break;
+    case NodeType::ReturnStmt:
+        compileReturnStmt(stmtIdx);
         break;
     // ... 可以根据需要补充更多case
     default:
@@ -136,14 +151,99 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
 }
 
 // 控制流
-void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {}
-void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {}
+void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+
+    ExprResult condRes = compileExpression(node.payload.if_stmt.condition);
+
+    size_t jzPatchPos = emitJump(vm::OPCODE::OP_JZ, condRes.reg, line, column);
+
+    freeIfTemp(condRes);
+
+    compileStatement(node.payload.if_stmt.then_branch);
+
+    if (node.payload.if_stmt.else_branch.isvalid()) {
+        size_t jmpEndPatchPos = emitJump(vm::OPCODE::OP_JMP, line, column);
+
+        patchJump(jzPatchPos, compilingChunk.code.size());
+
+        compileStatement(node.payload.if_stmt.else_branch);
+        patchJump(jmpEndPatchPos, compilingChunk.code.size());
+    } else {
+        patchJump(jzPatchPos, compilingChunk.code.size());
+    }
+}
+
+void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+
+    size_t loopStart = currentCodePos();
+    size_t exitPatch = static_cast<size_t>(-1);
+    loop_stack.push_back(LoopContext{loopStart, {}});
+
+    if (node.payload.loop.condition.isvalid()) {
+        ExprResult condRes = compileExpression(node.payload.loop.condition);
+
+        exitPatch = emitJump(vm::OPCODE::OP_JZ, condRes.reg, line, column);
+        freeIfTemp(condRes);
+    }
+    compileStatement(node.payload.loop.body);
+
+    emitLoopBack(vm::OPCODE::OP_LOOP, loopStart, line, column);
+    if (exitPatch != static_cast<size_t>(-1)) {
+        patchJump(exitPatch, currentCodePos());
+    }
+    size_t loopEnd = currentCodePos();
+    LoopContext &ctx = loop_stack.back();
+
+    for (size_t p : ctx.break_patches) {
+        patchJump(p, loopEnd);
+    }
+
+    loop_stack.pop_back(); // 修复泄漏：必须出栈，保证状态对称
+}
 void Compiler::compileMatchStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileMatchCaseStmt(ASTNodeIndex nodeIdx) {}
 // 跳转与中断
-void Compiler::compileContinueStmt(ASTNodeIndex nodeIdx) {}
-void Compiler::compileBreakStmt(ASTNodeIndex nodeIdx) {}
-void Compiler::compileReturnStmt(ASTNodeIndex nodeIdx) {}
+void Compiler::compileContinueStmt(ASTNodeIndex nodeIdx) {
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    if (loop_stack.empty()) {
+        reportError(line, column, "continue outside loop.");
+        return;
+    }
+    // 目标地址已知，直接发射后向跳跃，拒绝冗余分配
+    emitLoopBack(vm::OPCODE::OP_LOOP, loop_stack.back().start_pos, line, column);
+}
+void Compiler::compileBreakStmt(ASTNodeIndex nodeIdx) {
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    if (loop_stack.empty()) {
+        reportError(line, column, "break outside loop.");
+        return;
+    }
+
+    size_t patch = emitJump(vm::OPCODE::OP_JMP, line, column);
+    loop_stack.back().break_patches.push_back(patch);
+}
+void Compiler::compileReturnStmt(ASTNodeIndex nodeIdx) {
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+
+    if (node.payload.return_stmt.expression.isvalid()) {
+        ExprResult res = compileExpression(node.payload.return_stmt.expression);
+        // 将返回值搬运到 0 号寄存器，作为当前约定的返回值存储位置
+        emitOp(vm::OPCODE::OP_MOVE, 0, res.reg, line, column);
+        freeIfTemp(res);
+    }
+
+    emitOp(vm::OPCODE::OP_RETURN, line, column);
+}
 void Compiler::compileNockStmt(ASTNodeIndex nodeIdx) {}
 
 // 组件挂载与卸载

@@ -94,6 +94,12 @@ ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
     case TokenType::SYM_LESS:
         emitOp(vm::OPCODE::OP_ILT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
+    case TokenType::SYM_LESS_EQUAL:
+        emitOp(vm::OPCODE::OP_ILE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_GREATER_EQUAL:
+        emitOp(vm::OPCODE::OP_IGE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
     default:
         reportError(line, column, "Unknown binary operator.");
         break;

@@ -242,7 +242,14 @@ ASTNodeIndex Parser::parseBreakStmt() {
 ASTNodeIndex Parser::parseReturnStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
-    consume(TokenType::SYM_COLON, "Expected ';' after 'return'.");
+    
+    if (check(TokenType::SYM_SEMICOLON)) {
+        payload.return_stmt.expression = ASTNodeIndex::invalid();
+    } else {
+        payload.return_stmt.expression = parseExpression(Precedence::None);
+    }
+    
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after 'return'.");
     return emitNode(NodeType::ReturnStmt, payload, startToken);
 }
 ASTNodeIndex Parser::parseNockStmt() {

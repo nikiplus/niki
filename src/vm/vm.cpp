@@ -95,10 +95,109 @@ InterpretResult VM::run() {
             registers[targetReg] = Value::makeInt(registers[leftReg].as.integer / registers[rightReg].as.integer);
             break;
         }
+        // int == int
+        case OPCODE::OP_IEQ: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+
+            registers[targetReg] = Value::makeBool(registers[leftReg].as.integer == registers[rightReg].as.integer);
+            break;
+        }
+
+        // int != int
+        case OPCODE::OP_INE: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            registers[targetReg] = Value::makeBool(registers[leftReg].as.integer != registers[rightReg].as.integer);
+            break;
+        }
+        // int < int
+        case OPCODE::OP_ILT: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            registers[targetReg] = Value::makeBool(registers[leftReg].as.integer < registers[rightReg].as.integer);
+            break;
+        }
+        // int > int
+        case OPCODE::OP_IGT: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            registers[targetReg] = Value::makeBool(registers[leftReg].as.integer > registers[rightReg].as.integer);
+            break;
+        }
+        // int <= int
+        case OPCODE::OP_ILE: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            registers[targetReg] = Value::makeBool(registers[leftReg].as.integer <= registers[rightReg].as.integer);
+            break;
+        }
+        // int >= int
+        case OPCODE::OP_IGE: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            registers[targetReg] = Value::makeBool(registers[leftReg].as.integer >= registers[rightReg].as.integer);
+            break;
+        }
         case OPCODE::OP_RETURN: {
             // 打印出寄存器 0 的值，代表程序的最终计算结果。
             std::cout << ">>> Expr Result: " << registers[0].as.integer << "\n";
             return InterpretResult::OK;
+        }
+        case OPCODE::OP_JMP: {
+            uint16_t offset = readShort();
+            ip += offset;
+            break;
+        }
+        case OPCODE::OP_LOOP: {
+            uint16_t offset = readShort();
+            ip -= offset;
+            break;
+        }
+        case OPCODE::OP_JZ: {
+            uint8_t condReg = readByte();
+            uint16_t offest = readShort();
+
+            bool is_false = false;
+            if (registers[condReg].type == ValueType::Bool) {
+                is_false = !registers[condReg].as.boolean;
+            } else if (registers[condReg].type == ValueType::Integer) {
+                is_false = (registers[condReg].as.integer == 0);
+            } else if (registers[condReg].type == ValueType::Nil) {
+                is_false = true;
+            }
+
+            if (is_false) {
+                ip += offest;
+            }
+            break;
+        }
+        case OPCODE::OP_JNZ: {
+            uint8_t condReg = readByte();
+            uint16_t offest = readShort();
+
+            bool is_true = false;
+
+            if (registers[condReg].type == ValueType::Bool) {
+                is_true = !registers[condReg].as.boolean;
+            } else if (registers[condReg].type == ValueType::Integer) {
+                is_true = (registers[condReg].as.integer == 0);
+            } else if (registers[condReg].type == ValueType::Nil) {
+                is_true = false;
+            } else {
+                is_true = is_true;
+            }
+
+            if (is_true) {
+                ip += offest;
+            }
+            break;
         }
         default:
             runtime_error("Unknown opcode.");

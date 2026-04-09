@@ -84,12 +84,12 @@ class Compiler {
     std::vector<CompileError> errorPool;
     RegisterAllocator regAlloc;
     std::vector<Local> locals;
+
     int scopeDepth = 0;
 
     struct LoopContext {
         size_t start_pos;
         std::vector<size_t> break_patches;
-        std::vector<size_t> continue_patches;
     };
 
     std::vector<LoopContext> loop_stack;
@@ -121,12 +121,12 @@ class Compiler {
 
     size_t currentCodePos() const;
     size_t emitJump(vm::OPCODE op, uint32_t line, uint32_t column);
+    size_t emitJump(vm::OPCODE op, uint8_t condReg, uint32_t line, uint32_t column);
     void patchJump(size_t patch_pos, size_t target_pos);
     void emitLoopBack(vm::OPCODE op, size_t target_pos, uint32_t line, uint32_t column);
 
     void beginLoop(size_t start_pos);
     void addBreakPatch(size_t patch_pos, uint32_t line, uint32_t column);
-    void addContinuePatch(size_t patch_pos, uint32_t line, uint32_t column);
     void endLoop(size_t loop_end_pos);
 
     //---字节码发射器---
