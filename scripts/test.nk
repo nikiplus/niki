@@ -1,5 +1,8 @@
-var a = 0;
-loop (a < 5) {
-    a = a + 1;
+func add(x, y) {
+    return x + y;
 }
-return a;
+
+var a = 10;
+var b = 20;
+var c = add(a, b);
+return c;

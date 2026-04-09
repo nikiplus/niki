@@ -5,6 +5,7 @@
 #include "niki/vm/opcode.hpp"
 #include "niki/vm/value.hpp"
 #include <cstdint>
+#include <deque>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -1205,7 +1206,11 @@ struct ASTPool {
     std::vector<ImplData> impl_data;         // Impl实现数据
     std::vector<KitsData> kits_data;
     std::vector<MapData> map_data; // Map字典数据
-    std::vector<std::string> string_pool;
+
+    // 使用 std::deque 替代 std::vector 来存储字符串。
+    // std::deque 在向两端添加元素时，不会使现有的引用或指针失效。
+    // 这样，string_to_id 里面存储的 std::string_view 就能永远安全地指向底层字符串内存！
+    std::deque<std::string> string_pool;
     std::unordered_map<std::string_view, uint32_t> string_to_id;
 
     // 我们使用std::span提供了一个get_list方法，为的是方便我们获取一个列表的所有元素索引，这在我们需要遍历一个列表时非常方便。

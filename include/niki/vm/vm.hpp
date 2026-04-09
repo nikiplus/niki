@@ -1,5 +1,6 @@
 #pragma once
 #include "niki/vm/chunk.hpp"
+#include "niki/vm/object.hpp"
 #include "niki/vm/value.hpp"
 #include <array>
 #include <cstdint>
@@ -8,6 +9,15 @@
 #include <vector>
 
 namespace niki::vm {
+
+// 调用栈帧
+struct CallFrame {
+    ObjFunction *function; // 当前正在执行的函数
+    uint8_t *ip;           // 指令指针
+    size_t base_register;  // 当前帧在全局栈中的起始偏移量（物理寄存器的零点）
+    uint8_t out_register;  // Caller 指定的返回值存放寄存器
+};
+
 enum class InterpretResult {
     OK,
     COMPILE_ERROR,
@@ -20,13 +30,16 @@ class VM {
     InterpretResult interpret(const Chunk &chunk);
 
   private:
-    const Chunk *currentChunk = nullptr;
-    uint8_t *ip = nullptr; // Instruction Pointer
-    uint8_t *instructionStart = nullptr;
+    std::array<Value, 8192> stack{}; // 全局物理大栈
+    std::vector<CallFrame> frames;   // 调用栈帧，通常最大深度为 64 或 256
 
-    std::array<Value, 256> registers{};
+    // 当前正在执行的栈帧快捷引用
+    CallFrame *currentFrame = nullptr;
 
-    uint8_t readByte() { return *ip++; };
+    // 快捷访问当前帧的寄存器 0 的物理地址
+    Value *currentRegisters() { return &stack[currentFrame->base_register]; }
+
+    uint8_t readByte() { return *(currentFrame->ip)++; };
     /*画个图来理解readShort
     startip(s) = 0
     currentip(C) = startip+2
@@ -77,11 +90,11 @@ class VM {
     符合人类从左到右阅读的直觉，极大降低 Debug 认知负担。
     */
     uint16_t readShort() {
-        ip += 2;
-        return static_cast<uint16_t>((ip[-2] << 8) | ip[-1]);
+        currentFrame->ip += 2;
+        return static_cast<uint16_t>((currentFrame->ip[-2] << 8) | currentFrame->ip[-1]);
     }
 
-    Value readConstant(uint8_t index) { return currentChunk->constants[index]; };
+    Value readConstant(uint8_t index) { return currentFrame->function->chunk.constants[index]; };
 
     void runtime_error(const char *format, ...);
 

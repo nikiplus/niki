@@ -167,12 +167,12 @@ void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
     if (node.payload.if_stmt.else_branch.isvalid()) {
         size_t jmpEndPatchPos = emitJump(vm::OPCODE::OP_JMP, line, column);
 
-        patchJump(jzPatchPos, compilingChunk.code.size());
+        patchJump(jzPatchPos, compilingChunk->code.size());
 
         compileStatement(node.payload.if_stmt.else_branch);
-        patchJump(jmpEndPatchPos, compilingChunk.code.size());
+        patchJump(jmpEndPatchPos, compilingChunk->code.size());
     } else {
-        patchJump(jzPatchPos, compilingChunk.code.size());
+        patchJump(jzPatchPos, compilingChunk->code.size());
     }
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 #include "ast.hpp"
 #include "niki/vm/chunk.hpp"
+#include "niki/vm/object.hpp"
 #include "niki/vm/opcode.hpp"
 #include "niki/vm/value.hpp"
 #include "token.hpp"
@@ -79,7 +80,10 @@ class Compiler {
 
   private:
     const ASTPool *currentPool = nullptr;
-    niki::Chunk compilingChunk; // 编译器自己持有这个篮子
+    // 当前正在编译的函数对象和对应的Chunk。
+    // 在 MVP 中我们用指针，方便嵌套编译时随时切换上下文
+    niki::vm::ObjFunction *compilingFunction = nullptr; // 当前正在编译的函数对象
+    niki::Chunk *compilingChunk = nullptr;              // 当前正在填充的字节码块
     bool hadError = false;
     std::vector<CompileError> errorPool;
     RegisterAllocator regAlloc;
@@ -128,13 +132,27 @@ class Compiler {
     void beginLoop(size_t start_pos);
     void addBreakPatch(size_t patch_pos, uint32_t line, uint32_t column);
     void endLoop(size_t loop_end_pos);
+    //---编译上下文管理---
+    // 用于保存/恢复编译状态，以支持嵌套函数编译。
+    struct CompilerContext {
+        niki::vm::ObjFunction *function;
+        niki::Chunk *chunk;
+        RegisterAllocator regAlloc;
+        std::vector<Local> locals;
+        int scopeDepth;
+        std::vector<LoopContext> loop_stack;
+    };
+    std::vector<CompilerContext> contextStack;
 
+    void pushContext(niki::vm::ObjFunction *func);
+    CompilerContext popContext();
     //---字节码发射器---
     void emitByte(uint8_t byte, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t a, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint32_t line, uint32_t column);
+    void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint32_t line, uint32_t column);
     void emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column);
 
     //---AST遍历核心(Visitor)---

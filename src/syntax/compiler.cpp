@@ -2,6 +2,8 @@
 #include "niki/syntax/ast.hpp"
 
 #include "niki/syntax/token.hpp"
+#include "niki/vm/chunk.hpp"
+#include "niki/vm/object.hpp"
 #include "niki/vm/opcode.hpp"
 #include "niki/vm/value.hpp"
 #include <algorithm>
@@ -11,6 +13,7 @@
 #include <expected>
 #include <span>
 #include <string>
+#include <utility>
 
 namespace niki::syntax {
 
@@ -23,31 +26,67 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
     currentPool = &pool;
     hadError = false;
     errorPool.clear();
-    regAlloc.reset();
-    locals.clear();
-    scopeDepth = 0;
-    // 核心动作：把外部传进来的（可能已经 reserve 过内存的）Chunk
-    // 移动（Move）到编译器内部。这里没有任何深拷贝，只有指针的转移。
-    compilingChunk = std::move(initial_chunk);
-    // 确保它是干净的，但保留了其底层 capacity
-    compilingChunk.code.clear();
-    compilingChunk.constants.clear();
 
+    // 移动（move）到编译器内部。我们将其封装在一个顶层objfunction中
+    niki::vm::ObjFunction *topLevelFunc = new niki::vm::ObjFunction();
+    niki::vm::ObjFunction();
+    topLevelFunc->name = "<script>";
+    topLevelFunc->chunk = std::move(initial_chunk);
+    topLevelFunc->chunk.code.clear();
+    topLevelFunc->chunk.constants.clear();
+    pushContext(topLevelFunc);
     // 执行编译...
     compileNode(root);
     emitOp(vm::OPCODE::OP_RETURN, 0, 0);
-
+    CompilerContext topContext = popContext();
     currentPool = nullptr;
 
     if (hadError) {
-        // 如果失败，这个 compilingChunk 就随风消散了，它的内存会被正常回收。
+        delete topContext.function;
         return std::unexpected(CompileResultError{std::move(errorPool)});
     }
 
     // 编译成功！再次通过 Move 语义，把填满数据的 Chunk 移交出去。
-    return std::move(compilingChunk);
+    niki::Chunk final_chunk = std::move(topContext.function->chunk);
+    delete topContext.function;
+    return std::move(final_chunk);
 }
 
+void Compiler::pushContext(niki::vm::ObjFunction *func) {
+    // 保存当前状态（若有）
+    if (compilingFunction != nullptr) {
+        contextStack.push_back({compilingFunction, compilingChunk, regAlloc, locals, scopeDepth, loop_stack});
+    }
+    // 切换到新上下文
+    compilingFunction = func;
+    compilingChunk = &func->chunk;
+
+    // 初始化新状态
+    regAlloc.reset();
+    locals.clear();
+    scopeDepth = 0;
+    loop_stack.clear();
+}
+
+Compiler::CompilerContext Compiler::popContext() {
+    CompilerContext current{compilingFunction, compilingChunk, regAlloc, locals, scopeDepth, loop_stack};
+    if (!contextStack.empty()) {
+        // 恢复上层状态
+        CompilerContext parent = contextStack.back();
+        contextStack.pop_back();
+
+        compilingFunction = parent.function;
+        compilingChunk = parent.chunk;
+        regAlloc = parent.regAlloc;
+        locals = parent.locals;
+        scopeDepth = parent.scopeDepth;
+        loop_stack = parent.loop_stack;
+    } else {
+        compilingFunction = nullptr;
+        compilingChunk = nullptr;
+    }
+    return current;
+}
 //---辅助函数---
 void Compiler::freeIfTemp(const ExprResult &res) {
     if (res.is_temp) {
@@ -56,9 +95,9 @@ void Compiler::freeIfTemp(const ExprResult &res) {
 }
 
 uint16_t Compiler::makeConstant(vm::Value value, uint32_t line, uint32_t column) {
-    compilingChunk.constants.push_back(value);
+    compilingChunk->constants.push_back(value);
 
-    size_t index = compilingChunk.constants.size() - 1;
+    size_t index = compilingChunk->constants.size() - 1;
 
     if (index > 65535) {
         reportError(line, column, "Too many constants in one chunk.");
@@ -86,7 +125,7 @@ uint8_t Compiler::resolveLocal(uint32_t name_id, uint32_t line, uint32_t column)
 }
 //---跳转相关---
 
-size_t Compiler::currentCodePos() const { return compilingChunk.code.size(); };
+size_t Compiler::currentCodePos() const { return compilingChunk->code.size(); };
 size_t Compiler::emitJump(vm::OPCODE op, uint32_t line, uint32_t column) {
     emitOp(op, line, column);
     size_t patch_pos = currentCodePos();
@@ -113,8 +152,8 @@ void Compiler::patchJump(size_t patch_pos, size_t target_pos) {
         reportError(0, 0, "Jump offest too large.");
         return;
     }
-    compilingChunk.code[patch_pos] = static_cast<uint8_t>((offset >> 8) & 0xFF);
-    compilingChunk.code[patch_pos + 1] = static_cast<uint8_t>(offset & 0xFF);
+    compilingChunk->code[patch_pos] = static_cast<uint8_t>((offset >> 8) & 0xFF);
+    compilingChunk->code[patch_pos + 1] = static_cast<uint8_t>(offset & 0xFF);
 };
 void Compiler::emitLoopBack(vm::OPCODE op, size_t target_pos, uint32_t line, uint32_t column) {
     emitOp(op, line, column);
@@ -159,9 +198,9 @@ void Compiler::endLoop(size_t loop_end_pos) {
 };
 //---字节码发射器---
 void Compiler::emitByte(uint8_t byte, uint32_t line, uint32_t column) {
-    compilingChunk.code.push_back(byte);
-    compilingChunk.lines.push_back(line);
-    compilingChunk.columns.push_back(column);
+    compilingChunk->code.push_back(byte);
+    compilingChunk->lines.push_back(line);
+    compilingChunk->columns.push_back(column);
 }
 
 void Compiler::emitOp(vm::OPCODE op, uint32_t line, uint32_t column) {
@@ -184,6 +223,13 @@ void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint32_t l
     emitByte(a, line, column);
     emitByte(b, line, column);
     emitByte(c, line, column);
+}
+void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint32_t line, uint32_t column) {
+    emitByte(static_cast<uint8_t>(op), line, column);
+    emitByte(a, line, column);
+    emitByte(b, line, column);
+    emitByte(c, line, column);
+    emitByte(d, line, column);
 }
 
 void Compiler::emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column) {

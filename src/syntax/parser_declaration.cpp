@@ -47,7 +47,38 @@ ASTNodeIndex Parser::parseDeclaration() {
 }
 
 //---基础声明---
-ASTNodeIndex Parser::parseFunctionDecl() { return ASTNodeIndex{}; }
+ASTNodeIndex Parser::parseFunctionDecl() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+
+    FunctionData func_data{};
+
+    consume(TokenType::IDENTIFIER, "Expected fuction name.");
+    func_data.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+
+    consume(TokenType::SYM_PAREN_L, "Expected'(' after fuction name.");
+    std::vector<ASTNodeIndex> params;
+    if (!check(TokenType::SYM_PAREN_R)) {
+        do {
+            consume(TokenType::IDENTIFIER, "Expected parameter name.");
+            ASTNodePayload param_payload{};
+            param_payload.identifier.name_id =
+                astPool.internString(source.substr(previous.start_offset, previous.length));
+            params.push_back(emitNode(NodeType::IdentifierExpr, param_payload, previous));
+        } while (match(TokenType::SYM_COMMA));
+    }
+    consume(TokenType::SYM_PAREN_R, "Expected')' after fuction name.");
+    func_data.params = astPool.allocateList(params);
+
+    func_data.return_type = ASTNodeIndex::invalid();
+
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before function body.");
+    func_data.body = parseBlockStmt();
+
+    astPool.function_data.push_back(func_data);
+    payload.func_decl.function_index = astPool.function_data.size() - 1;
+    return emitNode(NodeType::FunctionDecl, payload, startToken);
+}
 ASTNodeIndex Parser::parseStructDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};

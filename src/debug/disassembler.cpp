@@ -117,8 +117,16 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
         return jumpInstruction("OP_JZ", 1, chunk, offset);
 
     // === [CallExpr] 函数调用 ===
-    case OPCODE::OP_CALL:
-        return simpleInstruction("OP_CALL", offset); // TODO: 具体宽度取决于调用约定
+    case OPCODE::OP_CALL: {
+        uint8_t dst = chunk.code[offset + 1];
+        uint8_t callee = chunk.code[offset + 2];
+        uint8_t arg_start = chunk.code[offset + 3];
+        uint8_t argc = chunk.code[offset + 4];
+        std::cout << std::left << std::setw(16) << "OP_CALL" 
+                  << " R" << (int)dst << " = R" << (int)callee 
+                  << " (Args: R" << (int)arg_start << " ~ R" << (arg_start + argc - 1) << ")\n";
+        return offset + 5;
+    }
     case OPCODE::OP_INVOKE:
         return simpleInstruction("OP_INVOKE", offset);
     case OPCODE::OP_RETURN:

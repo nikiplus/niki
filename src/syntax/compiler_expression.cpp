@@ -270,27 +270,29 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
     // arguments 是 AST 节点列表，不是寄存器列表
     std::span<const ASTNodeIndex> argNodes = currentPool->get_list(node.payload.call.arguments);
 
-    // 保存参数编译结果，后续统一释放临时寄存器
-    std::vector<ExprResult> argTemps;
-    argTemps.reserve(argNodes.size());
-
-    // 按源码顺序逐个编译参数，保证副作用顺序一致
-    for (ASTNodeIndex argNode : argNodes) {
-        argTemps.push_back(compileExpression(argNode));
-    }
-
-    uint8_t outReg = regAlloc.allocate();
     // 当前调用约定把参数数量编码为 uint8_t（0~255）
     if (argNodes.size() > 255) {
         reportError(line, column, "Too many call arguments.");
 
         freeIfTemp(calleeRes);
-        for (const ExprResult &res : argTemps) {
-            freeIfTemp(res);
-        }
-        return {outReg, true};
+        return {0, true};
     }
-    emitOp(vm::OPCODE::OP_CALL, outReg, calleeRes.reg, static_cast<uint8_t>(argNodes.size()), line, column);
+
+    std::vector<ExprResult> argTemps;
+    argTemps.reserve(argNodes.size());
+
+    // 按源码顺序逐个编译参数，保证副作用顺序一致，并且寄存器是连续分配的。
+    for (ASTNodeIndex argNode : argNodes) {
+        argTemps.push_back(compileExpression(argNode));
+    }
+
+    uint8_t outReg = regAlloc.allocate();
+    // 此时 calleeRes.reg 和连续的 argTemps 都已经就位了。
+    // 我们只需要把第一个参数的寄存器告诉 VM，VM 就能顺藤摸瓜读取所有的参数（因为它们是连续的）
+    uint8_t argStartReg = argTemps.empty() ? 0 : argTemps[0].reg;
+
+    emitOp(vm::OPCODE::OP_CALL, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()), line,
+           column);
 
     freeIfTemp(calleeRes);
     for (const ExprResult &res : argTemps) {
