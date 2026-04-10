@@ -1,3 +1,4 @@
+#include "niki/debug/logger.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/parser.hpp"
 #include "niki/syntax/parser_precedence.hpp"
@@ -8,6 +9,7 @@
 #include <cstdio>
 #include <iostream>
 #include <span>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -33,27 +35,16 @@ Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &
 };
 
 ASTNodeIndex Parser::parse() {
+    niki::debug::debug("parser", "start parse, token_count={}", tokens.size());
     // 创建一个临时数组以收集所有顶层声明
     std::vector<ASTNodeIndex> declarations;
     while (current.type != TokenType::TOKEN_EOF) {
-        size_t startTokenIndex = tokenIndex;
-
-        // 顶层入口：解析声明（Declaration）
-        // 如果不是 var/func 等声明关键字，它会自动降级为语句（Statement）甚至表达式（Expression）
+        niki::debug::trace("parser", "declaration entry token={} at {}:{}", toString(current.type), current.line,
+                           current.column);
         ASTNodeIndex decl = parseDeclaration();
-
-        // 判断是否处于恐慌模式
-        if (panicMode) {
-            synchronize();
-        } else {
-            declarations.push_back(decl);
-        }
-        // 打破死循环，强制跳过当前token
-        if (tokenIndex == startTokenIndex) {
-            errorAtCurrent("Parser bug: infinite loop detected, forcibly skipping current token.");
-            advance();
-        }
+        declarations.push_back(decl);
     }
+    niki::debug::debug("parser", "finish parse, decl_count={}", declarations.size());
 
     ASTNodePayload blockPayload{};
     blockPayload.list.elements = astPool.allocateList(declarations);
@@ -146,20 +137,13 @@ void Parser::errorAtCurrent(const char *message) {
     if (panicMode)
         return;
     panicMode = true;
-    std::cerr << "[line " << current.line << "] Error ";
     if (current.type == TokenType::TOKEN_EOF) {
-        std::cerr << "at end";
+        spdlog::error("[parser] at {}:{} - {}", current.line, current.column, message);
     } else {
         std::string_view lexeme = source.substr(current.start_offset, current.length);
-
-        if (lexeme.length() > 20) {
-            std::cerr << "at'" << lexeme.substr(0, 17) << "...'";
-
-        } else {
-            std::cerr << "at'" << lexeme << "'";
-        }
+        spdlog::error("[parser] at {}:{} token={} lexeme='{}' - {}", current.line, current.column,
+                      toString(current.type), lexeme, message);
     }
-    std::cerr << ":" << message << "\n";
     hadError = true;
 };
 void Parser::synchronize() {

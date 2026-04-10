@@ -1,3 +1,4 @@
+#include "niki/debug/logger.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
 #include "niki/syntax/parser.hpp"
@@ -8,6 +9,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <spdlog/common.h>
+#include <spdlog/spdlog.h>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -109,6 +112,8 @@ void runFile(const std::string &path) {
 - argc > 2 ：抛出 Usage 错误并退出。
 */
 int main(int argc, char *argv[]) {
+    niki::debug::initLogger(spdlog::level::info, "logs/niki.log");
+    spdlog::info("NIKI started argc={}", argc);
     if (argc == 1) {
         runRepl();
     } else if (argc == 2) {

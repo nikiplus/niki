@@ -21,6 +21,7 @@ add_library(niki_core STATIC
     src/syntax/compiler_statement.cpp
     src/syntax/compiler_declaration.cpp
     src/vm/vm.cpp
+    src/debug/logger.cpp
 )
 
 target_include_directories(niki_core
@@ -32,6 +33,11 @@ target_link_libraries(niki_core PUBLIC
     spdlog::spdlog
     EnTT::EnTT
 )
+target_compile_definitions(niki_core PUBLIC
+  $<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE>
+  $<$<NOT:$<CONFIG:Debug>>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO>
+)
+
 add_executable(NIKI src/main.cpp)
 target_link_libraries(NIKI PRIVATE niki_core)
 

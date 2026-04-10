@@ -1,0 +1,379 @@
+[2026-04-1014:07:53.853][info][56868][niki] NIKI started argc=2
+[2026-04-1014:07:53.855][trace][56868][niki] [parser] start parse, token_count=242
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=2 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 64 line=3 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=4 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=7 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=8 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=11 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=12 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=13 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=14 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=17 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=18 col=1
+[2026-04-1014:07:53.856][trace][56868][niki] [parser] at token type = 62 line=19 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 62 line=20 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 62 line=21 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 62 line=24 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 62 line=25 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 62 line=26 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 62 line=29 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 49 line=30 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 62 line=31 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 62 line=34 col=1
+[2026-04-1014:07:53.857][trace][56868][niki] [parser] at token type = 53 line=35 col=1
+[2026-04-1014:07:53.858][trace][56868][niki] [parser] at token type = 62 line=42 col=1
+[2026-04-1014:07:53.858][trace][56868][niki] [parser] at token type = 62 line=43 col=1
+[2026-04-1014:07:53.858][trace][56868][niki] [parser] at token type = 55 line=44 col=1
+[2026-04-1014:07:53.858][trace][56868][niki] [parser] at token type = 63 line=54 col=1
+[2026-04-1014:07:53.858][trace][56868][niki] [parser] at token type = 62 line=59 col=1
+[2026-04-1014:07:53.858][trace][56868][niki] [parser] at token type = 60 line=61 col=1
+[2026-04-1014:07:53.858][trace][56868][niki] [parser] finish parse, decl_count=28
+[2026-04-1014:07:53.858][trace][56868][niki] [compiler] compile node idx=135 type=38 at 61:20
+[2026-04-1014:07:53.858][trace][56868][niki] [compiler] compile node idx=1 type=17 at 2:1
+[2026-04-1014:07:53.858][trace][56868][niki] [compiler] compile node idx=3 type=18 at 3:1
+[2026-04-1014:07:53.858][trace][56868][niki] [compiler] compile node idx=7 type=17 at 4:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=15 type=17 at 7:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=18 type=17 at 8:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=22 type=17 at 11:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=26 type=17 at 12:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=30 type=17 at 13:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=35 type=17 at 14:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=39 type=17 at 17:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=43 type=17 at 18:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=47 type=17 at 19:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=51 type=17 at 20:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=55 type=17 at 21:1
+[2026-04-1014:07:53.859][trace][56868][niki] [compiler] compile node idx=57 type=17 at 24:1
+[2026-04-1014:07:53.860][trace][56868][niki] [compiler] compile node idx=59 type=17 at 25:1
+[2026-04-1014:07:53.860][trace][56868][niki] [compiler] compile node idx=63 type=17 at 26:1
+[2026-04-1014:07:53.860][trace][56868][niki] [compiler] compile node idx=68 type=17 at 29:1
+[2026-04-1014:07:53.860][trace][56868][niki] [compiler] compile node idx=73 type=16 at 30:1
+[2026-04-1014:07:53.860][warning][56868][niki] Compiler warning at30:1-Array/Map element assignment is a stub.
+[2026-04-1014:07:53.860][trace][56868][niki] [compiler] compile node idx=77 type=17 at 31:1
+[2026-04-1014:07:53.860][trace][56868][niki] [compiler] compile node idx=79 type=17 at 34:1
+[2026-04-1014:07:53.860][trace][56868][niki] [compiler] compile node idx=89 type=20 at 35:1
+[2026-04-1014:07:53.861][trace][56868][niki] [compiler] compile node idx=91 type=17 at 42:1
+[2026-04-1014:07:53.861][trace][56868][niki] [compiler] compile node idx=93 type=17 at 43:1
+[2026-04-1014:07:53.861][trace][56868][niki] [compiler] compile node idx=108 type=21 at 44:1
+[2026-04-1014:07:53.861][trace][56868][niki] [compiler] compile node idx=124 type=31 at 54:1
+[2026-04-1014:07:53.861][trace][56868][niki] [compiler] compile node idx=131 type=17 at 59:1
+[2026-04-1014:07:53.861][trace][56868][niki] [compiler] compile node idx=133 type=26 at 61:1
+[2026-04-1014:14:25.448][info][36172][niki] NIKI started argc=2
+[2026-04-1014:14:25.448][debug][36172][niki] [parser] start parse, token_count=242
+[2026-04-1014:14:25.448][trace][36172][niki] [parser] declaration entry token=KW_VAR at 2:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_CONST at 3:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 4:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 7:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 8:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 11:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 12:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 13:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 14:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 17:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 18:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 19:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 20:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 21:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 24:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 25:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 26:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 29:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=IDENTIFIER at 30:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 31:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 34:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_IF at 35:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 42:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 43:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_LOOP at 44:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_FUNC at 54:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_VAR at 59:1
+[2026-04-1014:14:25.449][trace][36172][niki] [parser] declaration entry token=KW_RETURN at 61:1
+[2026-04-1014:14:25.449][debug][36172][niki] [parser] finish parse, decl_count=28
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] declaration entry type=ModuleDecl at 61:20
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 2:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=ConstDeclStmt at 3:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 4:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 7:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 8:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 11:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 12:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 13:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 14:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 17:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 18:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 19:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 20:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 21:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 24:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 25:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 26:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 29:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=AssignmentStmt at 30:1
+[2026-04-1014:14:25.449][warning][36172][niki] [compiler] at 30:1 - Array/Map element assignment is a stub.
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 31:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 34:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=IfStmt at 35:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=BlockStmt at 35:17
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=AssignmentStmt at 36:5
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=BlockStmt at 37:8
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=AssignmentStmt at 38:5
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 42:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 43:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=LoopStmt at 44:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=BlockStmt at 44:20
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=AssignmentStmt at 45:5
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=AssignmentStmt at 46:5
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] declaration entry type=FunctionDecl at 54:1
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=BlockStmt at 54:57
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 55:5
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=ReturnStmt at 56:5
+[2026-04-1014:14:25.449][trace][36172][niki] [compiler] statement dispatch type=VarDeclStmt at 59:1
+[2026-04-1014:14:25.450][trace][36172][niki] [compiler] statement dispatch type=ReturnStmt at 61:1
+[2026-04-1014:14:25.450][debug][36172][niki] [compiler] emit summary: ops=95, code_bytes=278, constants=23, warnings=1
+[2026-04-1014:21:23.611][info][63424][niki] NIKI started argc=2
+[2026-04-1014:21:23.612][debug][63424][niki] [parser] start parse, token_count=242
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 2:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_CONST at 3:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 4:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 7:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 8:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 11:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 12:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 13:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 14:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 17:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 18:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 19:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 20:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 21:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 24:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 25:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 26:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 29:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=IDENTIFIER at 30:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 31:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 34:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_IF at 35:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 42:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 43:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_LOOP at 44:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_FUNC at 54:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_VAR at 59:1
+[2026-04-1014:21:23.612][trace][63424][niki] [parser] declaration entry token=KW_RETURN at 61:1
+[2026-04-1014:21:23.612][debug][63424][niki] [parser] finish parse, decl_count=28
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] declaration entry type=ModuleDecl at 61:20
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 2:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement ConstDeclStmt at 3:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 4:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 7:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 8:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 11:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 12:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 13:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 14:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 17:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 18:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 19:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 20:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 21:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 24:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 25:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 26:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 29:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement AssignmentStmt at 30:1
+[2026-04-1014:21:23.612][warning][63424][niki] [compiler] at 30:1 - Array/Map element assignment is a stub.
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 31:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 34:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement IfStmt at 35:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement BlockStmt at 35:17
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> enter BlockStmt at 35:17
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |   |-> statement AssignmentStmt at 36:5
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |<- leave BlockStmt at 35:17
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement BlockStmt at 37:8
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> enter BlockStmt at 37:8
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |   |-> statement AssignmentStmt at 38:5
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |<- leave BlockStmt at 37:8
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 42:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 43:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement LoopStmt at 44:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement BlockStmt at 44:20
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> enter BlockStmt at 44:20
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |   |-> statement AssignmentStmt at 45:5
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |   |-> statement AssignmentStmt at 46:5
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |<- leave BlockStmt at 44:20
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] declaration entry type=FunctionDecl at 54:1
+[2026-04-1014:21:23.612][trace][63424][niki] [compiler] |-> statement BlockStmt at 54:57
+[2026-04-1014:21:23.613][trace][63424][niki] [compiler] |-> enter BlockStmt at 54:57
+[2026-04-1014:21:23.613][trace][63424][niki] [compiler] |   |-> statement VarDeclStmt at 55:5
+[2026-04-1014:21:23.613][trace][63424][niki] [compiler] |   |-> statement ReturnStmt at 56:5
+[2026-04-1014:21:23.613][trace][63424][niki] [compiler] |<- leave BlockStmt at 54:57
+[2026-04-1014:21:23.613][trace][63424][niki] [compiler] |-> statement VarDeclStmt at 59:1
+[2026-04-1014:21:23.613][trace][63424][niki] [compiler] |-> statement ReturnStmt at 61:1
+[2026-04-1014:21:23.613][debug][63424][niki] [compiler] emit summary: ops=95, code_bytes=278, constants=23, warnings=1
+[2026-04-1014:23:37.320][info][65464][niki] NIKI started argc=2
+[2026-04-1014:23:37.320][debug][65464][niki] [parser] start parse, token_count=242
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 2:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_CONST at 3:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 4:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 7:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 8:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 11:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 12:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 13:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 14:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 17:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 18:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 19:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 20:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 21:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 24:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 25:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 26:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 29:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=IDENTIFIER at 30:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 31:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 34:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_IF at 35:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 42:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 43:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_LOOP at 44:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_FUNC at 54:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_VAR at 59:1
+[2026-04-1014:23:37.320][trace][65464][niki] [parser] declaration entry token=KW_RETURN at 61:1
+[2026-04-1014:23:37.320][debug][65464][niki] [parser] finish parse, decl_count=28
+[2026-04-1014:23:37.320][trace][65464][niki] [compiler] declaration entry type=ModuleDecl at 61:20
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 2:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement ConstDeclStmt at 3:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 4:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 7:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 8:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 11:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 12:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 13:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 14:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 17:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 18:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 19:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 20:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 21:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 24:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 25:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 26:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 29:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement AssignmentStmt at 30:1
+[2026-04-1014:23:37.321][warning][65464][niki] [compiler] at 30:1 - Array/Map element assignment is a stub.
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 31:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 34:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement IfStmt at 35:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> if at 35:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] ├─ then
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |-> statement BlockStmt at 35:17
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |-> enter BlockStmt at 35:17
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |   |-> statement AssignmentStmt at 36:5
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |<- leave BlockStmt at 35:17
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] └─ else
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |-> statement BlockStmt at 37:8
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |-> enter BlockStmt at 37:8
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |   |-> statement AssignmentStmt at 38:5
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |<- leave BlockStmt at 37:8
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 42:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 43:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement LoopStmt at 44:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement BlockStmt at 44:20
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> enter BlockStmt at 44:20
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |-> statement AssignmentStmt at 45:5
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |-> statement AssignmentStmt at 46:5
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |<- leave BlockStmt at 44:20
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] declaration entry type=FunctionDecl at 54:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement BlockStmt at 54:57
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> enter BlockStmt at 54:57
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |-> statement VarDeclStmt at 55:5
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |   |-> statement ReturnStmt at 56:5
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |<- leave BlockStmt at 54:57
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement VarDeclStmt at 59:1
+[2026-04-1014:23:37.321][trace][65464][niki] [compiler] |-> statement ReturnStmt at 61:1
+[2026-04-1014:23:37.321][debug][65464][niki] [compiler] emit summary: ops=95, code_bytes=278, constants=23, warnings=1
+[2026-04-1014:24:29.149][info][65368][niki] NIKI started argc=2
+[2026-04-1014:24:29.150][debug][65368][niki] [parser] start parse, token_count=242
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 2:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_CONST at 3:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 4:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 7:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 8:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 11:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 12:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 13:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 14:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 17:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 18:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 19:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 20:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 21:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 24:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 25:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 26:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 29:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=IDENTIFIER at 30:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 31:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 34:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_IF at 35:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 42:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 43:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_LOOP at 44:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_FUNC at 54:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_VAR at 59:1
+[2026-04-1014:24:29.150][trace][65368][niki] [parser] declaration entry token=KW_RETURN at 61:1
+[2026-04-1014:24:29.150][debug][65368][niki] [parser] finish parse, decl_count=28
+[2026-04-1014:24:29.150][trace][65368][niki] [compiler] declaration entry type=ModuleDecl at 61:20
+[2026-04-1014:24:29.150][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 2:1
+[2026-04-1014:24:29.150][trace][65368][niki] [compiler] |-> statement ConstDeclStmt at 3:1
+[2026-04-1014:24:29.150][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 4:1
+[2026-04-1014:24:29.150][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 7:1
+[2026-04-1014:24:29.150][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 8:1
+[2026-04-1014:24:29.150][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 11:1
+[2026-04-1014:24:29.150][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 12:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 13:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 14:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 17:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 18:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 19:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 20:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 21:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 24:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 25:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 26:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 29:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement AssignmentStmt at 30:1
+[2026-04-1014:24:29.151][warning][65368][niki] [compiler] at 30:1 - Array/Map element assignment is a stub.
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 31:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 34:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement IfStmt at 35:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> if at 35:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |- then
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |-> statement BlockStmt at 35:17
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |-> enter BlockStmt at 35:17
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |   |-> statement AssignmentStmt at 36:5
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |<- leave BlockStmt at 35:17
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] `- else
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |-> statement BlockStmt at 37:8
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |-> enter BlockStmt at 37:8
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |   |-> statement AssignmentStmt at 38:5
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |<- leave BlockStmt at 37:8
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 42:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 43:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement LoopStmt at 44:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement BlockStmt at 44:20
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> enter BlockStmt at 44:20
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |-> statement AssignmentStmt at 45:5
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |-> statement AssignmentStmt at 46:5
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |<- leave BlockStmt at 44:20
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] declaration entry type=FunctionDecl at 54:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement BlockStmt at 54:57
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> enter BlockStmt at 54:57
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |-> statement VarDeclStmt at 55:5
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |   |-> statement ReturnStmt at 56:5
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |<- leave BlockStmt at 54:57
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 59:1
+[2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement ReturnStmt at 61:1
+[2026-04-1014:24:29.151][debug][65368][niki] [compiler] emit summary: ops=95, code_bytes=278, constants=23, warnings=1

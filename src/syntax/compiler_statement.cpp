@@ -1,3 +1,4 @@
+#include "niki/debug/logger.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
 #include "niki/vm/opcode.hpp"
@@ -15,6 +16,7 @@ void Compiler::compileStatement(ASTNodeIndex stmtIdx) {
     const ASTNode &node = currentPool->getNode(stmtIdx);
     uint32_t line = currentPool->locations[stmtIdx.index].line;
     uint32_t column = currentPool->locations[stmtIdx.index].column;
+    niki::debug::trace("compiler", "{}|-> statement {} at {}:{}", makeTracePrefix(), toString(node.type), line, column);
     switch (node.type) {
     case NodeType::ExpressionStmt:
         compileExpressionStmt(stmtIdx);
@@ -148,6 +150,10 @@ void Compiler::compileConstDeclStmt(ASTNodeIndex nodeIdx) {
 
 void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
     const ASTNode &node = currentPool->getNode(stmtIdx);
+    uint32_t line = currentPool->locations[stmtIdx.index].line;
+    uint32_t column = currentPool->locations[stmtIdx.index].column;
+    niki::debug::trace("compiler", "{}|-> enter BlockStmt at {}:{}", makeTracePrefix(), line, column);
+    traceIndent++;
     beginScope();
 
     std::span<const ASTNodeIndex> stmts = currentPool->get_list(node.payload.list.elements);
@@ -155,6 +161,10 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
         compileStatement(stmt);
     }
     endScope();
+    if (traceIndent > 0) {
+        traceIndent--;
+    }
+    niki::debug::trace("compiler", "{}|<- leave BlockStmt at {}:{}", makeTracePrefix(), line, column);
 }
 
 // 控制�?
@@ -162,6 +172,7 @@ void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
     const ASTNode &node = currentPool->getNode(nodeIdx);
     uint32_t line = currentPool->locations[nodeIdx.index].line;
     uint32_t column = currentPool->locations[nodeIdx.index].column;
+    niki::debug::trace("compiler", "{}|-> if at {}:{}", makeTracePrefix(), line, column);
 
     ExprResult condRes = compileExpression(node.payload.if_stmt.condition);
 
@@ -169,14 +180,24 @@ void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
 
     freeIfTemp(condRes);
 
+    niki::debug::trace("compiler", "{}|- then", makeTracePrefix());
+    traceIndent++;
     compileStatement(node.payload.if_stmt.then_branch);
+    if (traceIndent > 0) {
+        traceIndent--;
+    }
 
     if (node.payload.if_stmt.else_branch.isvalid()) {
         size_t jmpEndPatchPos = emitJump(vm::OPCODE::OP_JMP, line, column);
 
         patchJump(jzPatchPos, compilingChunk->code.size());
 
+        niki::debug::trace("compiler", "{}`- else", makeTracePrefix());
+        traceIndent++;
         compileStatement(node.payload.if_stmt.else_branch);
+        if (traceIndent > 0) {
+            traceIndent--;
+        }
         patchJump(jmpEndPatchPos, compilingChunk->code.size());
     } else {
         patchJump(jzPatchPos, compilingChunk->code.size());

@@ -93,6 +93,106 @@ enum class NodeType : uint8_t {
     ErrorNode, // 错误声明
 }; // namespace niki::syntax
 
+inline std::string_view toString(NodeType type) {
+    switch (type) {
+    case NodeType::BinaryExpr:
+        return "BinaryExpr";
+    case NodeType::UnaryExpr:
+        return "UnaryExpr";
+    case NodeType::LiteralExpr:
+        return "LiteralExpr";
+    case NodeType::IdentifierExpr:
+        return "IdentifierExpr";
+    case NodeType::ArrayExpr:
+        return "ArrayExpr";
+    case NodeType::MapExpr:
+        return "MapExpr";
+    case NodeType::IndexExpr:
+        return "IndexExpr";
+    case NodeType::CallExpr:
+        return "CallExpr";
+    case NodeType::MemberExpr:
+        return "MemberExpr";
+    case NodeType::DispatchExpr:
+        return "DispatchExpr";
+    case NodeType::ClosureExpr:
+        return "ClosureExpr";
+    case NodeType::AwaitExpr:
+        return "AwaitExpr";
+    case NodeType::BorrowExpr:
+        return "BorrowExpr";
+    case NodeType::WildcardExpr:
+        return "WildcardExpr";
+    case NodeType::ImplicitCastExpr:
+        return "ImplicitCastExpr";
+    case NodeType::ExpressionStmt:
+        return "ExpressionStmt";
+    case NodeType::AssignmentStmt:
+        return "AssignmentStmt";
+    case NodeType::VarDeclStmt:
+        return "VarDeclStmt";
+    case NodeType::ConstDeclStmt:
+        return "ConstDeclStmt";
+    case NodeType::BlockStmt:
+        return "BlockStmt";
+    case NodeType::IfStmt:
+        return "IfStmt";
+    case NodeType::LoopStmt:
+        return "LoopStmt";
+    case NodeType::MatchStmt:
+        return "MatchStmt";
+    case NodeType::MatchCaseStmt:
+        return "MatchCaseStmt";
+    case NodeType::ContinueStmt:
+        return "ContinueStmt";
+    case NodeType::BreakStmt:
+        return "BreakStmt";
+    case NodeType::ReturnStmt:
+        return "ReturnStmt";
+    case NodeType::NockStmt:
+        return "NockStmt";
+    case NodeType::AttachStmt:
+        return "AttachStmt";
+    case NodeType::DetachStmt:
+        return "DetachStmt";
+    case NodeType::TargetStmt:
+        return "TargetStmt";
+    case NodeType::FunctionDecl:
+        return "FunctionDecl";
+    case NodeType::InterfaceMethod:
+        return "InterfaceMethod";
+    case NodeType::StructDecl:
+        return "StructDecl";
+    case NodeType::EnumDecl:
+        return "EnumDecl";
+    case NodeType::TypeAliasDecl:
+        return "TypeAliasDecl";
+    case NodeType::InterfaceDecl:
+        return "InterfaceDecl";
+    case NodeType::ImplDecl:
+        return "ImplDecl";
+    case NodeType::ModuleDecl:
+        return "ModuleDecl";
+    case NodeType::SystemDecl:
+        return "SystemDecl";
+    case NodeType::ComponentDecl:
+        return "ComponentDecl";
+    case NodeType::FlowDecl:
+        return "FlowDecl";
+    case NodeType::KitsDecl:
+        return "KitsDecl";
+    case NodeType::TagDecl:
+        return "TagDecl";
+    case NodeType::TagGroupDecl:
+        return "TagGroupDecl";
+    case NodeType::ProgramRoot:
+        return "ProgramRoot";
+    case NodeType::ErrorNode:
+        return "ErrorNode";
+    }
+    return "UnknownNodeType";
+}
+
 /**
  * ============================================================================
  * 【编译器索引系统设计说明】

@@ -6,10 +6,12 @@
 #include "niki/vm/value.hpp"
 #include "token.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -86,6 +88,9 @@ class Compiler {
     niki::Chunk *compilingChunk = nullptr;              // 当前正在填充的字节码块
     bool hadError = false;
     std::vector<CompileError> errorPool;
+    std::array<uint32_t, static_cast<size_t>(vm::OPCODE::OP_COUNT)> opcodeEmitCount{};
+    uint32_t warningCount = 0;
+    uint32_t traceIndent = 0;
     RegisterAllocator regAlloc;
     std::vector<Local> locals;
 
@@ -118,6 +123,7 @@ class Compiler {
     没错！这正式现代绝大多数寄存器都在使用的指令设计方案——变长指令。*/
     //---辅助函数---
     void freeIfTemp(const ExprResult &res);
+    std::string makeTracePrefix() const;
     uint16_t makeConstant(vm::Value value, uint32_t line, uint32_t column);
     void beginScope() { scopeDepth++; };
     void endScope();
