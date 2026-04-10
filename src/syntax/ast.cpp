@@ -1,5 +1,7 @@
 #include "niki/syntax/ast.hpp"
 
+#include "niki/semantic/nktype.hpp"
+
 using namespace niki::syntax;
 
 std::span<const ASTNodeIndex> ASTPool::get_list(ASTListIndex list_info) const {
@@ -12,7 +14,6 @@ ASTNodeIndex ASTPool::allocateNode(NodeType type) {
     uint32_t index = static_cast<uint32_t>(nodes.size());
     nodes.push_back(ASTNode{type, {}});
     locations.push_back(TokenLocation{0, 0});
-    node_types.push_back(NKType::makeUnknown()); // 默认推导占位符
     return ASTNodeIndex{index};
 };
 // 调用ASTListIndex，装载指定区域的astnode，并返回对应的astlist切片。
@@ -32,7 +33,6 @@ uint32_t ASTPool::addConstant(vm::Value value) {
 void ASTPool::clear() {
     nodes.clear();
     locations.clear();
-    node_types.clear(); // 清理类型缓存
     lists_elements.clear();
     constants.clear();
     function_data.clear();

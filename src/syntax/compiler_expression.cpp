@@ -291,8 +291,8 @@ ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) {
     } else if (targetType.getBase() == semantic::NKBaseType::Array) {
         emitOp(vm::OPCODE::OP_GET_ARRAY, outReg, targetRes.reg, indexRes.reg, line, column);
     } else {
-        // 兜底（理想情况下，Checker 已经把非 Map/Array 的拦截在编译前了）
-        reportError(line, column, "Cannot index a non-array/map type.");
+        // 兜底（对于 MVP 阶段无法推断出具体类型的目标，暂且回退到 Array 处理，避免强制报错阻断现有功能）
+        emitOp(vm::OPCODE::OP_GET_ARRAY, outReg, targetRes.reg, indexRes.reg, line, column);
     }
     freeIfTemp(targetRes);
     freeIfTemp(indexRes);

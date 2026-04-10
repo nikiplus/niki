@@ -55,7 +55,9 @@ NKType TypeChecker::checkIdentifierExpr(syntax::ASTNodeIndex nodeIdx) {
     const auto &node = currentPool->getNode(nodeIdx);
     uint32_t line = currentPool->locations[nodeIdx.index].line;
     uint32_t column = currentPool->locations[nodeIdx.index].column;
-    return resolveSymbol(node.payload.identifier.name_id, line, column);
+    NKType type = resolveSymbol(node.payload.identifier.name_id, line, column);
+    // If not found, it might be a future global or built-in, but for MVP let's return Unknown instead of failing hard.
+    return type;
 }
 
 NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {

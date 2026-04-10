@@ -1,4 +1,5 @@
 #include "niki/debug/logger.hpp"
+#include "niki/semantic/type_checker.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
 #include "niki/syntax/parser.hpp"
@@ -14,6 +15,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
 
 void runRepl() {
     std::string line;
@@ -48,8 +50,18 @@ void runRepl() {
             continue;
         }
 
+        niki::semantic::TypeChecker checker;
+        auto checkResult = checker.check(pool, rootNode);
+        if (!checkResult.has_value()) {
+            std::cerr << "Type Error:\n";
+            for (const auto &err : checkResult.error().errors) {
+                std::cerr << "  [line " << err.line << ", column " << err.column << "] " << err.message << "\n";
+            }
+            continue;
+        }
+
         niki::syntax::Compiler compiler;
-        auto chunkResult = compiler.compile(pool, rootNode);
+        auto chunkResult = compiler.compile(pool, rootNode, checkResult.value().type_table);
 
         if (!chunkResult.has_value()) {
             std::cerr << "Compile Error:\n";
@@ -91,8 +103,18 @@ void runFile(const std::string &path) {
         exit(65); // EX_DATAERR
     }
 
+    niki::semantic::TypeChecker checker;
+    auto checkResult = checker.check(pool, rootNode);
+    if (!checkResult.has_value()) {
+        std::cerr << "Type Error:\n";
+        for (const auto &err : checkResult.error().errors) {
+            std::cerr << "  [line " << err.line << ", column " << err.column << "] " << err.message << "\n";
+        }
+        exit(65);
+    }
+
     niki::syntax::Compiler compiler;
-    auto chunkResult = compiler.compile(pool, rootNode);
+    auto chunkResult = compiler.compile(pool, rootNode, checkResult.value().type_table);
 
     if (!chunkResult.has_value()) {
         std::cerr << "Compile Error:\n";

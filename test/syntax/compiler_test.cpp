@@ -1,3 +1,4 @@
+#include "niki/semantic/type_checker.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
 #include "niki/syntax/parser.hpp"
@@ -41,8 +42,12 @@ class CompilerTest : public ::testing::Test {
         ASTNodeIndex root = parser.parse();
         EXPECT_FALSE(parser.hasError()) << "Parser failed on input: " << source;
 
+        niki::semantic::TypeChecker checker;
+        auto checkResult = checker.check(pool, root);
+        EXPECT_TRUE(checkResult.has_value()) << "TypeChecker failed on input: " << source;
+
         Compiler compiler;
-        return compiler.compile(pool, root);
+        return compiler.compile(pool, root, checkResult.value().type_table);
     }
 
     void SetUp() override { pool.clear(); }
