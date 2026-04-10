@@ -1,8 +1,9 @@
 #pragma once
 #include <cassert>
 #include <cstdint>
+#include <vector>
 
-namespace niki::syntax {
+namespace niki::semantic {
 
 // 编译期的核心数据类型（不包含具体的值）
 // 这里的类型标签是给编译器看的，是用来防错和类型检查的，包含了许多逻辑信息
@@ -91,4 +92,4 @@ struct NKType {
     bool operator!=(const NKType &other) const { return handle != other.handle; }
 };
 
-} // namespace niki::syntax
+} // namespace niki::semantic

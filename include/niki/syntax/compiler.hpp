@@ -1,11 +1,12 @@
 #pragma once
 #include "ast.hpp"
+
+#include "niki/semantic/nktype.hpp"
 #include "niki/vm/chunk.hpp"
 #include "niki/vm/object.hpp"
 #include "niki/vm/opcode.hpp"
 #include "niki/vm/value.hpp"
 #include "token.hpp"
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -77,15 +78,20 @@ class Compiler {
     可以看到，我们返回了两个结构体，前者包含了我们实际要发射的信息，而后者则包含了一个错误信息。
     注意，我们在传入参数是，提前传入了一个空的chunk结构体，这是为了防止每次我们调用compile方法时，编译器都会在实际执行时申请一个空间以初始化chunk，这会导致昂贵的内存再分配。
     */
-    std::expected<niki::Chunk, CompileResultError> compile(const ASTPool &pool, ASTNodeIndex root,
-                                                           niki::Chunk initial_chunk = niki::Chunk{});
+    std::expected<niki::Chunk, CompileResultError> compile(const ASTPool &pool,                            // 旁侧表等
+                                                           ASTNodeIndex root,                              // 解析根节点
+                                                           const std::vector<semantic::NKType> &typeTable, // 类型表
+                                                           niki::Chunk initial_chunk = niki::Chunk{}       // 实际代码块
+    );
 
   private:
     const ASTPool *currentPool = nullptr;
+    const std::vector<semantic::NKType> *currentTypeTable = nullptr; // 类型表
     // 当前正在编译的函数对象和对应的Chunk。
     // 在 MVP 中我们用指针，方便嵌套编译时随时切换上下文
     niki::vm::ObjFunction *compilingFunction = nullptr; // 当前正在编译的函数对象
     niki::Chunk *compilingChunk = nullptr;              // 当前正在填充的字节码块
+
     bool hadError = false;
     std::vector<CompileError> errorPool;
     std::array<uint32_t, static_cast<size_t>(vm::OPCODE::OP_COUNT)> opcodeEmitCount{};

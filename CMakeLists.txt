@@ -20,6 +20,10 @@ add_library(niki_core STATIC
     src/syntax/compiler_expression.cpp
     src/syntax/compiler_statement.cpp
     src/syntax/compiler_declaration.cpp
+    src/semantic/type_checker.cpp
+    src/semantic/type_checker_expr.cpp
+    src/semantic/type_checker_stmt.cpp
+    src/semantic/type_checker_decl.cpp
     src/vm/vm.cpp
     src/debug/logger.cpp
 )

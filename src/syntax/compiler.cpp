@@ -21,12 +21,14 @@
 namespace niki::syntax {
 
 std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &pool, ASTNodeIndex root,
+                                                                 const std::vector<semantic::NKType> &typeTable,
                                                                  niki::Chunk initial_chunk) {
     if (!root.isvalid()) {
         return std::unexpected(CompileResultError{{{0, 0, "Invalid AST root node."}}});
     }
 
     currentPool = &pool;
+    currentTypeTable = &typeTable;
     hadError = false;
     errorPool.clear();
     warningCount = 0;
@@ -46,6 +48,7 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
     emitOp(vm::OPCODE::OP_RETURN, 0, 0);
     CompilerContext topContext = popContext();
     currentPool = nullptr;
+    currentTypeTable = nullptr;
 
     if (hadError) {
         niki::debug::debug("compiler", "compile failed, errors={}, warnings={}", errorPool.size(), warningCount);

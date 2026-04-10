@@ -1,3 +1,5 @@
+#include "niki/semantic/nktype.hpp"
+
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
 #include "niki/vm/opcode.hpp"
@@ -274,13 +276,24 @@ ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) {
     uint32_t line = currentPool->locations[nodeIdx.index].line;
     uint32_t column = currentPool->locations[nodeIdx.index].column;
 
-    ExprResult targetRes = compileExpression(node.payload.index.target);
+    ASTNodeIndex targetIdx = node.payload.index.target;
+    ExprResult targetRes = compileExpression(targetIdx);
     ExprResult indexRes = compileExpression(node.payload.index.index);
-
     uint8_t outReg = regAlloc.allocate();
 
-    emitOp(vm::OPCODE::OP_GET_ARRAY, outReg, targetRes.reg, indexRes.reg, line, column);
+    // 2. 见证奇迹的时刻！
+    // 此时我们不再猜拳，直接问类型表：“喂，刚才 Checker 给 target 打的什么标签？”
+    semantic::NKType targetType = (*currentTypeTable)[targetIdx.index];
 
+    // 3. 铁证如山，精准分发
+    if (targetType.getBase() == semantic::NKBaseType::Map) {
+        emitOp(vm::OPCODE::OP_GET_MAP, outReg, targetRes.reg, indexRes.reg, line, column);
+    } else if (targetType.getBase() == semantic::NKBaseType::Array) {
+        emitOp(vm::OPCODE::OP_GET_ARRAY, outReg, targetRes.reg, indexRes.reg, line, column);
+    } else {
+        // 兜底（理想情况下，Checker 已经把非 Map/Array 的拦截在编译前了）
+        reportError(line, column, "Cannot index a non-array/map type.");
+    }
     freeIfTemp(targetRes);
     freeIfTemp(indexRes);
     return ExprResult(outReg, true);

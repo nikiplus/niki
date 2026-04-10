@@ -717,8 +717,8 @@ struct BorrowExprPayload {
  *   ASTPool::nodes     (内联的NKType Handle)
  */
 struct ImplicitCastExprPayload {
-    ASTNodeIndex operand; // 4byte: 被转换的原始表达式
-    NKType to_type;       // 4byte: 目标类型 (底层已优化为4字节的 handle)
+    ASTNodeIndex operand;     // 4byte: 被转换的原始表达式
+    semantic::NKType to_type; // 4byte: 目标类型 (底层已优化为4字节的 handle)
 };
 /*---语句---*/
 // 基础语句
@@ -1293,7 +1293,7 @@ struct ASTPool {
     // --- 新增：类型检查期的旁侧表 ---
     // 为什么不在 ASTNode 里加 NKType？因为会破坏 16 字节对齐，导致体积膨胀 50%！
     // 使用 DOD 的旁侧表模式，与 nodes 同步增长，实现缓存友好的按需遍历。
-    std::vector<NKType> node_types;
+    std::vector<semantic::NKType> node_types;
 
     // 前端常量池（Side-buffer）：
     // 为了保证 ASTNode 严格维持 16 字节大小（4字节对齐），我们绝对不能把包含 8 字节对齐（double/void*）的 vm::Value
