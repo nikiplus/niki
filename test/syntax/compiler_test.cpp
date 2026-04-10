@@ -4,6 +4,7 @@
 #include "niki/syntax/scanner.hpp"
 #include "niki/vm/chunk.hpp"
 #include "niki/vm/opcode.hpp"
+#include <cstdint>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <iostream>
@@ -45,6 +46,16 @@ class CompilerTest : public ::testing::Test {
     }
 
     void SetUp() override { pool.clear(); }
+
+    bool hasOpcode(const niki::Chunk &chunk, OPCODE opcode) {
+        uint8_t op = static_cast<uint8_t>(opcode);
+        for (uint8_t byte : chunk.code) {
+            if (byte == op) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 // 【分层测试】1. 最简单的加法表达式编译
@@ -108,4 +119,43 @@ TEST_F(CompilerTest, CompileFullScript_TestNK) {
     std::cout << "\n[CompilerTest] Successfully compiled test.nk into " << chunk.code.size()
               << " bytes of VM bytecode and " << chunk.constants.size() << " constants.\n"
               << std::endl;
+}
+TEST_F(CompilerTest, CompileArrayLiteral_UsesListElementsAsNodeIndices) {
+    auto result = compileSource("var a = 10;\nvar b = 20;\nvar arr = [a, b, 30];\nreturn arr[1];");
+    ASSERT_TRUE(result.has_value()) << "Array literal compilation should succeed.";
+
+    const niki::Chunk &chunk = result.value();
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_NEW_ARRAY));
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_PUSH_ARRAY));
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_GET_ARRAY));
+}
+
+TEST_F(CompilerTest, CompileMapLiteral_UsesListElementsAsNodeIndices) {
+    auto result = compileSource("var base = 1;\nvar m = {\"x\": base, \"y\": 2};\nreturn m[\"x\"];");
+    ASSERT_TRUE(result.has_value()) << "Map literal compilation should succeed.";
+
+    const niki::Chunk &chunk = result.value();
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_NEW_MAP));
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_SET_MAP));
+};
+TEST_F(CompilerTest, CompileAssignmentOperator_ModEqualReportsLocation) {
+    auto result = compileSource("var a = 10;\na %= 3;");
+    ASSERT_FALSE(result.has_value());
+
+    const auto &errors = result.error().errors;
+    ASSERT_FALSE(errors.empty());
+    EXPECT_EQ(errors[0].line, 2u);
+    EXPECT_EQ(errors[0].column, 1u);
+    EXPECT_EQ(errors[0].message, "Unsupported assignment operator.");
+}
+
+TEST_F(CompilerTest, CompileInvalidAssignmentTargetReportsLocation) {
+    auto result = compileSource("(1 + 2) = 3;");
+    ASSERT_FALSE(result.has_value());
+
+    const auto &errors = result.error().errors;
+    ASSERT_FALSE(errors.empty());
+    EXPECT_EQ(errors[0].line, 1u);
+    EXPECT_EQ(errors[0].column, 1u);
+    EXPECT_EQ(errors[0].message, "Invalid assignment target. Only simple variables are supported currently.");
 }

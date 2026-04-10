@@ -6,7 +6,7 @@
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/build/NIKI.exe",
-      "args": [],
+      "args": ["scripts/test.nk"],
       "cwd": "${workspaceFolder}",
       "terminal": "integrated",
       "stopOnEntry": false
@@ -16,7 +16,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/NIKI.exe",
-      "args": [],
+      "args": ["scripts/test.nk"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],
