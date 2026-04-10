@@ -33,6 +33,7 @@ enum class TokenType : uint8_t {
     // 其它
     SYM_COMMA,     // , 逗号
     SYM_DOT,       // . 点号
+    SYM_CONCAT,    // .. 字符串拼接
     SYM_COLON,     // : 冒号
     SYM_SEMICOLON, // ; 分号
     SYM_QUESTION,  // ? 问号

@@ -133,6 +133,9 @@ Token Scanner::scanToken() {
     case ',':
         return makeToken(TokenType::SYM_COMMA);
     case '.':
+        if (match('.')) {
+            return makeToken(TokenType::SYM_CONCAT);
+        }
         return makeToken(TokenType::SYM_DOT);
     case ':':
         return makeToken(match(':') ? TokenType::SYM_SCOPE : TokenType::SYM_COLON);

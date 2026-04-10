@@ -140,6 +140,37 @@ InterpretResult VM::run() {
                 Value::makeInt(currentRegisters()[leftReg].as.integer % currentRegisters()[rightReg].as.integer);
             break;
         }
+        case OPCODE::OP_CONCAT: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            
+            Value left = currentRegisters()[leftReg];
+            Value right = currentRegisters()[rightReg];
+
+            if (!isString(left) || !isString(right)) {
+                runtime_error("Operands must be strings for concatenation '..'.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+
+            ObjString* a = asString(left);
+            ObjString* b = asString(right);
+
+            uint32_t new_len = a->length + b->length;
+            // 暂时不考虑内存释放，先分配足够大的新字符串
+            ObjString* new_str = static_cast<ObjString*>(std::malloc(sizeof(ObjString) + new_len + 1));
+            new_str->obj.type = ObjType::String;
+            new_str->obj.isMarked = false;
+            new_str->length = new_len;
+            
+            // 连续的内存拷贝
+            std::memcpy(new_str->chars, a->chars, a->length);
+            std::memcpy(new_str->chars + a->length, b->chars, b->length);
+            new_str->chars[new_len] = '\0';
+
+            currentRegisters()[targetReg] = Value::makeObject(new_str);
+            break;
+        }
         case OPCODE::OP_NEG: {
             uint8_t targetReg = readByte();
             uint8_t srcReg = readByte();
@@ -347,6 +378,8 @@ InterpretResult VM::run() {
                     std::cout << (result.as.boolean ? "true" : "false");
                 } else if (result.type == ValueType::Nil) {
                     std::cout << "nil";
+                } else if (isString(result)) {
+                    std::cout << "\"" << asString(result)->chars << "\"";
                 } else {
                     std::cout << "[Object]";
                 }

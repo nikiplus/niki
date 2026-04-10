@@ -2,6 +2,7 @@
 #include "niki/syntax/parser.hpp"
 #include "niki/syntax/parser_precedence.hpp"
 #include "niki/syntax/token.hpp"
+#include "niki/vm/object.hpp"
 #include "niki/vm/value.hpp"
 #include <cstdint>
 #include <string>
@@ -153,9 +154,19 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
-    case TokenType::LITERAL_STRING:
+    case TokenType::LITERAL_STRING: {
+        std::string_view lexeme = source.substr(startToken.start_offset, startToken.length);
+        // 去除首尾的引号
+        if (lexeme.length() >= 2 && lexeme.front() == '"' && lexeme.back() == '"') {
+            lexeme = lexeme.substr(1, lexeme.length() - 2);
+        }
+        vm::ObjString *strObj = vm::allocateString(lexeme.data(), static_cast<uint32_t>(lexeme.length()));
+        payload.literal.literal_type = TokenType::LITERAL_STRING;
+        payload.literal.const_pool_index = astPool.addConstant(vm::Value::makeObject(strObj));
+        return emitNode(NodeType::LiteralExpr, payload, startToken);
+    }
     case TokenType::LITERAL_CHAR:
-        // 目前内存设计尚未完成，字符串和字符暂用空对象，但需提前标明类型
+        // 暂时用 Nil 占位
         payload.literal.literal_type = type;
         payload.literal.const_pool_index = astPool.addConstant(vm::Value::makeNil());
         return emitNode(NodeType::LiteralExpr, payload, startToken);
@@ -253,6 +264,7 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     switch (type) {
     case TokenType::SYM_PLUS:
     case TokenType::SYM_MINUS:
+    case TokenType::SYM_CONCAT:
     case TokenType::SYM_STAR:
     case TokenType::SYM_SLASH:
     case TokenType::SYM_MOD:
@@ -317,7 +329,7 @@ Precedence Parser::getPrecedence(TokenType type) const {
         return Precedence::Or;
     case TokenType::SYM_AND:
         return Precedence::And;
-        
+
     case TokenType::SYM_BIT_OR:
         return Precedence::BitOr;
     case TokenType::SYM_BIT_XOR:
@@ -334,10 +346,13 @@ Precedence Parser::getPrecedence(TokenType type) const {
     case TokenType::SYM_LESS:
     case TokenType::SYM_LESS_EQUAL:
         return Precedence::Comparison;
-        
+
     case TokenType::SYM_BIT_SHL:
     case TokenType::SYM_BIT_SHR:
         return Precedence::Shift;
+
+    case TokenType::SYM_CONCAT:
+        return Precedence::Concat;
 
     case TokenType::SYM_PLUS:
     case TokenType::SYM_MINUS:

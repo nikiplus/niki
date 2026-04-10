@@ -23,6 +23,7 @@ enum class OPCODE : uint8_t {
     OP_IMUL,             // int * int
     OP_IDIV,             // int / int
     OP_IMOD,             // int % int
+    OP_CONCAT,           // string .. string
     ____INT_ARITH_END,   // 整数四则运算指令结束
     // 浮点运算
     ____FLOAT_ARITH_START, // 浮点四则运算指令开始

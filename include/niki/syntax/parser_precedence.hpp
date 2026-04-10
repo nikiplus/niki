@@ -16,6 +16,7 @@ enum class Precedence : uint8_t {
     Equality,   // == !=
     Comparison, // < > <= >=
     Shift,      // << >>
+    Concat,     // ..
     Term,       // + -
     Factor,     // * / %
     Unary,      // - !
