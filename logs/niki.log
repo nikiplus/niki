@@ -377,3 +377,6 @@
 [2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement VarDeclStmt at 59:1
 [2026-04-1014:24:29.151][trace][65368][niki] [compiler] |-> statement ReturnStmt at 61:1
 [2026-04-1014:24:29.151][debug][65368][niki] [compiler] emit summary: ops=95, code_bytes=278, constants=23, warnings=1
+[2026-04-1016:36:42.128][info][59268][niki] NIKI started argc=2
+[2026-04-1016:46:41.068][info][56228][niki] NIKI started argc=2
+[2026-04-1016:54:55.620][info][59636][niki] NIKI started argc=2

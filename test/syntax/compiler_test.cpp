@@ -56,6 +56,31 @@ class CompilerTest : public ::testing::Test {
         }
         return false;
     }
+
+    size_t countOpcode(const niki::Chunk &chunk, OPCODE opcode) {
+        uint8_t op = static_cast<uint8_t>(opcode);
+        size_t count = 0;
+        for (uint8_t byte : chunk.code) {
+            if (byte == op) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    bool hasPatchedJump(const niki::Chunk &chunk, OPCODE opcode, size_t offsetHighIndex) {
+        uint8_t op = static_cast<uint8_t>(opcode);
+        for (size_t i = 0; i + offsetHighIndex + 1 < chunk.code.size(); ++i) {
+            if (chunk.code[i] == op) {
+                uint8_t high = chunk.code[i + offsetHighIndex];
+                uint8_t low = chunk.code[i + offsetHighIndex + 1];
+                if (!(high == 0xFF && low == 0xFF)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 };
 
 // 【分层测试】1. 最简单的加法表达式编译
@@ -138,15 +163,12 @@ TEST_F(CompilerTest, CompileMapLiteral_UsesListElementsAsNodeIndices) {
     EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_NEW_MAP));
     EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_SET_MAP));
 };
-TEST_F(CompilerTest, CompileAssignmentOperator_ModEqualReportsLocation) {
+TEST_F(CompilerTest, CompileAssignmentOperator_ModEqualEmitsMod) {
     auto result = compileSource("var a = 10;\na %= 3;");
-    ASSERT_FALSE(result.has_value());
+    ASSERT_TRUE(result.has_value());
 
-    const auto &errors = result.error().errors;
-    ASSERT_FALSE(errors.empty());
-    EXPECT_EQ(errors[0].line, 2u);
-    EXPECT_EQ(errors[0].column, 1u);
-    EXPECT_EQ(errors[0].message, "Unsupported assignment operator.");
+    const niki::Chunk &chunk = result.value();
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_IMOD));
 }
 
 TEST_F(CompilerTest, CompileInvalidAssignmentTargetReportsLocation) {
@@ -158,4 +180,99 @@ TEST_F(CompilerTest, CompileInvalidAssignmentTargetReportsLocation) {
     EXPECT_EQ(errors[0].line, 1u);
     EXPECT_EQ(errors[0].column, 1u);
     EXPECT_EQ(errors[0].message, "Invalid assignment target. Only simple variables are supported currently.");
+}
+
+TEST_F(CompilerTest, CompileIfElseAndLoop_JumpOffsetsArePatched) {
+    auto result = compileSource("loop (true) {\n"
+                                "if (false) {\n"
+                                "break;\n"
+                                "} else {\n"
+                                "continue;\n"
+                                "}\n"
+                                "}\n");
+    ASSERT_TRUE(result.has_value());
+    const niki::Chunk &chunk = result.value();
+
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_JZ));
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_JMP));
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_LOOP));
+
+    EXPECT_TRUE(hasPatchedJump(chunk, OPCODE::OP_JZ, 2)) << "OP_JZ should have patched offset bytes.";
+    EXPECT_TRUE(hasPatchedJump(chunk, OPCODE::OP_JMP, 1)) << "OP_JMP should have patched offset bytes.";
+}
+
+TEST_F(CompilerTest, CompileLoopBreakAndContinue_EmitExpectedControlOpcodes) {
+    auto result = compileSource("loop (true) {\n"
+                                "continue;\n"
+                                "break;\n"
+                                "}\n");
+    ASSERT_TRUE(result.has_value());
+    const niki::Chunk &chunk = result.value();
+
+    EXPECT_GE(countOpcode(chunk, OPCODE::OP_LOOP), 2u);
+    EXPECT_GE(countOpcode(chunk, OPCODE::OP_JMP), 1u);
+    EXPECT_GE(countOpcode(chunk, OPCODE::OP_JZ), 1u);
+}
+
+TEST_F(CompilerTest, CompileVarDecl_DuplicateInSameScopeReportsError) {
+    auto result = compileSource(R"(
+{
+    var a = 1;
+    var a = 2;
+}
+)");
+    ASSERT_FALSE(result.has_value());
+    const auto &errors = result.error().errors;
+    ASSERT_FALSE(errors.empty());
+    EXPECT_EQ(errors[0].line, 4u);
+    EXPECT_EQ(errors[0].column, 5u);
+    EXPECT_EQ(errors[0].message, "Variable already declared in this scope.");
+}
+
+TEST_F(CompilerTest, CompileVarDecl_ShadowingInInnerScopeIsAllowed) {
+    auto result = compileSource(R"(
+var a = 1;
+{
+    var a = 2;
+}
+var b = a;
+return b;
+)");
+    ASSERT_TRUE(result.has_value());
+}
+
+TEST_F(CompilerTest, CompileVarDecl_OutOfScopeVariableReportsUndeclared) {
+    auto result = compileSource(R"(
+{
+    var x = 1;
+}
+var y = x;
+)");
+    ASSERT_FALSE(result.has_value());
+    const auto &errors = result.error().errors;
+    ASSERT_FALSE(errors.empty());
+    EXPECT_EQ(errors[0].line, 5u);
+    EXPECT_EQ(errors[0].column, 9u);
+    EXPECT_EQ(errors[0].message, "Undeclared variable.");
+}
+
+TEST_F(CompilerTest, CompileAssignmentOperator_BitAndEqualEmitsBitAnd) {
+    auto result = compileSource("var a = 10;\na &= 3;");
+    ASSERT_TRUE(result.has_value());
+    const niki::Chunk &chunk = result.value();
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_BIT_AND));
+}
+
+TEST_F(CompilerTest, CompileAssignmentOperator_BitOrEqualEmitsBitOr) {
+    auto result = compileSource("var a = 10;\na |= 3;");
+    ASSERT_TRUE(result.has_value());
+    const niki::Chunk &chunk = result.value();
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_BIT_OR));
+}
+
+TEST_F(CompilerTest, CompileAssignmentOperator_BitXorEqualEmitsBitXor) {
+    auto result = compileSource("var a = 10;\na ^= 3;");
+    ASSERT_TRUE(result.has_value());
+    const niki::Chunk &chunk = result.value();
+    EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_BIT_XOR));
 }

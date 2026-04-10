@@ -229,7 +229,7 @@ ASTNodeIndex Parser::parseMatchStmt() {
 ASTNodeIndex Parser::parseContinueStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
-    consume(TokenType::SYM_COLON, "Expected ';' after 'continue'.");
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after 'continue'.");
     return emitNode(NodeType::ContinueStmt, payload, startToken);
 };
 ASTNodeIndex Parser::parseBreakStmt() {

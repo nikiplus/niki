@@ -1,6 +1,7 @@
 #include "niki/debug/logger.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
+#include "niki/syntax/token.hpp"
 #include "niki/vm/opcode.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -32,6 +33,9 @@ void Compiler::compileStatement(ASTNodeIndex stmtIdx) {
         break;
     case NodeType::LoopStmt:
         compileLoopStmt(stmtIdx);
+        break;
+    case NodeType::ContinueStmt:
+        compileContinueStmt(stmtIdx);
         break;
     case NodeType::BreakStmt:
         compileBreakStmt(stmtIdx);
@@ -96,7 +100,18 @@ void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
             case TokenType::SYM_SLASH_EQUAL:
                 emitOp(vm::OPCODE::OP_IDIV, targetReg, targetReg, rightRes.reg, line, column);
                 break;
-            // ... 可以继续扩展位运算等复合赋�?...
+            case TokenType::SYM_MOD_EQUAL:
+                emitOp(vm::OPCODE::OP_IMOD, targetReg, targetReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_BIT_AND_EQUAL:
+                emitOp(vm::OPCODE::OP_BIT_AND, targetReg, targetReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_BIT_OR_EQUAL:
+                emitOp(vm::OPCODE::OP_BIT_OR, targetReg, targetReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_BIT_XOR_EQUAL:
+                emitOp(vm::OPCODE::OP_BIT_XOR, targetReg, targetReg, rightRes.reg, line, column);
+                break;
             default:
                 reportError(line, column, "Unsupported assignment operator.");
                 break;
@@ -104,7 +119,59 @@ void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
             freeIfTemp(rightRes);
         }
     } else if (targetNode.type == NodeType::IndexExpr) {
-        reportWarning(line, column, "Array/Map element assignment is a stub.");
+        TokenType op = node.payload.assign_stmt.op;
+        ExprResult targetRes = compileExpression(targetNode.payload.index.target);
+        ExprResult indexRes = compileExpression(targetNode.payload.index.index);
+
+        if (op == TokenType::SYM_EQUAL) {
+            ExprResult valRes = compileExpression(node.payload.assign_stmt.value);
+            emitOp(vm::OPCODE::OP_SET_ARRAY, targetRes.reg, indexRes.reg, valRes.reg, line, column);
+            freeIfTemp(valRes);
+        } else {
+            ExprResult rightRes = compileExpression(node.payload.assign_stmt.value);
+            uint8_t oldReg = regAlloc.allocate();
+            uint8_t newReg = regAlloc.allocate();
+
+            emitOp(vm::OPCODE::OP_GET_ARRAY, oldReg, targetRes.reg, indexRes.reg, line, column);
+
+            bool supported = true;
+
+            switch (op) {
+            case TokenType::SYM_PLUS_EQUAL:
+                emitOp(vm::OPCODE::OP_IADD, newReg, oldReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_MINUS_EQUAL:
+                emitOp(vm::OPCODE::OP_ISUB, newReg, oldReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_STAR_EQUAL:
+                emitOp(vm::OPCODE::OP_IMUL, newReg, oldReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_SLASH_EQUAL:
+                emitOp(vm::OPCODE::OP_IDIV, newReg, oldReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_BIT_AND_EQUAL:
+                emitOp(vm::OPCODE::OP_BIT_AND, newReg, oldReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_BIT_OR_EQUAL:
+                emitOp(vm::OPCODE::OP_BIT_OR, newReg, oldReg, rightRes.reg, line, column);
+                break;
+            case TokenType::SYM_BIT_XOR_EQUAL:
+                emitOp(vm::OPCODE::OP_BIT_XOR, newReg, oldReg, rightRes.reg, line, column);
+                break;
+            default:
+                supported = false;
+                reportError(line, column, "Unsupported assignment operator for indexed target.");
+                break;
+            }
+            if (supported) {
+                emitOp(vm::OPCODE::OP_SET_ARRAY, targetRes.reg, indexRes.reg, newReg, line, column);
+            }
+            freeIfTemp(rightRes);
+            regAlloc.free(oldReg);
+            regAlloc.free(newReg);
+        }
+        freeIfTemp(targetRes);
+        freeIfTemp(indexRes);
     } else if (targetNode.type == NodeType::MemberExpr) {
         reportWarning(line, column, "Object property assignment is a stub.");
     } else {
@@ -125,7 +192,7 @@ void Compiler::compileVarDeclStmt(ASTNodeIndex nodeIdx) {
 
         if (locals[i].name_id == name_id) {
             reportError(line, column, "Variable already declared in this scope.");
-            break; // 报错后跳�?
+            break; // 报错后跳转
         }
     }
 
@@ -167,7 +234,7 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
     niki::debug::trace("compiler", "{}|<- leave BlockStmt at {}:{}", makeTracePrefix(), line, column);
 }
 
-// 控制�?
+// 控制流
 void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
     const ASTNode &node = currentPool->getNode(nodeIdx);
     uint32_t line = currentPool->locations[nodeIdx.index].line;
@@ -232,7 +299,7 @@ void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {
         patchJump(p, loopEnd);
     }
 
-    loop_stack.pop_back(); // 修复泄漏：必须出栈，保证状态对�?
+    loop_stack.pop_back(); // 修复泄漏：必须出栈，保证状态
 }
 void Compiler::compileMatchStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileMatchCaseStmt(ASTNodeIndex nodeIdx) {}
@@ -265,7 +332,7 @@ void Compiler::compileReturnStmt(ASTNodeIndex nodeIdx) {
 
     if (node.payload.return_stmt.expression.isvalid()) {
         ExprResult res = compileExpression(node.payload.return_stmt.expression);
-        // 将返回值搬运到 0 号寄存器，作为当前约定的返回值存储位�?
+        // 将返回值搬运到 0 号寄存器，作为当前约定的返回值存储位
         emitOp(vm::OPCODE::OP_MOVE, 0, res.reg, line, column);
         freeIfTemp(res);
     }
@@ -274,7 +341,7 @@ void Compiler::compileReturnStmt(ASTNodeIndex nodeIdx) {
 }
 void Compiler::compileNockStmt(ASTNodeIndex nodeIdx) {}
 
-// 组件挂载与卸�?
+// 组件挂载与卸载
 void Compiler::compileAttachStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileDetachStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileTargetStmt(ASTNodeIndex nodeIdx) {}
