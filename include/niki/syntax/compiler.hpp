@@ -226,8 +226,9 @@ class Compiler {
     void compileProgramRoot(ASTNodeIndex nodeIdx);
     void compileErrorNode(ASTNodeIndex nodeIdx);
 
-    //---错误处理---
+    //---错误与警告处理---
     void reportError(const Token &token, std::string_view message);
     void reportError(uint32_t line, uint32_t column, std::string_view message);
+    void reportWarning(uint32_t line, uint32_t column, std::string_view message);
 };
 } // namespace niki::syntax

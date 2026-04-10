@@ -32,11 +32,15 @@ struct ObjString {
 
 // DOD 风格的数组对象
 // 拒绝使用 std::vector<Value> (同样会导致二次堆分配)
+// 因为数组需要动态扩容 (push)，如果我们使用柔性数组 (elements[])，
+// 当我们调用 realloc 扩容时，整个 ObjArray 结构体的物理首地址可能会改变！
+// 这会导致 VM 寄存器中原本指向这个 ObjArray 的所有 Value 指针瞬间变成悬空指针 (Dangling Pointer)。
+// 因此，对于需要动态改变大小的对象，我们必须采用“对象头与数据块分离”的设计，或者禁止重新分配地址。
 struct ObjArray {
     Object obj;        // 对象头
     uint32_t capacity; // 物理容量
     uint32_t count;    // 实际元素个数
-    Value elements[];  // 柔性数组: 元素数组紧贴在 count 之后！
+    Value *elements;   // 指向堆上另一块独立连续内存的指针！
 };
 
 // 函数对象：包含字节码、常量池、行号信息以及函数的元数据
@@ -61,19 +65,39 @@ inline ObjString *allocateString(const char *chars, uint32_t length) {
 
 // 分配数组：一次性分配 头+N个value
 inline ObjArray *allocateArray(uint32_t capacity) {
-    // 分配结构体大小，加上capacity个value的大小(16字节*capacity)
-    ObjArray *array = static_cast<ObjArray *>(std::malloc(sizeof(ObjArray) + capacity * sizeof(Value)));
+    // 数组对象本身是一个固定大小的块
+    ObjArray *array = static_cast<ObjArray *>(std::malloc(sizeof(ObjArray)));
     array->obj.type = ObjType::Array;
     array->obj.isMarked = false;
     array->capacity = capacity;
     array->count = 0;
-    // 默认全部初始化位 Nil，防止读到内存垃圾
-    for (uint32_t i = 0; i < capacity; ++i) {
-        array->elements[i] = Value::makeNil();
+    // 数据块在另一块绝对连续的堆内存中
+    if (capacity > 0) {
+        array->elements = static_cast<Value *>(std::malloc(capacity * sizeof(Value)));
+        // 默认全部初始化位 Nil，防止读到内存垃圾
+        for (uint32_t i = 0; i < capacity; ++i) {
+            array->elements[i] = Value::makeNil();
+        }
+    } else {
+        array->elements = nullptr;
     }
     return array;
 }
+// 扩容数组数据块
+inline void expandArray(ObjArray *array, uint32_t new_capacity) {
+    if (new_capacity <= array->capacity) {
+        return;
+    }
+    // realloc 会自动把旧数据拷贝到新内存块（如果发生了地址迁移）
+    // 且我们只改变array->elements的指向，array自身的地址不改变
+    array->elements = static_cast<Value *>(std::realloc(array->elements, new_capacity * sizeof(Value)));
 
+    // 初始化开辟新内存
+    for (uint32_t i = array->capacity; i < new_capacity; ++i) {
+        array->elements[i] = Value::makeNil();
+    }
+    array->capacity = new_capacity;
+}
 //---安全类型转换与识别---
 inline bool isObjType(Value value, ObjType type) {
     return value.type == ValueType::Object && static_cast<Object *>(value.as.object)->type == type;
@@ -83,7 +107,7 @@ inline bool isString(Value value) { return isObjType(value, ObjType::String); }
 inline bool isArray(Value value) { return isObjType(value, ObjType::Array); }
 
 inline ObjString *asString(Value value) { return static_cast<ObjString *>(value.as.object); }
-inline ObjString *asArray(Value value) { return static_cast<ObjString *>(value.as.object); }
+inline ObjArray *asArray(Value value) { return static_cast<ObjArray *>(value.as.object); }
 // 注意：由于我们目前没有实现 GC 和 OP_FREE，
 // 调用 allocateString 和 allocateArray 产生的内存暂时会泄漏。
 // 这是 MVP 阶段的架构妥协。

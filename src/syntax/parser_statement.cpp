@@ -59,8 +59,7 @@ ASTNodeIndex Parser::parseExpressionStmt() {
     */
     if (match(TokenType::SYM_EQUAL) || match(TokenType::SYM_BIT_AND_EQUAL) || match(TokenType::SYM_BIT_OR_EQUAL) ||
         match(TokenType::SYM_BIT_XOR_EQUAL) || match(TokenType::SYM_PLUS_EQUAL) || match(TokenType::SYM_MINUS_EQUAL) ||
-        match(TokenType::SYM_STAR_EQUAL) || match(TokenType::SYM_SLASH_EQUAL) || match(TokenType::SYM_MOD_EQUAL) ||
-        match(TokenType::SYM_SLASH_EQUAL) || match(TokenType::SYM_MOD_EQUAL)) {
+        match(TokenType::SYM_STAR_EQUAL) || match(TokenType::SYM_SLASH_EQUAL) || match(TokenType::SYM_MOD_EQUAL)) {
         TokenType assignOp = previous.type;
 
         ASTNodePayload assignPayload{};
@@ -69,10 +68,10 @@ ASTNodeIndex Parser::parseExpressionStmt() {
 
         assignPayload.assign_stmt.value = parseExpression(Precedence::None);
 
-        consume(TokenType::SYM_SEMICOLON, "Expected';'after assignment.");
+        consume(TokenType::SYM_SEMICOLON, "Expected ';' after assignment.");
         return emitNode(NodeType::AssignmentStmt, assignPayload, startToken);
     }
-    consume(TokenType::SYM_SEMICOLON, "Expected';'after expression.");
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after expression.");
     ASTNodePayload exprPayload{};
     exprPayload.expr_stmt.expression = expr;
     return emitNode(NodeType::ExpressionStmt, exprPayload, startToken);

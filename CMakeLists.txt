@@ -36,17 +36,20 @@ add_executable(NIKI src/main.cpp)
 target_link_libraries(NIKI PRIVATE niki_core)
 
 # 开启 CTest 测试支持 (极其重要)
-# enable_testing()
+enable_testing()
 
 # 注意这里的路径是 test/，不是 tests/
-# add_executable(niki_tests test/syntax/scanner_test.cpp)
+add_executable(niki_tests 
+    test/syntax/parser_test.cpp
+    test/syntax/compiler_test.cpp
+)
 
 # 注意 GTest::gtest_main 的大小写
-# target_link_libraries(niki_tests PRIVATE
-#     niki_core
-#     GTest::gtest
-#     GTest::gtest_main
-# )
+target_link_libraries(niki_tests PRIVATE
+    niki_core
+    GTest::gtest
+    GTest::gtest_main
+)
 
-# include(GoogleTest)
-# gtest_discover_tests(niki_tests)
+include(GoogleTest)
+gtest_discover_tests(niki_tests)

@@ -144,7 +144,7 @@ InterpretResult VM::run() {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
             uint8_t rightReg = readByte();
-            
+
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
 
@@ -153,16 +153,16 @@ InterpretResult VM::run() {
                 return InterpretResult::RUNTIME_ERROR;
             }
 
-            ObjString* a = asString(left);
-            ObjString* b = asString(right);
+            ObjString *a = asString(left);
+            ObjString *b = asString(right);
 
             uint32_t new_len = a->length + b->length;
             // 暂时不考虑内存释放，先分配足够大的新字符串
-            ObjString* new_str = static_cast<ObjString*>(std::malloc(sizeof(ObjString) + new_len + 1));
+            ObjString *new_str = static_cast<ObjString *>(std::malloc(sizeof(ObjString) + new_len + 1));
             new_str->obj.type = ObjType::String;
             new_str->obj.isMarked = false;
             new_str->length = new_len;
-            
+
             // 连续的内存拷贝
             std::memcpy(new_str->chars, a->chars, a->length);
             std::memcpy(new_str->chars + a->length, b->chars, b->length);
@@ -186,10 +186,13 @@ InterpretResult VM::run() {
             uint8_t srcReg = readByte();
             Value val = currentRegisters()[srcReg];
             bool is_false = false;
-            if (val.type == ValueType::Nil) is_false = true;
-            else if (val.type == ValueType::Bool) is_false = !val.as.boolean;
-            else if (val.type == ValueType::Integer) is_false = (val.as.integer == 0);
-            
+            if (val.type == ValueType::Nil)
+                is_false = true;
+            else if (val.type == ValueType::Bool)
+                is_false = !val.as.boolean;
+            else if (val.type == ValueType::Integer)
+                is_false = (val.as.integer == 0);
+
             currentRegisters()[targetReg] = Value::makeBool(is_false);
             break;
         }
@@ -207,55 +210,65 @@ InterpretResult VM::run() {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
             uint8_t rightReg = readByte();
-            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+            if (currentRegisters()[leftReg].type != ValueType::Integer ||
+                currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
                 return InterpretResult::RUNTIME_ERROR;
             }
-            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer & currentRegisters()[rightReg].as.integer);
+            currentRegisters()[targetReg] =
+                Value::makeInt(currentRegisters()[leftReg].as.integer & currentRegisters()[rightReg].as.integer);
             break;
         }
         case OPCODE::OP_BIT_OR: {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
             uint8_t rightReg = readByte();
-            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+            if (currentRegisters()[leftReg].type != ValueType::Integer ||
+                currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
                 return InterpretResult::RUNTIME_ERROR;
             }
-            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer | currentRegisters()[rightReg].as.integer);
+            currentRegisters()[targetReg] =
+                Value::makeInt(currentRegisters()[leftReg].as.integer | currentRegisters()[rightReg].as.integer);
             break;
         }
         case OPCODE::OP_BIT_XOR: {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
             uint8_t rightReg = readByte();
-            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+            if (currentRegisters()[leftReg].type != ValueType::Integer ||
+                currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
                 return InterpretResult::RUNTIME_ERROR;
             }
-            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer ^ currentRegisters()[rightReg].as.integer);
+            currentRegisters()[targetReg] =
+                Value::makeInt(currentRegisters()[leftReg].as.integer ^ currentRegisters()[rightReg].as.integer);
             break;
         }
         case OPCODE::OP_BIT_SHL: {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
             uint8_t rightReg = readByte();
-            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+            if (currentRegisters()[leftReg].type != ValueType::Integer ||
+                currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
                 return InterpretResult::RUNTIME_ERROR;
             }
-            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer << currentRegisters()[rightReg].as.integer);
+            currentRegisters()[targetReg] =
+                Value::makeInt(currentRegisters()[leftReg].as.integer << currentRegisters()[rightReg].as.integer);
             break;
         }
         case OPCODE::OP_BIT_SHR: {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
             uint8_t rightReg = readByte();
-            if (currentRegisters()[leftReg].type != ValueType::Integer || currentRegisters()[rightReg].type != ValueType::Integer) {
+            if (currentRegisters()[leftReg].type != ValueType::Integer ||
+                currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
                 return InterpretResult::RUNTIME_ERROR;
             }
-            currentRegisters()[targetReg] = Value::makeInt(currentRegisters()[leftReg].as.integer >> currentRegisters()[rightReg].as.integer);
+            currentRegisters()[targetReg] =
+                Value::makeInt(currentRegisters()[leftReg].as.integer >> currentRegisters()[rightReg].as.integer);
             break;
         }
         case OPCODE::OP_TRUE: {
@@ -273,21 +286,102 @@ InterpretResult VM::run() {
             currentRegisters()[targetReg] = Value::makeNil();
             break;
         }
+        case OPCODE::OP_NEW_ARRAY: {
+            uint8_t targetReg = readByte();
+            uint8_t initial_capacity = readByte();
+            ObjArray *array = allocateArray(initial_capacity);
+            currentRegisters()[targetReg] = Value::makeObject(array);
+            break;
+        }
+        case OPCODE::OP_PUSH_ARRAY: {
+            uint8_t arrayReg = readByte();
+            uint8_t valReg = readByte();
+            Value arrVal = currentRegisters()[arrayReg];
+            if (!isArray(arrVal)) {
+                runtime_error("Target of push must be an array.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            ObjArray *array = asArray(arrVal);
+            if (array->count >= array->capacity) {
+                uint32_t new_cap = array->capacity < 8 ? 8 : array->capacity * 2;
+                expandArray(array, new_cap);
+            }
+            array->elements[array->count++] = currentRegisters()[valReg];
+            break;
+        }
+        case OPCODE::OP_GET_ARRAY: {
+            uint8_t targetReg = readByte();
+            uint8_t arrayReg = readByte();
+            uint8_t indexReg = readByte();
+            Value arrVal = currentRegisters()[arrayReg];
+            Value idxVal = currentRegisters()[indexReg];
+
+            if (!isArray(arrVal)) {
+                runtime_error("Target of push must be an array.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            if (idxVal.type != ValueType::Integer) {
+                runtime_error("Array index must be an integer.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+
+            ObjArray *array = asArray(arrVal);
+            int64_t idx = idxVal.as.integer;
+
+            if (idx < 0 || idx >= array->count) {
+                runtime_error("Array index out of bounds.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            currentRegisters()[targetReg] = array->elements[idx];
+            break;
+        }
+        case OPCODE::OP_SET_ARRAY: {
+            uint8_t arrayReg = readByte();
+            uint8_t indexReg = readByte();
+            uint8_t valReg = readByte();
+
+            Value arrVal = currentRegisters()[arrayReg];
+            Value idxVal = currentRegisters()[indexReg];
+
+            if (!isArray(arrVal)) {
+                runtime_error("Target of push must be an array.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+            if (idxVal.type != ValueType::Integer) {
+                runtime_error("Array index must be an integer.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+
+            ObjArray *array = asArray(arrVal);
+            int64_t idx = idxVal.as.integer;
+
+            if (idx < 0 || idx >= array->count) {
+                runtime_error("Array index out of bounds.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+
+            array->elements[idx] = currentRegisters()[valReg];
+            break;
+        }
         case OPCODE::OP_AND: {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
             uint8_t rightReg = readByte();
-            
+
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
-            
+
             bool l_bool = false;
-            if (left.type == ValueType::Bool) l_bool = left.as.boolean;
-            else if (left.type == ValueType::Integer) l_bool = (left.as.integer != 0);
-            
+            if (left.type == ValueType::Bool)
+                l_bool = left.as.boolean;
+            else if (left.type == ValueType::Integer)
+                l_bool = (left.as.integer != 0);
+
             bool r_bool = false;
-            if (right.type == ValueType::Bool) r_bool = right.as.boolean;
-            else if (right.type == ValueType::Integer) r_bool = (right.as.integer != 0);
+            if (right.type == ValueType::Bool)
+                r_bool = right.as.boolean;
+            else if (right.type == ValueType::Integer)
+                r_bool = (right.as.integer != 0);
 
             currentRegisters()[targetReg] = Value::makeBool(l_bool && r_bool);
             break;
@@ -296,17 +390,21 @@ InterpretResult VM::run() {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
             uint8_t rightReg = readByte();
-            
+
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
-            
+
             bool l_bool = false;
-            if (left.type == ValueType::Bool) l_bool = left.as.boolean;
-            else if (left.type == ValueType::Integer) l_bool = (left.as.integer != 0);
-            
+            if (left.type == ValueType::Bool)
+                l_bool = left.as.boolean;
+            else if (left.type == ValueType::Integer)
+                l_bool = (left.as.integer != 0);
+
             bool r_bool = false;
-            if (right.type == ValueType::Bool) r_bool = right.as.boolean;
-            else if (right.type == ValueType::Integer) r_bool = (right.as.integer != 0);
+            if (right.type == ValueType::Bool)
+                r_bool = right.as.boolean;
+            else if (right.type == ValueType::Integer)
+                r_bool = (right.as.integer != 0);
 
             currentRegisters()[targetReg] = Value::makeBool(l_bool || r_bool);
             break;
@@ -380,6 +478,9 @@ InterpretResult VM::run() {
                     std::cout << "nil";
                 } else if (isString(result)) {
                     std::cout << "\"" << asString(result)->chars << "\"";
+                } else if (isArray(result)) {
+                    ObjArray *arr = asArray(result);
+                    std::cout << "[Array: size=" << arr->count << " cap=" << arr->capacity << "]";
                 } else {
                     std::cout << "[Object]";
                 }

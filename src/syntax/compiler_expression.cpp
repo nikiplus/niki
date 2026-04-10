@@ -48,7 +48,12 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
         return compileBorrowExpr(exprIdx);
     case NodeType::ImplicitCastExpr:
         return compileImplicitCastExpr(exprIdx);
+
+    case NodeType::WildcardExpr:
+        reportWarning(line, column, "WildcardExpr is a stub.");
+        return ExprResult{0, true};
     default:
+        reportWarning(line, column, "Unknown Expression Node Type: " + std::to_string(static_cast<int>(node.type)));
         reportError(line, column, "Expected an expression.");
         return ExprResult{0, true};
     }
@@ -207,7 +212,8 @@ ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {
     uint32_t line = currentPool->locations[nodeIdx.index].line;
     uint32_t column = currentPool->locations[nodeIdx.index].column;
 
-    uint32_t arr_len = node.payload.list.elements.length;
+    std::span<const ASTNodeIndex> elements = currentPool->get_list(node.payload.list.elements);
+    uint32_t arr_len = static_cast<uint32_t>(elements.size());
     uint8_t arrayReg = regAlloc.allocate();
 
     // 限制预分配容量在 255 以内
@@ -216,8 +222,7 @@ ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {
     // OP_NEW_ARRAY R_dst, initial_capacity
     emitOp(vm::OPCODE::OP_NEW_ARRAY, arrayReg, initial_capacity, line, column);
 
-    for (uint32_t i = 0; i < arr_len; ++i) {
-        ASTNodeIndex elementIdx = {node.payload.list.elements.start_index + i};
+    for (ASTNodeIndex elementIdx : elements) {
         ExprResult res = compileExpression(elementIdx);
 
         emitOp(vm::OPCODE::OP_PUSH_ARRAY, arrayReg, res.reg, line, column);
@@ -235,15 +240,22 @@ ExprResult Compiler::compileMapExpr(ASTNodeIndex nodeIdx) {
     uint32_t column = currentPool->locations[nodeIdx.index].column;
     uint32_t map_idx = node.payload.map.map_data_index;
     const MapData &map_data = currentPool->map_data[map_idx];
-    uint32_t entry_count = map_data.keys.length;
+    std::span<const ASTNodeIndex> keyNodes = currentPool->get_list(map_data.keys);
+    std::span<const ASTNodeIndex> valueNodes = currentPool->get_list(map_data.values);
+    uint32_t entry_count = static_cast<uint32_t>(keyNodes.size());
     uint8_t mapReg = regAlloc.allocate();
 
     uint8_t initial_capacity = entry_count > 255 ? 255 : static_cast<uint8_t>(entry_count);
 
     emitOp(vm::OPCODE::OP_NEW_MAP, mapReg, initial_capacity, line, column);
-    for (uint32_t i = 0; i < entry_count; ++i) {
-        ASTNodeIndex keyIdx = {map_data.keys.start_index + i};
-        ASTNodeIndex valIdx = {map_data.values.start_index + i};
+    if (keyNodes.size() != valueNodes.size()) {
+        reportError(line, column, "Map literal keys/values size mismatch.");
+        return {mapReg, true};
+    }
+
+    for (size_t i = 0; i < keyNodes.size(); ++i) {
+        ASTNodeIndex keyIdx = keyNodes[i];
+        ASTNodeIndex valIdx = valueNodes[i];
 
         ExprResult keyRes = compileExpression(keyIdx);
         ExprResult valRes = compileExpression(valIdx);
@@ -351,17 +363,56 @@ ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
 
     uint16_t propNameId = node.payload.member.property_id;
 
-    return {0, true};
+    reportWarning(line, column, "compileMemberExpr is a stub.");
+    uint8_t outReg = regAlloc.allocate();
+    emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
+    freeIfTemp(objRes);
+    return {outReg, true};
 }
 /*- dispatch 解决的是“ 在接收者上下文中调用方法 ”： obj.method(args...) 。
 - 这里不仅是 call，还涉及接收者绑定（类似 this/self）和方法查找规则。
 - 没有 dispatch，你只能先 member 再“裸 call”，那会丢掉动态分发和接收者语义边界。
 */
-ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
+ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) {
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    reportWarning(line, column, "compileDispatchExpr is a stub.");
+    uint8_t outReg = regAlloc.allocate();
+    emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
+    return {outReg, true};
+}
 // 闭包与高级特性
-ExprResult Compiler::compileClosureExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
-ExprResult Compiler::compileAwaitExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
-ExprResult Compiler::compileBorrowExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
-ExprResult Compiler::compileImplicitCastExpr(ASTNodeIndex nodeIdx) { return {0, true}; }
+ExprResult Compiler::compileClosureExpr(ASTNodeIndex nodeIdx) {
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    reportWarning(line, column, "compileClosureExpr is a stub.");
+    uint8_t outReg = regAlloc.allocate();
+    emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
+    return {outReg, true};
+}
+ExprResult Compiler::compileAwaitExpr(ASTNodeIndex nodeIdx) {
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    reportWarning(line, column, "compileAwaitExpr is a stub.");
+    uint8_t outReg = regAlloc.allocate();
+    emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
+    return {outReg, true};
+}
+ExprResult Compiler::compileBorrowExpr(ASTNodeIndex nodeIdx) {
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    reportWarning(line, column, "compileBorrowExpr is a stub.");
+    uint8_t outReg = regAlloc.allocate();
+    emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
+    return {outReg, true};
+}
+ExprResult Compiler::compileImplicitCastExpr(ASTNodeIndex nodeIdx) {
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    reportWarning(line, column, "compileImplicitCastExpr is a stub.");
+    uint8_t outReg = regAlloc.allocate();
+    emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
+    return {outReg, true};
+}
 
 } // namespace niki::syntax

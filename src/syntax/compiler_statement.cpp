@@ -22,12 +22,6 @@ void Compiler::compileStatement(ASTNodeIndex stmtIdx) {
     case NodeType::AssignmentStmt:
         compileAssignmentStmt(stmtIdx);
         break;
-    case NodeType::VarDeclStmt:
-        compileVarDeclStmt(stmtIdx);
-        break;
-    case NodeType::ConstDeclStmt:
-        compileConstDeclStmt(stmtIdx);
-        break;
     case NodeType::BlockStmt:
         compileBlockStmt(stmtIdx);
         break;
@@ -42,6 +36,12 @@ void Compiler::compileStatement(ASTNodeIndex stmtIdx) {
         break;
     case NodeType::ReturnStmt:
         compileReturnStmt(stmtIdx);
+        break;
+    case NodeType::VarDeclStmt:
+        compileVarDeclStmt(stmtIdx);
+        break;
+    case NodeType::ConstDeclStmt:
+        compileConstDeclStmt(stmtIdx);
         break;
     // ... 可以根据需要补充更多case
     default:
@@ -94,13 +94,17 @@ void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
             case TokenType::SYM_SLASH_EQUAL:
                 emitOp(vm::OPCODE::OP_IDIV, targetReg, targetReg, rightRes.reg, line, column);
                 break;
-            // ... 可以继续扩展位运算等复合赋值 ...
+            // ... 可以继续扩展位运算等复合赋�?...
             default:
                 reportError(line, column, "Unsupported assignment operator.");
                 break;
             }
             freeIfTemp(rightRes);
         }
+    } else if (targetNode.type == NodeType::IndexExpr) {
+        reportWarning(line, column, "Array/Map element assignment is a stub.");
+    } else if (targetNode.type == NodeType::MemberExpr) {
+        reportWarning(line, column, "Object property assignment is a stub.");
     } else {
         reportError(line, column, "Invalid assignment target. Only simple variables are supported currently.");
     }
@@ -119,7 +123,7 @@ void Compiler::compileVarDeclStmt(ASTNodeIndex nodeIdx) {
 
         if (locals[i].name_id == name_id) {
             reportError(line, column, "Variable already declared in this scope.");
-            break; // 报错后跳出
+            break; // 报错后跳�?
         }
     }
 
@@ -153,7 +157,7 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
     endScope();
 }
 
-// 控制流
+// 控制�?
 void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
     const ASTNode &node = currentPool->getNode(nodeIdx);
     uint32_t line = currentPool->locations[nodeIdx.index].line;
@@ -207,11 +211,11 @@ void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {
         patchJump(p, loopEnd);
     }
 
-    loop_stack.pop_back(); // 修复泄漏：必须出栈，保证状态对称
+    loop_stack.pop_back(); // 修复泄漏：必须出栈，保证状态对�?
 }
 void Compiler::compileMatchStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileMatchCaseStmt(ASTNodeIndex nodeIdx) {}
-// 跳转与中断
+// 跳转与中�?
 void Compiler::compileContinueStmt(ASTNodeIndex nodeIdx) {
     uint32_t line = currentPool->locations[nodeIdx.index].line;
     uint32_t column = currentPool->locations[nodeIdx.index].column;
@@ -240,7 +244,7 @@ void Compiler::compileReturnStmt(ASTNodeIndex nodeIdx) {
 
     if (node.payload.return_stmt.expression.isvalid()) {
         ExprResult res = compileExpression(node.payload.return_stmt.expression);
-        // 将返回值搬运到 0 号寄存器，作为当前约定的返回值存储位置
+        // 将返回值搬运到 0 号寄存器，作为当前约定的返回值存储位�?
         emitOp(vm::OPCODE::OP_MOVE, 0, res.reg, line, column);
         freeIfTemp(res);
     }
@@ -249,7 +253,7 @@ void Compiler::compileReturnStmt(ASTNodeIndex nodeIdx) {
 }
 void Compiler::compileNockStmt(ASTNodeIndex nodeIdx) {}
 
-// 组件挂载与卸载
+// 组件挂载与卸�?
 void Compiler::compileAttachStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileDetachStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileTargetStmt(ASTNodeIndex nodeIdx) {}

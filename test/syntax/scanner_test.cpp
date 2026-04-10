@@ -65,23 +65,23 @@ TEST(ScannerTest, AllSymbolsCoverage) {
     }
 }
 
-TEST(ScannerTest, AllKeywordsCoverage) {
+TEST(ScannerTest, AllKWsCoverage) {
     std::string source = "true false if else loop match break continue return var func const int float string bool "
                          "void any type interface flow await nock async system component target tag taggroup exclusive "
                          "set unset kits with read write module struct enum";
     Scanner scanner(source);
 
     std::vector<TokenType> expectedTokens = {
-        TokenType::KEYWORD_TRUE,   TokenType::KEYWORD_FALSE, TokenType::KEYWORD_IF,     TokenType::KEYWORD_ELSE,
-        TokenType::KEYWORD_LOOP,   TokenType::KEYWORD_MATCH, TokenType::KEYWORD_BREAK,  TokenType::KEYWORD_CONTINUE,
-        TokenType::KEYWORD_RETURN, TokenType::KEYWORD_VAR,   TokenType::KEYWORD_FUNC,   TokenType::KEYWORD_CONST,
-        TokenType::KEYWORD_INT,    TokenType::KEYWORD_FLOAT, TokenType::KEYWORD_STRING, TokenType::KEYWORD_BOOL,
-        TokenType::KEYWORD_VOID,   TokenType::KEYWORD_ANY,   TokenType::KEYWORD_TYPE,   TokenType::KEYWORD_INTERFACE,
-        TokenType::NK_FLOW,        TokenType::NK_FLOW_AWAIT, TokenType::NK_FLOW_NOCK,   TokenType::NK_FLOW_ASYNC,
-        TokenType::NK_SYSTEM,      TokenType::NK_COMPONENT,  TokenType::NK_TARGET,      TokenType::NK_TAG,
-        TokenType::NK_TAGGROUP,    TokenType::NK_EXCLUSIVE,  TokenType::NK_SET,         TokenType::NK_UNSET,
-        TokenType::NK_KITS,        TokenType::NK_WITH,       TokenType::NK_READ,        TokenType::NK_WRITE,
-        TokenType::NK_MODULE,      TokenType::NK_STRUCT,     TokenType::NK_ENUM,        TokenType::TOKEN_EOF};
+        TokenType::KW_TRUE,     TokenType::KW_FALSE,     TokenType::KW_IF,     TokenType::KW_ELSE,
+        TokenType::KW_LOOP,     TokenType::KW_MATCH,     TokenType::KW_BREAK,  TokenType::KW_CONTINUE,
+        TokenType::KW_RETURN,   TokenType::KW_VAR,       TokenType::KW_FUNC,   TokenType::KW_CONST,
+        TokenType::KW_INT,      TokenType::KW_FLOAT,     TokenType::KW_STRING, TokenType::KW_BOOL,
+        TokenType::KW_VOID,     TokenType::KW_ANY,       TokenType::KW_TYPE,   TokenType::KW_INTERFACE,
+        TokenType::KW_FLOW,     TokenType::KW_AWAIT,     TokenType::KW_NOCK,   TokenType::KW_ASYNC,
+        TokenType::KW_SYSTEM,   TokenType::KW_COMPONENT, TokenType::KW_TARGET, TokenType::KW_TAG,
+        TokenType::KW_TAGGROUP, TokenType::KW_EXCLUSIVE, TokenType::KW_SET,    TokenType::KW_UNSET,
+        TokenType::KW_KITS,     TokenType::KW_WITH,      TokenType::KW_READ,   TokenType::KW_WRITE,
+        TokenType::KW_MODULE,   TokenType::KW_STRUCT,    TokenType::KW_ENUM,   TokenType::TOKEN_EOF};
 
     for (auto expected : expectedTokens) {
         Token t = scanner.scanToken();
@@ -131,7 +131,7 @@ TEST(ScannerTest, LineAndColumnAccuracy) {
         EXPECT_EQ(t.column, expectedCol);
     };
 
-    checkToken(TokenType::KEYWORD_VAR, 1, 1);
+    checkToken(TokenType::KW_VAR, 1, 1);
     checkToken(TokenType::IDENTIFIER, 1, 5);
     checkToken(TokenType::SYM_EQUAL, 1, 7);
     checkToken(TokenType::LITERAL_INT, 1, 9);

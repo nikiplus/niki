@@ -154,6 +154,7 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
+
     case TokenType::LITERAL_STRING: {
         std::string_view lexeme = source.substr(startToken.start_offset, startToken.length);
         // 去除首尾的引号
@@ -165,29 +166,34 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         payload.literal.const_pool_index = astPool.addConstant(vm::Value::makeObject(strObj));
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
+
     case TokenType::LITERAL_CHAR:
         // 暂时用 Nil 占位
         payload.literal.literal_type = type;
         payload.literal.const_pool_index = astPool.addConstant(vm::Value::makeNil());
         return emitNode(NodeType::LiteralExpr, payload, startToken);
+
     case TokenType::KW_TRUE: {
         uint32_t const_idx = astPool.addConstant(vm::Value::makeBool(true));
         payload.literal.literal_type = TokenType::KW_TRUE;
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
+
     case TokenType::KW_FALSE: {
         uint32_t const_idx = astPool.addConstant(vm::Value::makeBool(false));
         payload.literal.literal_type = TokenType::KW_FALSE;
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
+
     case TokenType::KW_NIL: {
         uint32_t const_idx = astPool.addConstant(vm::Value::makeNil());
         payload.literal.literal_type = TokenType::KW_NIL;
         payload.literal.const_pool_index = const_idx;
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
+
     case TokenType::IDENTIFIER: {
         std::string_view name_view = source.substr(startToken.start_offset, startToken.length);
 
