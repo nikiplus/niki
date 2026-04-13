@@ -4,7 +4,7 @@
 namespace niki::semantic {
 
 NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
-    const auto &node = currentPool->getNode(exprIdx);
+    auto [node, line, column] = getNodeCtx(exprIdx);
     NKType resultType = NKType::makeUnknown();
 
     switch (node.type) {
@@ -67,7 +67,7 @@ NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
 // ... [Existing implementations] ...
 
 NKType TypeChecker::checkLiteralExpr(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     switch (node.payload.literal.literal_type) {
     case syntax::TokenType::LITERAL_INT:
         return NKType::makeInt();
@@ -84,23 +84,22 @@ NKType TypeChecker::checkLiteralExpr(syntax::ASTNodeIndex nodeIdx) {
 }
 
 NKType TypeChecker::checkIdentifierExpr(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+
     NKType type = resolveSymbol(node.payload.identifier.name_id, line, column);
     // If not found, it might be a future global or built-in, but for MVP let's return Unknown instead of failing hard.
     return type;
 }
 
 NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     checkExpression(node.payload.binary.left);
     checkExpression(node.payload.binary.right);
     return NKType::makeInt();
 }
 
 NKType TypeChecker::checkArrayExpr(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     auto elements = currentPool->get_list(node.payload.list.elements);
     for (auto el : elements) {
         checkExpression(el);
@@ -109,7 +108,7 @@ NKType TypeChecker::checkArrayExpr(syntax::ASTNodeIndex nodeIdx) {
 }
 
 NKType TypeChecker::checkMapExpr(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     const auto &map_data = currentPool->map_data[node.payload.map.map_data_index];
     auto keys = currentPool->get_list(map_data.keys);
     auto values = currentPool->get_list(map_data.values);
@@ -122,20 +121,25 @@ NKType TypeChecker::checkMapExpr(syntax::ASTNodeIndex nodeIdx) {
 }
 
 NKType TypeChecker::checkIndexExpr(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     checkExpression(node.payload.index.target);
     checkExpression(node.payload.index.index);
     return NKType::makeUnknown();
 }
 
 NKType TypeChecker::checkLogicalExpr(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     checkExpression(node.payload.logical.left);
     checkExpression(node.payload.logical.right);
     return NKType::makeBool();
 }
 
-NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) {
+    const auto &node = currentPool->getNode(nodeIdx);
+    checkExpression(node.payload.unary.operand);
+
+    return NKType::makeUnknown();
+}
 NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 NKType TypeChecker::checkDispatchExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }

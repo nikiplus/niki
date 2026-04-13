@@ -3,7 +3,7 @@
 namespace niki::semantic {
 
 void TypeChecker::checkStatement(syntax::ASTNodeIndex stmtIdx) {
-    const auto &node = currentPool->getNode(stmtIdx);
+    const auto &node = getNodeCtx(stmtIdx).node;
     switch (node.type) {
     case syntax::NodeType::ExpressionStmt:
         checkExpressionStmt(stmtIdx);
@@ -59,14 +59,18 @@ void TypeChecker::checkStatement(syntax::ASTNodeIndex stmtIdx) {
 }
 
 void TypeChecker::checkExpressionStmt(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
+    const auto &node = getNodeCtx(nodeIdx).node;
     checkExpression(node.payload.expr_stmt.expression);
 }
 
+void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
+    const auto &node = getNodeCtx(nodeIdx).node;
+    checkExpression(node.payload.assign_stmt.target);
+    checkExpression(node.payload.assign_stmt.value);
+}
+
 void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     NKType initType = NKType::makeUnknown();
     if (node.payload.var_decl.init_expr.isvalid()) {
@@ -75,24 +79,18 @@ void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
     declareSymbol(node.payload.var_decl.name_id, initType, line, column);
 }
 
-void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
-    checkExpression(node.payload.assign_stmt.target);
-    checkExpression(node.payload.assign_stmt.value);
-}
-
 void TypeChecker::checkBlockStmt(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
-    beginScope();
+    const auto &node = getNodeCtx(nodeIdx).node;
+    beginScope(); // 进门加锁
     auto stmts = currentPool->get_list(node.payload.list.elements);
     for (auto stmt : stmts) {
         checkNode(stmt);
     }
-    endScope();
+    endScope(); // 出门解锁
 }
 
 void TypeChecker::checkIfStmt(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
+    const auto &node = getNodeCtx(nodeIdx).node;
     checkExpression(node.payload.if_stmt.condition);
     checkStatement(node.payload.if_stmt.then_branch);
     if (node.payload.if_stmt.else_branch.isvalid()) {

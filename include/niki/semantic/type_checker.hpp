@@ -45,6 +45,16 @@ class TypeChecker {
     void endScope();
     void declareSymbol(uint32_t name_id, NKType type, uint32_t line, uint32_t column);
     NKType resolveSymbol(uint32_t name_id, uint32_t line, uint32_t column);
+    //---辅助方法---
+    struct NodeContext {
+        const syntax::ASTNode &node;
+        uint32_t line;
+        uint32_t column;
+    };
+    inline NodeContext getNodeCtx(syntax::ASTNodeIndex idx) const {
+        return {currentPool->getNode(idx), currentPool->locations[idx.index].line,
+                currentPool->locations[idx.index].column};
+    }
 
     //---错误报告---
     void reportError(uint32_t line, uint32_t column, const std::string &message);

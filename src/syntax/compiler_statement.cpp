@@ -14,9 +14,7 @@ void Compiler::compileStatement(ASTNodeIndex stmtIdx) {
     if (!stmtIdx.isvalid()) {
         return;
     }
-    const ASTNode &node = currentPool->getNode(stmtIdx);
-    uint32_t line = currentPool->locations[stmtIdx.index].line;
-    uint32_t column = currentPool->locations[stmtIdx.index].column;
+    auto [node, line, column] = getNodeCtx(stmtIdx);
     niki::debug::trace("compiler", "{}|-> statement {} at {}:{}", makeTracePrefix(), toString(node.type), line, column);
     switch (node.type) {
     case NodeType::ExpressionStmt:
@@ -58,21 +56,19 @@ void Compiler::compileStatement(ASTNodeIndex stmtIdx) {
 
 // 基础语句
 void Compiler::compileExpressionStmt(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
+    const auto &node = getNodeCtx(nodeIdx).node;
     ExprResult resultReg = compileExpression(node.payload.expr_stmt.expression);
     freeIfTemp(resultReg);
 }
 
 void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     ASTNodeIndex targetIdx = node.payload.assign_stmt.target;
     if (!targetIdx.isvalid()) {
         return;
     }
 
-    const ASTNode &targetNode = currentPool->getNode(targetIdx);
+    const auto &targetNode = getNodeCtx(targetIdx).node;
     if (targetNode.type == NodeType::IdentifierExpr) {
         uint32_t name_id = targetNode.payload.identifier.name_id;
         uint8_t targetReg = resolveLocal(name_id, line, column);
@@ -180,9 +176,7 @@ void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
 }
 
 void Compiler::compileVarDeclStmt(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     uint32_t name_id = node.payload.var_decl.name_id;
     // 只在当前作用域深度查找是否重复声明！
     for (int i = (int)locals.size() - 1; i >= 0; i--) {
@@ -216,9 +210,7 @@ void Compiler::compileConstDeclStmt(ASTNodeIndex nodeIdx) {
 }
 
 void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
-    const ASTNode &node = currentPool->getNode(stmtIdx);
-    uint32_t line = currentPool->locations[stmtIdx.index].line;
-    uint32_t column = currentPool->locations[stmtIdx.index].column;
+    auto [node, line, column] = getNodeCtx(stmtIdx);
     niki::debug::trace("compiler", "{}|-> enter BlockStmt at {}:{}", makeTracePrefix(), line, column);
     traceIndent++;
     beginScope();
@@ -236,9 +228,7 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
 
 // 控制流
 void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     niki::debug::trace("compiler", "{}|-> if at {}:{}", makeTracePrefix(), line, column);
 
     ExprResult condRes = compileExpression(node.payload.if_stmt.condition);
@@ -272,9 +262,7 @@ void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
 }
 
 void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     size_t loopStart = currentCodePos();
     size_t exitPatch = static_cast<size_t>(-1);
@@ -303,10 +291,9 @@ void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {
 }
 void Compiler::compileMatchStmt(ASTNodeIndex nodeIdx) {}
 void Compiler::compileMatchCaseStmt(ASTNodeIndex nodeIdx) {}
-// 跳转与中�?
+// 跳转与中断
 void Compiler::compileContinueStmt(ASTNodeIndex nodeIdx) {
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     if (loop_stack.empty()) {
         reportError(line, column, "continue outside loop.");
         return;
@@ -315,8 +302,7 @@ void Compiler::compileContinueStmt(ASTNodeIndex nodeIdx) {
     emitLoopBack(vm::OPCODE::OP_LOOP, loop_stack.back().start_pos, line, column);
 }
 void Compiler::compileBreakStmt(ASTNodeIndex nodeIdx) {
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     if (loop_stack.empty()) {
         reportError(line, column, "break outside loop.");
         return;
@@ -326,9 +312,7 @@ void Compiler::compileBreakStmt(ASTNodeIndex nodeIdx) {
     loop_stack.back().break_patches.push_back(patch);
 }
 void Compiler::compileReturnStmt(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     if (node.payload.return_stmt.expression.isvalid()) {
         ExprResult res = compileExpression(node.payload.return_stmt.expression);

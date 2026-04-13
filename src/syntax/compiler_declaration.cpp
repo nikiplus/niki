@@ -14,7 +14,7 @@ void Compiler::compileDeclaration(ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid()) {
         return;
     }
-    const ASTNode &node = currentPool->getNode(nodeIdx);
+    const auto &node = getNodeCtx(nodeIdx).node;
     uint32_t line = currentPool->locations[nodeIdx.index].line;
     uint32_t column = currentPool->locations[nodeIdx.index].column;
     niki::debug::trace("compiler", "declaration entry type={} at {}:{}", toString(node.type), line, column);
@@ -77,9 +77,7 @@ void Compiler::compileDeclaration(ASTNodeIndex nodeIdx) {
 
 // 基础声明
 void Compiler::compileFunctionDecl(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     uint32_t func_index = node.payload.func_decl.function_index;
     const FunctionData &func_data = currentPool->function_data[func_index];
@@ -149,18 +147,16 @@ void Compiler::compileImplDecl(ASTNodeIndex nodeIdx) {}
 
 // NIKI特有
 void Compiler::compileModuleDecl(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    const ASTNode &bodyNode = currentPool->getNode(node.payload.module_decl.body);
+    const auto &node = getNodeCtx(nodeIdx).node;
+    const auto &bodyNode = getNodeCtx(node.payload.module_decl.body).node;
     std::span<const ASTNodeIndex> declarations = currentPool->get_list(bodyNode.payload.list.elements);
     for (size_t i = 0; i < declarations.size(); ++i) {
         ASTNodeIndex child = declarations[i];
-        const ASTNode &childNode = currentPool->getNode(child);
+        auto [childNode, line, column] = getNodeCtx(child);
 
-        // 针对 REPL 最小回路：如果我们遇到的是最后一条表达式语句（ExpressionStmt�?
+        // 针对 REPL 最小回路：如果我们遇到的是最后一条表达式语句（ExpressionStmt）
         if (childNode.type == NodeType::ExpressionStmt && i == declarations.size() - 1) {
             // 取出里面真正的表达式
-            uint32_t line = currentPool->locations[child.index].line;
-            uint32_t column = currentPool->locations[child.index].column;
             ExprResult exprRes = compileExpression(childNode.payload.expr_stmt.expression);
             if (exprRes.reg != 0) {
                 emitOp(vm::OPCODE::OP_MOVE, 0, exprRes.reg, line, column);
@@ -168,8 +164,6 @@ void Compiler::compileModuleDecl(ASTNodeIndex nodeIdx) {
             freeIfTemp(exprRes);
         } else if (childNode.type >= NodeType::BinaryExpr && childNode.type <= NodeType::ImplicitCastExpr) {
             // 向后兼容：如果由于某种原�?Parser 丢出了裸表达�?
-            uint32_t line = currentPool->locations[child.index].line;
-            uint32_t column = currentPool->locations[child.index].column;
             ExprResult res = compileExpression(child);
             if (i == declarations.size() - 1) {
                 if (res.reg != 0) {

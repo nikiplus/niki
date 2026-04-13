@@ -18,9 +18,7 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
         return {};
     }
 
-    const ASTNode &node = currentPool->getNode(exprIdx);
-    uint32_t line = currentPool->locations[exprIdx.index].line;
-    uint32_t column = currentPool->locations[exprIdx.index].column;
+    auto [node, line, column] = getNodeCtx(exprIdx);
     switch (node.type) {
     case NodeType::BinaryExpr:
         return compileBinaryExpr(exprIdx);
@@ -68,9 +66,7 @@ ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid()) {
         return {};
     }
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     ExprResult leftReg = compileExpression(node.payload.binary.left);
     ExprResult rightReg = compileExpression(node.payload.binary.right);
@@ -141,9 +137,7 @@ ExprResult Compiler::compileLogicalExpr(ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid()) {
         return {};
     }
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     ExprResult leftReg = compileExpression(node.payload.logical.left);
     ExprResult resultReg = {regAlloc.allocate(), true};
@@ -174,9 +168,7 @@ ExprResult Compiler::compileLogicalExpr(ASTNodeIndex nodeIdx) {
 }
 
 ExprResult Compiler::compileUnaryExpr(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     ExprResult reg = compileExpression(node.payload.unary.operand);
     ExprResult resultReg = {regAlloc.allocate(), true};
@@ -200,9 +192,7 @@ ExprResult Compiler::compileUnaryExpr(ASTNodeIndex nodeIdx) {
 }
 
 ExprResult Compiler::compileLiteralExpr(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     ExprResult resultReg = {regAlloc.allocate(), true};
 
@@ -233,18 +223,14 @@ ExprResult Compiler::compileLiteralExpr(ASTNodeIndex nodeIdx) {
 }
 
 ExprResult Compiler::compileIdentifierExpr(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     uint8_t reg = resolveLocal(node.payload.identifier.name_id, line, column);
     return ExprResult{reg, false};
 }
 
 // 复杂数据结构
 ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     std::span<const ASTNodeIndex> elements = currentPool->get_list(node.payload.list.elements);
     uint32_t arr_len = static_cast<uint32_t>(elements.size());
@@ -269,9 +255,7 @@ ExprResult Compiler::compileArrayExpr(ASTNodeIndex nodeIdx) {
     return {arrayReg, true};
 }
 ExprResult Compiler::compileMapExpr(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     uint32_t map_idx = node.payload.map.map_data_index;
     const MapData &map_data = currentPool->map_data[map_idx];
     std::span<const ASTNodeIndex> keyNodes = currentPool->get_list(map_data.keys);
@@ -304,9 +288,7 @@ ExprResult Compiler::compileMapExpr(ASTNodeIndex nodeIdx) {
 }
 ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) {
     // todo:目前支持只读，后续再扩展map分发
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     ASTNodeIndex targetIdx = node.payload.index.target;
     ExprResult targetRes = compileExpression(targetIdx);
@@ -344,9 +326,7 @@ ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) {
 
 这不是网络意义上的“远程调用”，只是运行时内部的一次可调用实体执行。*/
 ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     // 先编译被调用目标（函数值/可调用对象）
     ExprResult calleeRes = compileExpression(node.payload.call.callee);
     // arguments 是 AST 节点列表，不是寄存器列表
@@ -400,9 +380,7 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
 - 语义上它是“取引用/取值”，不一定执行调用。
 */
 ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
-    const ASTNode &node = currentPool->getNode(nodeIdx);
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
 
     ExprResult objRes = compileExpression(node.payload.member.object);
 
@@ -419,8 +397,7 @@ ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
 - 没有 dispatch，你只能先 member 再“裸 call”，那会丢掉动态分发和接收者语义边界。
 */
 ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) {
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     reportWarning(line, column, "compileDispatchExpr is a stub.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
@@ -428,32 +405,28 @@ ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) {
 }
 // 闭包与高级特性
 ExprResult Compiler::compileClosureExpr(ASTNodeIndex nodeIdx) {
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     reportWarning(line, column, "compileClosureExpr is a stub.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
     return {outReg, true};
 }
 ExprResult Compiler::compileAwaitExpr(ASTNodeIndex nodeIdx) {
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     reportWarning(line, column, "compileAwaitExpr is a stub.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
     return {outReg, true};
 }
 ExprResult Compiler::compileBorrowExpr(ASTNodeIndex nodeIdx) {
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     reportWarning(line, column, "compileBorrowExpr is a stub.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
     return {outReg, true};
 }
 ExprResult Compiler::compileImplicitCastExpr(ASTNodeIndex nodeIdx) {
-    uint32_t line = currentPool->locations[nodeIdx.index].line;
-    uint32_t column = currentPool->locations[nodeIdx.index].column;
+    auto [node, line, column] = getNodeCtx(nodeIdx);
     reportWarning(line, column, "compileImplicitCastExpr is a stub.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);

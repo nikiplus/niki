@@ -166,7 +166,15 @@ class Compiler {
     void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint32_t line, uint32_t column);
     void emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column);
-
+    struct NodeContext {
+        const syntax::ASTNode &node;
+        uint32_t line;
+        uint32_t column;
+    };
+    inline NodeContext getNodeCtx(syntax::ASTNodeIndex idx) const {
+        return {currentPool->getNode(idx), currentPool->locations[idx.index].line,
+                currentPool->locations[idx.index].column};
+    }
     //---AST遍历核心(Visitor)---
     void compileNode(ASTNodeIndex nodeIdx);
 
