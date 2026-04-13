@@ -173,9 +173,10 @@ class Compiler {
     //---表达式编译 (返回装载结果的物理寄存器编号)---
     ExprResult compileExpression(ASTNodeIndex exprIdx);
     // 基础计算
-    ExprResult compileBinaryExpr(ASTNodeIndex nodeIdx);
-    ExprResult compileUnaryExpr(ASTNodeIndex nodeIdx);
     ExprResult compileLiteralExpr(ASTNodeIndex nodeIdx);
+    ExprResult compileBinaryExpr(ASTNodeIndex nodeIdx);
+    ExprResult compileLogicalExpr(ASTNodeIndex nodeIdx);
+    ExprResult compileUnaryExpr(ASTNodeIndex nodeIdx);
     ExprResult compileIdentifierExpr(ASTNodeIndex nodeIdx);
     // 复杂数据结构
     ExprResult compileArrayExpr(ASTNodeIndex nodeIdx);

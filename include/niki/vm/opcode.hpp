@@ -103,26 +103,15 @@ enum class OPCODE : uint8_t {
     OP_INVOKE,    // 调用方法指令
     OP_RETURN,    // 返回指令
     __CALL_END,   // 调用函数指令结束
-    // [ClosureExpr]闭包相关指令（CLOSURE, CLOSE_UPVALUE）
-    __CLOSURE_START,  // 闭包指令开始
-    OP_CLOSURE,       // 闭包指令
-    OP_CLOSE_UPVALUE, // 关闭上值指令
-    __CLOSURE_END,    // 闭包指令结束
-    _CTRL_END,        // 控制流指令结束
+    _CTRL_END,    // 控制流指令结束
 
-    /*---[DataExpr]数据操作（局部变量 + 上值变量 + 全局变量）---*/
+    /*---[DataExpr]数据操作（局部变量等）---*/
     _DATA_START, // 数据操作指令开始
     __VAR_START, // 变量操作指令开始
     // [LocalVarExpr]局部变量（GET_LOCAL, SET_LOCAL）
     OP_GET_LOCAL, // 获取局部变量
     OP_SET_LOCAL, // 设置局部变量
-    // [UpvalueVarExpr]上值变量（GET_UPVALUE, SET_UPVALUE）
-    OP_GET_UPVALUE, // 获取上值变量
-    OP_SET_UPVALUE, // 设置上值变量
-    // [GlobalVarExpr]全局变量（GET_GLOBAL, SET_GLOBAL）
-    OP_GET_GLOBAL, // 获取全局变量
-    OP_SET_GLOBAL, // 设置全局变量
-    __VAR_END,     // 变量操作指令结束
+    __VAR_END,    // 变量操作指令结束
     // [ComplexDSExpr]复杂数据结构（MAP + ARRAY）
     __DS_START,      // 复杂数据结构指令开始
     OP_NEW_MAP,      // 新创建一个 map 类型的对象
@@ -213,8 +202,6 @@ constexpr bool IsCtrlOP(OPCODE op) noexcept { return op >= OPCODE::_CTRL_START &
 constexpr bool IsJmpOP(OPCODE op) noexcept { return op >= OPCODE::__JMP_START && op <= OPCODE::__JMP_END; }
 // 是否为调用函数指令
 constexpr bool IsCallOP(OPCODE op) noexcept { return op >= OPCODE::__CALL_START && op <= OPCODE::__CALL_END; }
-// 是否为闭包相关指令
-constexpr bool IsClosureOP(OPCODE op) noexcept { return op >= OPCODE::__CLOSURE_START && op <= OPCODE::__CLOSURE_END; }
 
 /*---是否为数据操作指令---*/
 constexpr bool IsDataOP(OPCODE op) noexcept { return op >= OPCODE::_DATA_START && op <= OPCODE::_DATA_END; }

@@ -280,8 +280,6 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     case TokenType::SYM_GREATER_EQUAL:
     case TokenType::SYM_LESS:
     case TokenType::SYM_LESS_EQUAL:
-    case TokenType::SYM_AND:
-    case TokenType::SYM_OR:
     case TokenType::SYM_BIT_AND:
     case TokenType::SYM_BIT_OR:
     case TokenType::SYM_BIT_XOR:
@@ -293,6 +291,15 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
 
         payload.binary.right = parseExpression(precedence);
         return emitNode(NodeType::BinaryExpr, payload, startToken);
+    }
+    case TokenType::SYM_AND:
+    case TokenType::SYM_OR: {
+        payload.logical.op = type;
+        payload.logical.left = left;
+        Precedence precedence = getPrecedence(type);
+        
+        payload.logical.right = parseExpression(precedence);
+        return emitNode(NodeType::LogicalExpr, payload, startToken);
     }
     case TokenType::SYM_PAREN_L: {
         payload.call.callee = left;

@@ -24,6 +24,7 @@ enum class NodeType : uint8_t {
     // 计算并产生一个值，也就是说，表达式在执行完毕后，必定会在虚拟机的操作数栈上，留下一个（或多个）确切值的代码片段
     //---基础计算---
     BinaryExpr,     // 二元表达式
+    LogicalExpr,    // 逻辑表达式 (&&, || 短路求值)
     UnaryExpr,      // 一元表达式
     LiteralExpr,    // 字面量表达式
     IdentifierExpr, // 标识符表达式
@@ -97,6 +98,8 @@ inline std::string_view toString(NodeType type) {
     switch (type) {
     case NodeType::BinaryExpr:
         return "BinaryExpr";
+    case NodeType::LogicalExpr:
+        return "LogicalExpr";
     case NodeType::UnaryExpr:
         return "UnaryExpr";
     case NodeType::LiteralExpr:
@@ -483,6 +486,26 @@ struct MapExprPayload {
  */
 struct BinaryExprPayload {
     TokenType op;       // 1byte(底层自动补全为4byte)
+    ASTNodeIndex left;  // 4byte
+    ASTNodeIndex right; // 4byte
+};
+
+/**
+ * @brief 【LogicalExprPayload】逻辑表达式负载 (&&, || 短路求值)
+ * 物理大小：12 Bytes
+ *
+ * [ 内存物理映射图 ]
+ * ASTNodePayload.logical
+ * +---------------------------------------------------+
+ * | op (1B) | pad (3B) | left (4B)    | right (4B)    |
+ * |(TokenType)         | (ASTNodeIndex)| (ASTNodeIndex)|
+ * +--------------------+--------------+---------------+
+ *                              |              |
+ *                              v              v
+ *                      ASTPool::nodes    ASTPool::nodes
+ */
+struct LogicalExprPayload {
+    TokenType op;       // 1byte: &&, ||
     ASTNodeIndex left;  // 4byte
     ASTNodeIndex right; // 4byte
 };
@@ -1197,6 +1220,7 @@ struct ErrorPayload {
 union ASTNodePayload {
     //---表达式---
     BinaryExprPayload binary;
+    LogicalExprPayload logical;
     UnaryExprPayload unary;
     LiteralExprPayload literal;
     IdentifierExprPayload identifier;

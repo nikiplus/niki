@@ -8,14 +8,20 @@ NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
     NKType resultType = NKType::makeUnknown();
 
     switch (node.type) {
+    case syntax::NodeType::BinaryExpr:
+        resultType = checkBinaryExpr(exprIdx);
+        break;
+    case syntax::NodeType::LogicalExpr:
+        resultType = checkLogicalExpr(exprIdx);
+        break;
+    case syntax::NodeType::UnaryExpr:
+        resultType = checkUnaryExpr(exprIdx);
+        break;
     case syntax::NodeType::LiteralExpr:
         resultType = checkLiteralExpr(exprIdx);
         break;
     case syntax::NodeType::IdentifierExpr:
         resultType = checkIdentifierExpr(exprIdx);
-        break;
-    case syntax::NodeType::BinaryExpr:
-        resultType = checkBinaryExpr(exprIdx);
         break;
     case syntax::NodeType::ArrayExpr:
         resultType = checkArrayExpr(exprIdx);
@@ -26,6 +32,30 @@ NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
     case syntax::NodeType::IndexExpr:
         resultType = checkIndexExpr(exprIdx);
         break;
+    case syntax::NodeType::CallExpr:
+        resultType = checkCallExpr(exprIdx);
+        break;
+    case syntax::NodeType::MemberExpr:
+        resultType = checkMemberExpr(exprIdx);
+        break;
+    case syntax::NodeType::DispatchExpr:
+        resultType = checkDispatchExpr(exprIdx);
+        break;
+    case syntax::NodeType::ClosureExpr:
+        resultType = checkClosureExpr(exprIdx);
+        break;
+    case syntax::NodeType::AwaitExpr:
+        resultType = checkAwaitExpr(exprIdx);
+        break;
+    case syntax::NodeType::BorrowExpr:
+        resultType = checkBorrowExpr(exprIdx);
+        break;
+    case syntax::NodeType::WildcardExpr:
+        resultType = checkWildcardExpr(exprIdx);
+        break;
+    case syntax::NodeType::ImplicitCastExpr:
+        resultType = checkImplicitCastExpr(exprIdx);
+        break;
     default:
         break;
     }
@@ -33,6 +63,8 @@ NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
     typeTable[exprIdx.index] = resultType;
     return resultType;
 }
+
+// ... [Existing implementations] ...
 
 NKType TypeChecker::checkLiteralExpr(syntax::ASTNodeIndex nodeIdx) {
     const auto &node = currentPool->getNode(nodeIdx);
@@ -95,5 +127,22 @@ NKType TypeChecker::checkIndexExpr(syntax::ASTNodeIndex nodeIdx) {
     checkExpression(node.payload.index.index);
     return NKType::makeUnknown();
 }
+
+NKType TypeChecker::checkLogicalExpr(syntax::ASTNodeIndex nodeIdx) {
+    const auto &node = currentPool->getNode(nodeIdx);
+    checkExpression(node.payload.logical.left);
+    checkExpression(node.payload.logical.right);
+    return NKType::makeBool();
+}
+
+NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkDispatchExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkClosureExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkAwaitExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkBorrowExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkWildcardExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+NKType TypeChecker::checkImplicitCastExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 
 } // namespace niki::semantic

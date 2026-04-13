@@ -54,23 +54,59 @@ class TypeChecker {
 
     //---表达式检查(返回类型并填入typeTable)---
     NKType checkExpression(syntax::ASTNodeIndex exprIdx);
+    NKType checkBinaryExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkLogicalExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkUnaryExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkLiteralExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkIdentifierExpr(syntax::ASTNodeIndex nodeIdx);
-    NKType checkBinaryExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkArrayExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkMapExpr(syntax::ASTNodeIndex nodeIdx);
-    NKType checkIndexExpr(syntax::ASTNodeIndex nodeIdx); // <--- 解决 Array vs Map 的核心！
+    NKType checkIndexExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkCallExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkMemberExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkDispatchExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkClosureExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkAwaitExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkBorrowExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkWildcardExpr(syntax::ASTNodeIndex nodeIdx);
+    NKType checkImplicitCastExpr(syntax::ASTNodeIndex nodeIdx);
 
     // --- 语句检查 (不返回类型，只做合法性校验和符号表操作) ---
     void checkStatement(syntax::ASTNodeIndex stmtIdx);
-    void checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkExpressionStmt(syntax::ASTNodeIndex nodeIdx);
     void checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkConstDeclStmt(syntax::ASTNodeIndex nodeIdx);
     void checkBlockStmt(syntax::ASTNodeIndex nodeIdx);
     void checkIfStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkLoopStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkMatchStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkMatchCaseStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkContinueStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkBreakStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkReturnStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkNockStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkAttachStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkDetachStmt(syntax::ASTNodeIndex nodeIdx);
+    void checkTargetStmt(syntax::ASTNodeIndex nodeIdx);
 
     // --- 顶层声明 ---
     void checkDeclaration(syntax::ASTNodeIndex declIdx);
+    void checkFunctionDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkInterfaceMethod(syntax::ASTNodeIndex nodeIdx);
+    void checkStructDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkEnumDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkTypeAliasDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkInterfaceDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkImplDecl(syntax::ASTNodeIndex nodeIdx);
     void checkModuleDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkSystemDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkComponentDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkFlowDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkKitsDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkTagDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkTagGroupDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkProgramRoot(syntax::ASTNodeIndex nodeIdx);
 };
 
 } // namespace niki::semantic

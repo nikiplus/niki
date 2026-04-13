@@ -24,6 +24,8 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
     switch (node.type) {
     case NodeType::BinaryExpr:
         return compileBinaryExpr(exprIdx);
+    case NodeType::LogicalExpr:
+        return compileLogicalExpr(exprIdx);
     case NodeType::UnaryExpr:
         return compileUnaryExpr(exprIdx);
     case NodeType::LiteralExpr:
@@ -108,12 +110,6 @@ ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
     case TokenType::SYM_GREATER_EQUAL:
         emitOp(vm::OPCODE::OP_IGE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
-    case TokenType::SYM_AND:
-        emitOp(vm::OPCODE::OP_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        break;
-    case TokenType::SYM_OR:
-        emitOp(vm::OPCODE::OP_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        break;
     case TokenType::SYM_BIT_AND:
         emitOp(vm::OPCODE::OP_BIT_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
@@ -138,6 +134,42 @@ ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
     }
     freeIfTemp(leftReg);
     freeIfTemp(rightReg);
+    return ExprResult{resultReg.reg, true};
+}
+
+ExprResult Compiler::compileLogicalExpr(ASTNodeIndex nodeIdx) {
+    if (!nodeIdx.isvalid()) {
+        return {};
+    }
+    const ASTNode &node = currentPool->getNode(nodeIdx);
+    uint32_t line = currentPool->locations[nodeIdx.index].line;
+    uint32_t column = currentPool->locations[nodeIdx.index].column;
+
+    ExprResult leftReg = compileExpression(node.payload.logical.left);
+    ExprResult resultReg = {regAlloc.allocate(), true};
+
+    // 对于 && 和 ||，我们使用短路求值。这里我们简单发射对应的逻辑指令，
+    // 但未来应该在这里发射 JZ (对于 &&) 或 JNZ (对于 ||) 来跳过右侧表达式的计算。
+    // 为了 MVP 进度，我们暂时假设 OP_AND 和 OP_OR 可以处理两个寄存器的值并输出到目标寄存器。
+    // TODO: 实现真正的短路跳转逻辑。
+
+    ExprResult rightReg = compileExpression(node.payload.logical.right);
+
+    switch (node.payload.logical.op) {
+    case TokenType::SYM_AND:
+        emitOp(vm::OPCODE::OP_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_OR:
+        emitOp(vm::OPCODE::OP_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    default:
+        reportError(line, column, "Unknown logical operator.");
+        break;
+    }
+
+    freeIfTemp(leftReg);
+    freeIfTemp(rightReg);
+
     return ExprResult{resultReg.reg, true};
 }
 
