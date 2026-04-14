@@ -6,7 +6,6 @@
 #include "niki/syntax/scanner.hpp"
 #include "niki/syntax/token.hpp"
 #include "niki/vm/vm.hpp"
-#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -15,7 +14,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-
 
 void runRepl() {
     std::string line;
@@ -71,7 +69,10 @@ void runRepl() {
             continue;
         }
 
-        vm.interpret(chunkResult.value());
+        auto interpretResult = vm.interpret(chunkResult.value(), true);
+        if (!interpretResult.has_value()) {
+            std::cerr << "Runtime Error occurred.\n";
+        }
     }
 }
 void runFile(const std::string &path) {
@@ -125,7 +126,7 @@ void runFile(const std::string &path) {
     }
 
     auto result = vm.interpret(chunkResult.value());
-    if (result == niki::vm::InterpretResult::RUNTIME_ERROR) {
+    if (!result.has_value() && result.error() == niki::vm::InterpretResult::RUNTIME_ERROR) {
         exit(70); // 内部软件错误（对应我们的 VM运行时错误 ）
     }
 }

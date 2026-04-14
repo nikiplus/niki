@@ -5,10 +5,8 @@
 #include <array>
 #include <cstdint>
 #include <expected>
-#include <string_view>
 #include <unordered_map>
 #include <vector>
-
 
 namespace niki::vm {
 
@@ -29,7 +27,7 @@ enum class InterpretResult {
 class VM {
   public:
     VM() = default;
-    InterpretResult interpret(const Chunk &chunk);
+    std::expected<Value, InterpretResult> interpret(const Chunk &chunk, bool is_repl = false);
 
   private:
     std::array<Value, 8192> stack{}; // 全局物理大栈
@@ -42,6 +40,9 @@ class VM {
 
     // 当前正在执行的栈帧快捷引用
     CallFrame *currentFrame = nullptr;
+
+    // 内部运行核心循环
+    std::expected<Value, InterpretResult> run(bool should_print = false);
 
     // 快捷访问当前帧的寄存器 0 的物理地址
     Value *currentRegisters() { return &stack[currentFrame->base_register]; }
@@ -104,7 +105,5 @@ class VM {
     Value readConstant(uint8_t index) { return currentFrame->function->chunk.constants[index]; };
 
     void runtime_error(const char *format, ...);
-
-    InterpretResult run();
 };
 } // namespace niki::vm

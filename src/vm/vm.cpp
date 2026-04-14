@@ -7,12 +7,12 @@
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
+#include <expected>
 #include <iostream>
 
 using namespace niki::vm;
 
-InterpretResult VM::interpret(const Chunk &chunk) {
+std::expected<Value, InterpretResult> VM::interpret(const Chunk &chunk, bool is_repl) {
     current_string_pool = &chunk.string_pool;
 
     // 构造一个顶层的伪函数来容纳脚本字节码
@@ -23,27 +23,27 @@ InterpretResult VM::interpret(const Chunk &chunk) {
     scriptFunc->chunk = chunk;
     if (scriptFunc->chunk.code.empty()) {
         delete scriptFunc;
-        return InterpretResult::OK;
+        return Value::makeNil();
     }
     frames.clear();
     frames.push_back(CallFrame{
         .function = scriptFunc, .ip = const_cast<uint8_t *>(scriptFunc->chunk.code.data()), .base_register = 0});
     currentFrame = &frames.back();
 
-    InterpretResult result = run();
+    // 预先查找 main_id，用于判断 REPL 模式下是否要打印顶层返回值
+    uint32_t main_id = -1;
+    for (uint32_t i = 0; i < current_string_pool->size(); ++i) {
+        if ((*current_string_pool)[i] == "main") {
+            main_id = i;
+            break;
+        }
+    }
+
+    std::expected<Value, InterpretResult> result =
+        run(is_repl && globals.count(main_id) == 0); // 顶层脚本只在纯REPL无main时打印
 
     // --- 自动点火：寻找并执行 main 函数 ---
-    if (result == InterpretResult::OK) {
-        // 由于前端肯定把 main 这个词注册到了池子里，但我们不知道它的具体 ID
-        // 我们通过遍历 string_pool 来反查 "main" 的 ID
-        uint32_t main_id = -1;
-        for (uint32_t i = 0; i < current_string_pool->size(); ++i) {
-            if ((*current_string_pool)[i] == "main") {
-                main_id = i;
-                break;
-            }
-        }
-
+    if (result.has_value()) {
         if (main_id != -1 && globals.count(main_id)) {
             ObjFunction *mainFunc = globals[main_id];
             frames.clear();
@@ -52,7 +52,7 @@ InterpretResult VM::interpret(const Chunk &chunk) {
             currentFrame = &frames.back();
 
             // 第二次执行！这次跑的是真正的 main 业务逻辑
-            result = run();
+            result = run(true); // 业务主函数始终打印返回值（作为MVP演示）
         }
     }
 
@@ -97,7 +97,7 @@ void VM::runtime_error(const char *format, ...) {
     }
 };
 
-InterpretResult VM::run() {
+std::expected<Value, InterpretResult> VM::run(bool should_print) {
     while (true) {
         uint8_t instruction = readByte();
         switch (static_cast<OPCODE>(instruction)) {
@@ -151,7 +151,7 @@ InterpretResult VM::run() {
             uint8_t rightReg = readByte();
             if (currentRegisters()[rightReg].as.integer == 0) {
                 runtime_error("Division by zero.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] =
                 Value::makeInt(currentRegisters()[leftReg].as.integer / currentRegisters()[rightReg].as.integer);
@@ -163,7 +163,7 @@ InterpretResult VM::run() {
             uint8_t rightReg = readByte();
             if (currentRegisters()[rightReg].as.integer == 0) {
                 runtime_error("Modulo by zero.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] =
                 Value::makeInt(currentRegisters()[leftReg].as.integer % currentRegisters()[rightReg].as.integer);
@@ -179,7 +179,7 @@ InterpretResult VM::run() {
 
             if (!isString(left) || !isString(right)) {
                 runtime_error("Operands must be strings for concatenation '..'.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             ObjString *a = asString(left);
@@ -205,7 +205,7 @@ InterpretResult VM::run() {
             uint8_t srcReg = readByte();
             if (currentRegisters()[srcReg].type != ValueType::Integer) {
                 runtime_error("Operand must be a number.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] = Value::makeInt(-currentRegisters()[srcReg].as.integer);
             break;
@@ -230,7 +230,7 @@ InterpretResult VM::run() {
             uint8_t srcReg = readByte();
             if (currentRegisters()[srcReg].type != ValueType::Integer) {
                 runtime_error("Operand must be an integer.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] = Value::makeInt(~currentRegisters()[srcReg].as.integer);
             break;
@@ -242,7 +242,7 @@ InterpretResult VM::run() {
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] =
                 Value::makeInt(currentRegisters()[leftReg].as.integer & currentRegisters()[rightReg].as.integer);
@@ -255,7 +255,7 @@ InterpretResult VM::run() {
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] =
                 Value::makeInt(currentRegisters()[leftReg].as.integer | currentRegisters()[rightReg].as.integer);
@@ -268,7 +268,7 @@ InterpretResult VM::run() {
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] =
                 Value::makeInt(currentRegisters()[leftReg].as.integer ^ currentRegisters()[rightReg].as.integer);
@@ -281,7 +281,7 @@ InterpretResult VM::run() {
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] =
                 Value::makeInt(currentRegisters()[leftReg].as.integer << currentRegisters()[rightReg].as.integer);
@@ -294,7 +294,7 @@ InterpretResult VM::run() {
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] =
                 Value::makeInt(currentRegisters()[leftReg].as.integer >> currentRegisters()[rightReg].as.integer);
@@ -328,7 +328,7 @@ InterpretResult VM::run() {
             Value arrVal = currentRegisters()[arrayReg];
             if (!isArray(arrVal)) {
                 runtime_error("Target of push must be an array.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             ObjArray *array = asArray(arrVal);
             if (array->count >= array->capacity) {
@@ -347,11 +347,11 @@ InterpretResult VM::run() {
 
             if (!isArray(arrVal)) {
                 runtime_error("Target of push must be an array.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             if (idxVal.type != ValueType::Integer) {
                 runtime_error("Array index must be an integer.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             ObjArray *array = asArray(arrVal);
@@ -359,7 +359,7 @@ InterpretResult VM::run() {
 
             if (idx < 0 || idx >= array->count) {
                 runtime_error("Array index out of bounds.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] = array->elements[idx];
             break;
@@ -374,11 +374,11 @@ InterpretResult VM::run() {
 
             if (!isArray(arrVal)) {
                 runtime_error("Target of push must be an array.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             if (idxVal.type != ValueType::Integer) {
                 runtime_error("Array index must be an integer.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             ObjArray *array = asArray(arrVal);
@@ -386,7 +386,7 @@ InterpretResult VM::run() {
 
             if (idx < 0 || idx >= array->count) {
                 runtime_error("Array index out of bounds.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             array->elements[idx] = currentRegisters()[valReg];
@@ -498,23 +498,25 @@ InterpretResult VM::run() {
             Value result = currentRegisters()[0];
 
             if (frames.size() == 1) {
-                std::cout << ">>> Expr Result: ";
-                if (result.type == ValueType::Integer) {
-                    std::cout << result.as.integer;
-                } else if (result.type == ValueType::Bool) {
-                    std::cout << (result.as.boolean ? "true" : "false");
-                } else if (result.type == ValueType::Nil) {
-                    std::cout << "nil";
-                } else if (isString(result)) {
-                    std::cout << "\"" << asString(result)->chars << "\"";
-                } else if (isArray(result)) {
-                    ObjArray *arr = asArray(result);
-                    std::cout << "[Array: size=" << arr->count << " cap=" << arr->capacity << "]";
-                } else {
-                    std::cout << "[Object]";
+                if (should_print) {
+                    std::cout << ">>> Expr Result: ";
+                    if (result.type == ValueType::Integer) {
+                        std::cout << result.as.integer;
+                    } else if (result.type == ValueType::Bool) {
+                        std::cout << (result.as.boolean ? "true" : "false");
+                    } else if (result.type == ValueType::Nil) {
+                        std::cout << "nil";
+                    } else if (isString(result)) {
+                        std::cout << "\"" << asString(result)->chars << "\"";
+                    } else if (isArray(result)) {
+                        ObjArray *arr = asArray(result);
+                        std::cout << "[Array: size=" << arr->count << " cap=" << arr->capacity << "]";
+                    } else {
+                        std::cout << "[Object]";
+                    }
+                    std::cout << "\n";
                 }
-                std::cout << "\n";
-                return InterpretResult::OK;
+                return result;
             }
             uint8_t outReg = currentFrame->out_register;
             frames.pop_back();
@@ -594,7 +596,7 @@ InterpretResult VM::run() {
             auto it = globals.find(name_id);
             if (it == globals.end()) {
                 runtime_error("Undefined global variable or function.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             // 把找到的函数对象装回虚拟寄存器里，供下一步的 OP_CALL 使用
@@ -611,7 +613,7 @@ InterpretResult VM::run() {
             Value callee = currentRegisters()[calleeReg];
             if (callee.type != ValueType::Object) {
                 runtime_error("Can only call functions");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             // 这里先简化处理，假设object一定是objfuction
@@ -619,13 +621,13 @@ InterpretResult VM::run() {
 
             if (argc != fuction->arity) {
                 runtime_error("Expected %d .", fuction->arity, argc);
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             if (frames.size() == 256) {
                 // 硬编码最大调用深度
                 runtime_error("Stack overflow.");
-                return InterpretResult::RUNTIME_ERROR;
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             //--- 核心：滑动寄存器窗口---
@@ -645,7 +647,7 @@ InterpretResult VM::run() {
         }
         default:
             runtime_error("Unknown opcode.");
-            return InterpretResult::RUNTIME_ERROR;
+            return std::unexpected(InterpretResult::RUNTIME_ERROR);
         }
     }
 };

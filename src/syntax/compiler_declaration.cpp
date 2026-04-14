@@ -87,6 +87,7 @@ void Compiler::compileFunctionDecl(ASTNodeIndex nodeIdx) {
 
     // 创建一个新的objfuction，准备编译其内部字节码
     niki::vm::ObjFunction *funcObj = new niki::vm::ObjFunction();
+    funcObj->name_id = func_data.name_id; // Initialize name_id from FunctionData
 
     std::span<const ASTNodeIndex> paramNodes = currentPool->get_list(func_data.params);
     funcObj->arity = paramNodes.size();

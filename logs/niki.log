@@ -384,3 +384,47 @@
 [2026-04-1314:22:04.925][info][68180][niki] NIKI started argc=2
 [2026-04-1315:19:56.997][info][64600][niki] NIKI started argc=2
 [2026-04-1411:58:28.074][info][65632][niki] NIKI started argc=2
+[2026-04-1416:54:58.916][info][59796][niki] NIKI started argc=2
+[2026-04-1416:55:02.336][info][61544][niki] NIKI started argc=2
+[2026-04-1416:55:05.608][info][68700][niki] NIKI started argc=2
+[2026-04-1416:58:40.871][info][64396][niki] NIKI started argc=2
+[2026-04-1416:59:47.246][info][48476][niki] NIKI started argc=2
+[2026-04-1417:01:48.209][info][52560][niki] NIKI started argc=2
+[2026-04-1417:01:48.213][debug][52560][niki] [parser] start parse, token_count=248
+[2026-04-1417:01:48.213][debug][52560][niki] [parser] finish parse, decl_count=2
+[2026-04-1417:01:48.213][debug][52560][niki] [compiler] emit summary: ops=102, code_bytes=5, constants=2, warnings=0
+[2026-04-1417:10:22.196][info][57468][niki] NIKI started argc=2
+[2026-04-1417:10:22.197][debug][57468][niki] [parser] start parse, token_count=254
+[2026-04-1417:10:22.197][debug][57468][niki] [parser] finish parse, decl_count=3
+[2026-04-1417:11:53.101][info][56120][niki] NIKI started argc=2
+[2026-04-1417:11:53.102][debug][56120][niki] [parser] start parse, token_count=252
+[2026-04-1417:11:53.102][error][56120][niki] [parser] at 60:1 token=IDENTIFIER lexeme='main' - Expressions and statements are strictly forbidden at the top level. Only declarations are allowed.
+[2026-04-1417:11:53.104][debug][56120][niki] [parser] finish parse, decl_count=3
+[2026-04-1417:12:23.514][info][69620][niki] NIKI started argc=2
+[2026-04-1417:12:23.515][debug][69620][niki] [parser] start parse, token_count=252
+[2026-04-1417:12:23.515][error][69620][niki] [parser] at 60:1 token=IDENTIFIER lexeme='main' - Expressions and statements are strictly forbidden at the top level. Only declarations are allowed.
+[2026-04-1417:12:23.515][debug][69620][niki] [parser] finish parse, decl_count=3
+[2026-04-1417:12:34.268][info][47348][niki] NIKI started argc=2
+[2026-04-1417:12:34.268][debug][47348][niki] [parser] start parse, token_count=248
+[2026-04-1417:12:34.269][debug][47348][niki] [parser] finish parse, decl_count=2
+[2026-04-1417:12:34.269][debug][47348][niki] [compiler] emit summary: ops=102, code_bytes=5, constants=2, warnings=0
+[2026-04-1417:16:26.031][info][47796][niki] NIKI started argc=2
+[2026-04-1417:16:26.031][debug][47796][niki] [parser] start parse, token_count=248
+[2026-04-1417:16:26.032][debug][47796][niki] [parser] finish parse, decl_count=2
+[2026-04-1417:16:26.032][debug][47796][niki] [compiler] emit summary: ops=102, code_bytes=5, constants=2, warnings=0
+[2026-04-1417:22:33.817][info][54568][niki] NIKI started argc=2
+[2026-04-1417:22:33.817][debug][54568][niki] [parser] start parse, token_count=248
+[2026-04-1417:22:33.818][debug][54568][niki] [parser] finish parse, decl_count=2
+[2026-04-1417:22:33.818][debug][54568][niki] [compiler] emit summary: ops=102, code_bytes=5, constants=2, warnings=0
+[2026-04-1417:24:03.694][info][48616][niki] NIKI started argc=2
+[2026-04-1417:24:03.695][debug][48616][niki] [parser] start parse, token_count=248
+[2026-04-1417:24:03.695][debug][48616][niki] [parser] finish parse, decl_count=2
+[2026-04-1417:24:03.696][debug][48616][niki] [compiler] emit summary: ops=102, code_bytes=5, constants=2, warnings=0
+[2026-04-1417:30:12.002][info][53756][niki] NIKI started argc=2
+[2026-04-1417:30:12.002][debug][53756][niki] [parser] start parse, token_count=248
+[2026-04-1417:30:12.003][debug][53756][niki] [parser] finish parse, decl_count=2
+[2026-04-1417:30:12.003][debug][53756][niki] [compiler] emit summary: ops=102, code_bytes=5, constants=2, warnings=0
+[2026-04-1417:32:43.243][info][67172][niki] NIKI started argc=2
+[2026-04-1417:32:43.245][debug][67172][niki] [parser] start parse, token_count=248
+[2026-04-1417:32:43.246][debug][67172][niki] [parser] finish parse, decl_count=2
+[2026-04-1417:32:43.247][debug][67172][niki] [compiler] emit summary: ops=102, code_bytes=5, constants=2, warnings=0
