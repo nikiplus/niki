@@ -1,4 +1,9 @@
 #include "niki/semantic/type_checker.hpp"
+#include "niki/semantic/nktype.hpp"
+#include "niki/syntax/ast.hpp"
+#include <cstdint>
+#include <string>
+#include <string_view>
 
 namespace niki::semantic {
 
@@ -57,25 +62,49 @@ void TypeChecker::declareSymbol(uint32_t name_id, NKType type, uint32_t line, ui
 }
 
 NKType TypeChecker::resolveSymbol(uint32_t name_id, uint32_t line, uint32_t column) {
-    // 【符号解析（类型查询）】
-    // 当遇到 a + 1 里的 'a' 时调用。我们需要知道 'a' 是什么类型。
-
-    // 从栈顶（从后往前）开始查。为什么从后往前？
-    // 因为如果有两层作用域 { var a = 1; { var a = "str"; print(a); } }
-    // 我们希望内层的 a (String) 遮蔽（Shadow）外层的 a (Int)。从后往前刚好先碰到内层的 a。
+    // 从栈顶（从后往前）开始查
     for (int i = static_cast<int>(symbols.size()) - 1; i >= 0; i--) {
         if (symbols[i].name_id == name_id) {
             return symbols[i].type;
         }
     }
 
-    // TODO: For MVP, we do not report error here because global variables or built-ins
-    // might not be properly populated in this local symbol table yet.
-    // We just return Unknown and let it pass.
-    // 如果找不到，理论上应该报错 "Undeclared
-    // variable."。但为了兼容我们现存的顶层测试代码（平铺的隐式全局变量），暂且放过，返回 Unknown。
+    // 既然我们已经禁用了全局野变量，且所有的顶层 func 都被注册到了 symbols 的 depth 0，
+    // 那么在这里如果还找不到，就说明它绝对是一个未声明的变量或拼写错误！
+    // 必须立刻报错，绝不妥协！
+    reportError(line, column, "Undeclared variable.");
     return NKType::makeUnknown();
 }
+
+NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
+    if (!typeNodeIdx.isvalid()) {
+        return NKType::makeUnknown();
+    }
+
+    auto [node, line, column] = getNodeCtx(typeNodeIdx);
+
+    // 目前类型标注只能是标识符（比如 Int, String, Player）
+    // 暂不支持复杂的泛型如 Array<Int>，那是后话。
+    if (node.type != syntax::NodeType::IdentifierExpr) {
+        reportError(line, column, "Invalid type annotation.Expected an identifier.");
+        return NKType::makeUnknown();
+    }
+
+    uint32_t name_id = node.payload.identifier.name_id;
+
+    // --- 极速 O(1) 整数比对 ---
+    if (name_id == currentPool->ID_INT) return NKType::makeInt();
+    if (name_id == currentPool->ID_FLOAT) return NKType::makeFloat();
+    if (name_id == currentPool->ID_BOOL) return NKType::makeBool();
+    if (name_id == currentPool->ID_STRING) return NKType(NKBaseType::String, -1);
+
+    // 查找用户自定义类型（mvp只返回unknow或占位，未来在实现查找struct）
+
+    // 如果都不认识，才去取字符串用于报错
+    std::string_view typeName = currentPool->getStringId(name_id);
+    reportError(line, column, "Unknown type name :" + std::string(typeName));
+    return NKType::makeUnknown();
+};
 
 void TypeChecker::reportError(uint32_t line, uint32_t column, const std::string &message) {
     errors.push_back({line, column, message});

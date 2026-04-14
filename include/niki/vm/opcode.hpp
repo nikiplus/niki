@@ -111,7 +111,10 @@ enum class OPCODE : uint8_t {
     // [LocalVarExpr]局部变量（GET_LOCAL, SET_LOCAL）
     OP_GET_LOCAL, // 获取局部变量
     OP_SET_LOCAL, // 设置局部变量
-    __VAR_END,    // 变量操作指令结束
+    // [GlobalVarExpr]全局变量与函数池
+    OP_DEFINE_GLOBAL, // 定义全局函数 (操作数: constIdx)
+    OP_GET_GLOBAL,    // 获取全局函数 (操作数: targetReg, constIdx)
+    __VAR_END,        // 变量操作指令结束
     // [ComplexDSExpr]复杂数据结构（MAP + ARRAY）
     __DS_START,      // 复杂数据结构指令开始
     OP_NEW_MAP,      // 新创建一个 map 类型的对象

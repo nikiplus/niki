@@ -44,7 +44,13 @@ class CompilerTest : public ::testing::Test {
 
         niki::semantic::TypeChecker checker;
         auto checkResult = checker.check(pool, root);
-        EXPECT_TRUE(checkResult.has_value()) << "TypeChecker failed on input: " << source;
+        if (!checkResult.has_value()) {
+            CompileResultError cre;
+            for (const auto &err : checkResult.error().errors) {
+                cre.errors.push_back(CompileError{.line = err.line, .column = err.column, .message = err.message});
+            }
+            return std::unexpected(cre);
+        }
 
         Compiler compiler;
         return compiler.compile(pool, root, checkResult.value().type_table);
@@ -54,9 +60,13 @@ class CompilerTest : public ::testing::Test {
 
     bool hasOpcode(const niki::Chunk &chunk, OPCODE opcode) {
         uint8_t op = static_cast<uint8_t>(opcode);
-        for (uint8_t byte : chunk.code) {
-            if (byte == op) {
-                return true;
+        for (const auto &funcVal : chunk.constants) {
+            if (funcVal.type == niki::vm::ValueType::Object) {
+                niki::vm::ObjFunction *objFunc = static_cast<niki::vm::ObjFunction *>(funcVal.as.object);
+                for (uint8_t byte : objFunc->chunk.code) {
+                    if (byte == op)
+                        return true;
+                }
             }
         }
         return false;
@@ -65,9 +75,13 @@ class CompilerTest : public ::testing::Test {
     size_t countOpcode(const niki::Chunk &chunk, OPCODE opcode) {
         uint8_t op = static_cast<uint8_t>(opcode);
         size_t count = 0;
-        for (uint8_t byte : chunk.code) {
-            if (byte == op) {
-                count++;
+        for (const auto &funcVal : chunk.constants) {
+            if (funcVal.type == niki::vm::ValueType::Object) {
+                niki::vm::ObjFunction *objFunc = static_cast<niki::vm::ObjFunction *>(funcVal.as.object);
+                for (uint8_t byte : objFunc->chunk.code) {
+                    if (byte == op)
+                        count++;
+                }
             }
         }
         return count;
@@ -75,12 +89,17 @@ class CompilerTest : public ::testing::Test {
 
     bool hasPatchedJump(const niki::Chunk &chunk, OPCODE opcode, size_t offsetHighIndex) {
         uint8_t op = static_cast<uint8_t>(opcode);
-        for (size_t i = 0; i + offsetHighIndex + 1 < chunk.code.size(); ++i) {
-            if (chunk.code[i] == op) {
-                uint8_t high = chunk.code[i + offsetHighIndex];
-                uint8_t low = chunk.code[i + offsetHighIndex + 1];
-                if (!(high == 0xFF && low == 0xFF)) {
-                    return true;
+        for (const auto &funcVal : chunk.constants) {
+            if (funcVal.type == niki::vm::ValueType::Object) {
+                niki::vm::ObjFunction *objFunc = static_cast<niki::vm::ObjFunction *>(funcVal.as.object);
+                for (size_t i = 0; i + offsetHighIndex + 1 < objFunc->chunk.code.size(); ++i) {
+                    if (objFunc->chunk.code[i] == op) {
+                        uint8_t high = objFunc->chunk.code[i + offsetHighIndex];
+                        uint8_t low = objFunc->chunk.code[i + offsetHighIndex + 1];
+                        if (!(high == 0xFF && low == 0xFF)) {
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -92,7 +111,7 @@ class CompilerTest : public ::testing::Test {
 TEST_F(CompilerTest, CompileSimpleAddition) {
     // 假设我们在全局作用域直接执行 1 + 2
     // 在目前的 NIKI 设计中，如果是全局表达式，可能会被包装在一个隐式的 ModuleDecl 中
-    auto result = compileSource("var a = 1 + 2;");
+    auto result = compileSource("func test() { var a = 1 + 2; }");
 
     // 验证编译成功
     ASSERT_TRUE(result.has_value()) << "Compilation failed for simple addition.";
@@ -100,13 +119,18 @@ TEST_F(CompilerTest, CompileSimpleAddition) {
     const niki::Chunk &chunk = result.value();
 
     // 验证指令流是否包含关键操作码 (比如 OP_ADD, OP_LOAD_CONSTANT 等)
-    // 这是一个非常基础的浅层验证，证明编译器生成了字节码而不是空的
+    // 注意：既然包在函数里了，代码是在函数的 chunk 里，而不是外层 chunk
+    // 在 MVP 中，我们可以假设 globals 里只有一个叫 test 的函数
     bool hasAdd = false;
-    for (size_t i = 0; i < chunk.code.size(); ++i) {
-        if (chunk.code[i] == static_cast<uint8_t>(OPCODE::OP_IADD) ||
-            chunk.code[i] == static_cast<uint8_t>(OPCODE::OP_FADD)) {
-            hasAdd = true;
-            break;
+    for (const auto &func : chunk.constants) {
+        if (func.type == niki::vm::ValueType::Object) {
+            niki::vm::ObjFunction *objFunc = static_cast<niki::vm::ObjFunction *>(func.as.object);
+            for (uint8_t byte : objFunc->chunk.code) {
+                if (byte == static_cast<uint8_t>(OPCODE::OP_IADD) || byte == static_cast<uint8_t>(OPCODE::OP_FADD)) {
+                    hasAdd = true;
+                    break;
+                }
+            }
         }
     }
 
@@ -151,7 +175,7 @@ TEST_F(CompilerTest, CompileFullScript_TestNK) {
               << std::endl;
 }
 TEST_F(CompilerTest, CompileArrayLiteral_UsesListElementsAsNodeIndices) {
-    auto result = compileSource("var a = 10;\nvar b = 20;\nvar arr = [a, b, 30];\nreturn arr[1];");
+    auto result = compileSource("func test() { var a = 10;\nvar b = 20;\nvar arr = [a, b, 30];\nreturn arr[1]; }");
     ASSERT_TRUE(result.has_value()) << "Array literal compilation should succeed.";
 
     const niki::Chunk &chunk = result.value();
@@ -161,7 +185,7 @@ TEST_F(CompilerTest, CompileArrayLiteral_UsesListElementsAsNodeIndices) {
 }
 
 TEST_F(CompilerTest, CompileMapLiteral_UsesListElementsAsNodeIndices) {
-    auto result = compileSource("var base = 1;\nvar m = {\"x\": base, \"y\": 2};\nreturn m[\"x\"];");
+    auto result = compileSource("func test() { var base = 1;\nvar m = {\"x\": base, \"y\": 2};\nreturn m[\"x\"]; }");
     ASSERT_TRUE(result.has_value()) << "Map literal compilation should succeed.";
 
     const niki::Chunk &chunk = result.value();
@@ -169,7 +193,7 @@ TEST_F(CompilerTest, CompileMapLiteral_UsesListElementsAsNodeIndices) {
     EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_SET_MAP));
 };
 TEST_F(CompilerTest, CompileAssignmentOperator_ModEqualEmitsMod) {
-    auto result = compileSource("var a = 10;\na %= 3;");
+    auto result = compileSource("func test() { var a = 10;\na %= 3; }");
     ASSERT_TRUE(result.has_value());
 
     const niki::Chunk &chunk = result.value();
@@ -177,22 +201,23 @@ TEST_F(CompilerTest, CompileAssignmentOperator_ModEqualEmitsMod) {
 }
 
 TEST_F(CompilerTest, CompileInvalidAssignmentTargetReportsLocation) {
-    auto result = compileSource("(1 + 2) = 3;");
+    auto result = compileSource("func test() { (1 + 2) = 3; }");
     ASSERT_FALSE(result.has_value());
 
     const auto &errors = result.error().errors;
     ASSERT_FALSE(errors.empty());
     EXPECT_EQ(errors[0].line, 1u);
-    EXPECT_EQ(errors[0].column, 1u);
+    EXPECT_EQ(errors[0].column, 15u);
     EXPECT_EQ(errors[0].message, "Invalid assignment target. Only simple variables are supported currently.");
 }
 
 TEST_F(CompilerTest, CompileIfElseAndLoop_JumpOffsetsArePatched) {
-    auto result = compileSource("loop (true) {\n"
+    auto result = compileSource("func test() { loop (true) {\n"
                                 "if (false) {\n"
                                 "break;\n"
                                 "} else {\n"
                                 "continue;\n"
+                                "}\n"
                                 "}\n"
                                 "}\n");
     ASSERT_TRUE(result.has_value());
@@ -207,9 +232,10 @@ TEST_F(CompilerTest, CompileIfElseAndLoop_JumpOffsetsArePatched) {
 }
 
 TEST_F(CompilerTest, CompileLoopBreakAndContinue_EmitExpectedControlOpcodes) {
-    auto result = compileSource("loop (true) {\n"
+    auto result = compileSource("func test() { loop (true) {\n"
                                 "continue;\n"
                                 "break;\n"
+                                "}\n"
                                 "}\n");
     ASSERT_TRUE(result.has_value());
     const niki::Chunk &chunk = result.value();
@@ -221,62 +247,68 @@ TEST_F(CompilerTest, CompileLoopBreakAndContinue_EmitExpectedControlOpcodes) {
 
 TEST_F(CompilerTest, CompileVarDecl_DuplicateInSameScopeReportsError) {
     auto result = compileSource(R"(
+func test() {
 {
     var a = 1;
     var a = 2;
+}
 }
 )");
     ASSERT_FALSE(result.has_value());
     const auto &errors = result.error().errors;
     ASSERT_FALSE(errors.empty());
-    EXPECT_EQ(errors[0].line, 4u);
+    EXPECT_EQ(errors[0].line, 5u);
     EXPECT_EQ(errors[0].column, 5u);
     EXPECT_EQ(errors[0].message, "Variable already declared in this scope.");
 }
 
 TEST_F(CompilerTest, CompileVarDecl_ShadowingInInnerScopeIsAllowed) {
     auto result = compileSource(R"(
+func test() {
 var a = 1;
 {
     var a = 2;
 }
 var b = a;
 return b;
+}
 )");
     ASSERT_TRUE(result.has_value());
 }
 
 TEST_F(CompilerTest, CompileVarDecl_OutOfScopeVariableReportsUndeclared) {
     auto result = compileSource(R"(
+func test() {
 {
     var x = 1;
 }
 var y = x;
+}
 )");
     ASSERT_FALSE(result.has_value());
     const auto &errors = result.error().errors;
     ASSERT_FALSE(errors.empty());
-    EXPECT_EQ(errors[0].line, 5u);
+    EXPECT_EQ(errors[0].line, 6u);
     EXPECT_EQ(errors[0].column, 9u);
     EXPECT_EQ(errors[0].message, "Undeclared variable.");
 }
 
 TEST_F(CompilerTest, CompileAssignmentOperator_BitAndEqualEmitsBitAnd) {
-    auto result = compileSource("var a = 10;\na &= 3;");
+    auto result = compileSource("func test() { var a = 10;\na &= 3; }");
     ASSERT_TRUE(result.has_value());
     const niki::Chunk &chunk = result.value();
     EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_BIT_AND));
 }
 
 TEST_F(CompilerTest, CompileAssignmentOperator_BitOrEqualEmitsBitOr) {
-    auto result = compileSource("var a = 10;\na |= 3;");
+    auto result = compileSource("func test() { var a = 10;\na |= 3; }");
     ASSERT_TRUE(result.has_value());
     const niki::Chunk &chunk = result.value();
     EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_BIT_OR));
 }
 
 TEST_F(CompilerTest, CompileAssignmentOperator_BitXorEqualEmitsBitXor) {
-    auto result = compileSource("var a = 10;\na ^= 3;");
+    auto result = compileSource("func test() { var a = 10;\na ^= 3; }");
     ASSERT_TRUE(result.has_value());
     const niki::Chunk &chunk = result.value();
     EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_BIT_XOR));

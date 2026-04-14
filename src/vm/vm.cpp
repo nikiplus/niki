@@ -13,9 +13,11 @@
 using namespace niki::vm;
 
 InterpretResult VM::interpret(const Chunk &chunk) {
+    current_string_pool = &chunk.string_pool;
+
     // 构造一个顶层的伪函数来容纳脚本字节码
     ObjFunction *scriptFunc = new ObjFunction();
-    scriptFunc->name = "<script>";
+    scriptFunc->name_id = 0; // 顶层脚本没有真正的名字，随便给个0，反正我们靠指针判断
     // 由于是顶层脚本，我们要把传入的chunk拷进去(或者直接在compiler里生成obfuction)
     // 但为了当前兼容，我们先及逆行浅拷贝或借用。
     scriptFunc->chunk = chunk;
@@ -29,6 +31,30 @@ InterpretResult VM::interpret(const Chunk &chunk) {
     currentFrame = &frames.back();
 
     InterpretResult result = run();
+
+    // --- 自动点火：寻找并执行 main 函数 ---
+    if (result == InterpretResult::OK) {
+        // 由于前端肯定把 main 这个词注册到了池子里，但我们不知道它的具体 ID
+        // 我们通过遍历 string_pool 来反查 "main" 的 ID
+        uint32_t main_id = -1;
+        for (uint32_t i = 0; i < current_string_pool->size(); ++i) {
+            if ((*current_string_pool)[i] == "main") {
+                main_id = i;
+                break;
+            }
+        }
+
+        if (main_id != -1 && globals.count(main_id)) {
+            ObjFunction *mainFunc = globals[main_id];
+            frames.clear();
+            frames.push_back(CallFrame{
+                .function = mainFunc, .ip = const_cast<uint8_t *>(mainFunc->chunk.code.data()), .base_register = 0});
+            currentFrame = &frames.back();
+
+            // 第二次执行！这次跑的是真正的 main 业务逻辑
+            result = run();
+        }
+    }
 
     // 清理顶层伪函数
     delete scriptFunc;
@@ -59,11 +85,14 @@ void VM::runtime_error(const char *format, ...) {
             std::cerr << "unknown] in ";
         }
 
-        if (function->name.empty()) {
+        if (function == frames[0].function) {
             std::cerr << "script\n";
-
         } else {
-            std::cerr << function->name << "()\n";
+            const char *func_name = "unknown";
+            if (current_string_pool && function->name_id < current_string_pool->size()) {
+                func_name = (*current_string_pool)[function->name_id].c_str();
+            }
+            std::cerr << func_name << "()\n";
         }
     }
 };
@@ -542,6 +571,34 @@ InterpretResult VM::run() {
             if (is_true) {
                 currentFrame->ip += offest;
             }
+            break;
+        }
+
+        // --- 全局变量与函数池 ---
+        case OPCODE::OP_DEFINE_GLOBAL: {
+            uint8_t constIdx = readByte();
+            Value funcVal = readConstant(constIdx);
+            ObjFunction *func = static_cast<ObjFunction *>(funcVal.as.object);
+
+            // 注册到全局表
+            globals[func->name_id] = func;
+            break;
+        }
+
+        case OPCODE::OP_GET_GLOBAL: {
+            uint8_t targetReg = readByte();
+            uint8_t constIdx = readByte();
+            Value nameIdVal = readConstant(constIdx);
+            uint32_t name_id = static_cast<uint32_t>(nameIdVal.as.integer);
+
+            auto it = globals.find(name_id);
+            if (it == globals.end()) {
+                runtime_error("Undefined global variable or function.");
+                return InterpretResult::RUNTIME_ERROR;
+            }
+
+            // 把找到的函数对象装回虚拟寄存器里，供下一步的 OP_CALL 使用
+            currentRegisters()[targetReg] = Value::makeObject(it->second);
             break;
         }
 

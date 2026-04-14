@@ -1,5 +1,6 @@
 #pragma once
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -19,6 +20,7 @@ enum class NKBaseType : uint8_t {
     Map,    // 映射
     Object, // 结构体/组件实例
     Entity, // ECS实体句柄
+    Function,
     Unknown // 编译期推导过程中的占位符
 };
 
@@ -92,4 +94,21 @@ struct NKType {
     bool operator!=(const NKType &other) const { return handle != other.handle; }
 };
 
+// 签名池数据结构
+struct FunctionSignature {
+    std::vector<NKType> param_types;
+    NKType return_type;
+
+    bool operator==(const FunctionSignature &other) const {
+        if (return_type != other.return_type)
+            return false;
+        if (param_types.size() != other.param_types.size())
+            return false;
+        for (size_t i = 0; i < param_types.size(); ++i) {
+            if (param_types[i] != other.param_types[i])
+                return false;
+        }
+        return true;
+    }
+};
 } // namespace niki::semantic

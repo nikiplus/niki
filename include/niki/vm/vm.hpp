@@ -6,7 +6,9 @@
 #include <cstdint>
 #include <expected>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
+
 
 namespace niki::vm {
 
@@ -32,6 +34,11 @@ class VM {
   private:
     std::array<Value, 8192> stack{}; // 全局物理大栈
     std::vector<CallFrame> frames;   // 调用栈帧，通常最大深度为 64 或 256
+
+    // --- 全局函数表（MVP） ---
+    std::unordered_map<uint32_t, ObjFunction *> globals;
+
+    const std::vector<std::string> *current_string_pool = nullptr; // 用于运行时打印函数名等调试信息
 
     // 当前正在执行的栈帧快捷引用
     CallFrame *currentFrame = nullptr;

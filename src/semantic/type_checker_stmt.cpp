@@ -1,4 +1,6 @@
+#include "niki/semantic/nktype.hpp"
 #include "niki/semantic/type_checker.hpp"
+#include <string>
 
 namespace niki::semantic {
 
@@ -104,7 +106,27 @@ void TypeChecker::checkMatchStmt(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkMatchCaseStmt(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkContinueStmt(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkBreakStmt(syntax::ASTNodeIndex nodeIdx) {}
-void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {}
+void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    // 1. 检查有没有表达式（比如 `return;` 还是 `return 10;`）
+    NKType exprType = NKType(NKBaseType::Void, -1);
+
+    if (node.payload.return_stmt.expression.isvalid()) {
+        exprType = checkExpression(node.payload.return_stmt.expression);
+    }
+
+    // 2. 如果我们不在函数里（这不应该发生，但防御性编程要做好）或者允许返回任何类型
+    if (currentReturnType.getBase() == NKBaseType::Unknown) {
+        return; // MVP兜底放过
+    }
+    // 3. 严格比对：实际返回的类型 vs 函数签名期待的类型
+    // 在 MVP 中，我们如果看到 exprType 是 Unknown，我们也选择放过（因为可能有未实现的表达式检查返回了 Unknown）
+    if (exprType.getBase() != NKBaseType::Unknown && exprType != currentReturnType) {
+        reportError(line, column,
+                    "Returen type mismatch.Expected" + std::to_string((int)currentReturnType.getBase()) + ", got" +
+                        std::to_string((int)exprType.getBase()));
+    }
+}
 void TypeChecker::checkNockStmt(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkAttachStmt(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkDetachStmt(syntax::ASTNodeIndex nodeIdx) {}

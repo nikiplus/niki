@@ -72,6 +72,7 @@ struct CompileError {
 struct CompileResultError {
     std::vector<CompileError> errors;
 };
+
 class Compiler {
   public:
     /*哼哼，std::expected,新时代的好东西(C++23方法)。
@@ -90,23 +91,24 @@ class Compiler {
     // 当前正在编译的函数对象和对应的Chunk。
     // 在 MVP 中我们用指针，方便嵌套编译时随时切换上下文
     niki::vm::ObjFunction *compilingFunction = nullptr; // 当前正在编译的函数对象
-    niki::Chunk *compilingChunk = nullptr;              // 当前正在填充的字节码块
+    niki::Chunk *compilingChunk = nullptr;              // 当前正在编译的字节码块
+
+    // 当前函数的编译状态（通过 pushContext/popContext 自动隔离与切换）
+    RegisterAllocator regAlloc;
+    std::vector<Local> locals;
+    int scopeDepth = 0;
 
     bool hadError = false;
     std::vector<CompileError> errorPool;
     std::array<uint32_t, static_cast<size_t>(vm::OPCODE::OP_COUNT)> opcodeEmitCount{};
     uint32_t warningCount = 0;
     uint32_t traceIndent = 0;
-    RegisterAllocator regAlloc;
-    std::vector<Local> locals;
-
-    int scopeDepth = 0;
+    std::vector<vm::ObjFunction> functions;
 
     struct LoopContext {
         size_t start_pos;
         std::vector<size_t> break_patches;
     };
-
     std::vector<LoopContext> loop_stack;
 
     /*在这里有个关键的设计决策点——constants的索引长度究竟应该是8bit还是16bit

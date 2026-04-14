@@ -100,7 +100,7 @@ void Compiler::compileFunctionDecl(ASTNodeIndex nodeIdx) {
     // 所以编译器必须保证参数分配的虚拟寄存器刚好是0，1，2，...
     for (ASTNodeIndex paramNodeIdx : paramNodes) {
         const ASTNode &paramNode = currentPool->getNode(paramNodeIdx);
-        uint32_t param_name_id = paramNode.payload.identifier.name_id;
+        uint32_t param_name_id = paramNode.payload.var_decl.name_id;
 
         uint8_t paramReg = regAlloc.allocate();
         locals.push_back({param_name_id, paramReg, scopeDepth});
@@ -119,23 +119,18 @@ void Compiler::compileFunctionDecl(ASTNodeIndex nodeIdx) {
     // 弹出编译上下文，恢复到外层环境
     CompilerContext context = popContext();
 
-    // 在外层作用域为该函数名分配一个虚拟寄存器（若它不是匿名函数）
-    // 注意：必须在 popContext 之后进行分配push_back，这样变量才会正确地注册到外层的 locals 表中
-    uint8_t funcReg = regAlloc.allocate();
-    locals.push_back({func_data.name_id, funcReg, scopeDepth});
-
-    // 将编译好 objfuction作为一个常量写入到外层常量池中
+    // 将编译好的 objfuction作为一个常量写入到外层常量池中
     vm::Value funcValue = vm::Value::makeObject(context.function);
     uint16_t constIdx = makeConstant(funcValue, line, column);
 
-    // 将常量池中的函数对象，加载到我们第一步分配的funcReg
+    // 发射 OP_DEFINE_GLOBAL，把函数注册到 VM 的全局表中！
+    // 不再占用外层的局部变量和寄存器
     if (constIdx < 255) {
-        emitOp(vm::OPCODE::OP_LOAD_CONST, funcReg, static_cast<uint8_t>(constIdx), line, column);
-
+        emitOp(vm::OPCODE::OP_DEFINE_GLOBAL, static_cast<uint8_t>(constIdx), line, column);
     } else {
-        uint8_t high_byte = static_cast<uint8_t>((constIdx >> 8) & 0xFF);
-        uint8_t low_byte = static_cast<uint8_t>(constIdx & 0xFF);
-        emitOp(vm::OPCODE::OP_LOAD_CONST_W, funcReg, high_byte, low_byte, line, column);
+        // 这里理论上需要一个 OP_DEFINE_GLOBAL_W，MVP 暂时不写长指令了
+        // 我们假设常量池不会超过 255 个函数
+        emitOp(vm::OPCODE::OP_DEFINE_GLOBAL, static_cast<uint8_t>(constIdx), line, column);
     }
 }
 void Compiler::compileInterfaceMethod(ASTNodeIndex nodeIdx) {}

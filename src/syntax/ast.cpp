@@ -4,6 +4,14 @@
 
 using namespace niki::syntax;
 
+ASTPool::ASTPool() {
+    // 在池子诞生之初，强制注入内置基础类型，将它们的 ID 永久固化！
+    ID_INT = internString("int");
+    ID_FLOAT = internString("float");
+    ID_BOOL = internString("bool");
+    ID_STRING = internString("string");
+}
+
 std::span<const ASTNodeIndex> ASTPool::get_list(ASTListIndex list_info) const {
     if (!list_info.isvalid() || list_info.length == 0) {
         return {};
@@ -38,6 +46,9 @@ void ASTPool::clear() {
     function_data.clear();
     struct_data.clear();
     kits_data.clear();
+    
+    // 注意：不能 clear string_pool，否则我们硬编码的内置类型 ID 就失效了！
+    // 真正的重置应该是让 string_pool 退回到初始化状态，但为了简单，目前我们不清空字符串池。
 };
 ASTNode &ASTPool::getNode(ASTNodeIndex index) {
     if (!index.isvalid() || index >= nodes.size()) {

@@ -59,7 +59,8 @@ class Parser {
     Precedence getPrecedence(TokenType type) const;
 
     //---顶层声明解析 (parser_declaration.cpp) ---
-    ASTNodeIndex parseDeclaration();
+    ASTNodeIndex parseTopLevelDeclaration(); // 仅在文件最外层或 module 内使用，严格拒绝表达式语句
+    ASTNodeIndex parseDeclaration();         // 允许回退到 parseStatement (用于代码块内部)
     ASTNodeIndex parseFunctionDecl();
     ASTNodeIndex parseStructDecl();
     ASTNodeIndex parseEnumDecl();

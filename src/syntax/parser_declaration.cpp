@@ -7,8 +7,50 @@
 #include <vector>
 using namespace niki::syntax;
 
-// 顶层声明的解析入口，如果遇到声明关键字则进入对应的分支；
-// 否则，它认为这是一个语句（Statement），将其降级给 parseStatement 处理。
+// 专门用于解析“绝对顶层”的声明（如全局文件、module内部）
+// 严格禁止普通语句（Statement）或表达式（Expression）在此出现！
+ASTNodeIndex Parser::parseTopLevelDeclaration() {
+    if (match(TokenType::KW_FUNC)) {
+        return parseFunctionDecl();
+    } else if (match(TokenType::KW_STRUCT)) {
+        return parseStructDecl();
+    } else if (match(TokenType::KW_ENUM)) {
+        return parseEnumDecl();
+    } else if (match(TokenType::KW_TYPE)) {
+        return parseTypeAliasDecl();
+    } else if (match(TokenType::KW_INTERFACE)) {
+        return parseInterfaceDecl();
+    } else if (match(TokenType::KW_IMPL)) {
+        return parseImplDecl();
+    } else if (match(TokenType::KW_MODULE)) {
+        return parseModuleDecl();
+    } else if (match(TokenType::KW_SYSTEM)) {
+        return parseSystemDecl();
+    } else if (match(TokenType::KW_COMPONENT)) {
+        return parseComponentDecl();
+    } else if (match(TokenType::KW_FLOW)) {
+        return parseFlowDecl();
+    } else if (match(TokenType::KW_KITS)) {
+        return parseKitsDecl();
+    } else if (match(TokenType::KW_TAG)) {
+        return parseTagDecl();
+    } else if (match(TokenType::KW_TAGGROUP)) {
+        return parseTagGroupDecl();
+    }
+
+    // 到了这里，说明遇到了非法结构（比如 '1+2;'，'return;' 等）
+    // 我们必须当场报错，绝不能降级给 parseStatement！
+    errorAtCurrent(
+        "Expressions and statements are strictly forbidden at the top level. Only declarations are allowed.");
+
+    // 为了防止死循环（卡在错误字符上），我们需要强行吃掉错误字符，或者进行同步（synchronize）
+    advance();
+    synchronize();
+    return emitNode(NodeType::ErrorNode, ASTNodePayload{});
+}
+
+// 普通代码块（BlockStmt）内部的声明解析入口
+// 允许回退到普通语句（Statement）
 ASTNodeIndex Parser::parseDeclaration() {
     if (match(TokenType::KW_VAR)) {
         return parseVarDeclStmt();
@@ -62,9 +104,17 @@ ASTNodeIndex Parser::parseFunctionDecl() {
         do {
             consume(TokenType::IDENTIFIER, "Expected parameter name.");
             ASTNodePayload param_payload{};
-            param_payload.identifier.name_id =
+            param_payload.var_decl.name_id =
                 astPool.internString(source.substr(previous.start_offset, previous.length));
-            params.push_back(emitNode(NodeType::IdentifierExpr, param_payload, previous));
+
+            if (match(TokenType::SYM_COLON)) {
+                param_payload.var_decl.type_expr = parseExpression(Precedence::None);
+            } else {
+                param_payload.var_decl.type_expr = ASTNodeIndex::invalid();
+            }
+            param_payload.var_decl.init_expr = ASTNodeIndex::invalid();
+
+            params.push_back(emitNode(NodeType::VarDeclStmt, param_payload, previous));
         } while (match(TokenType::SYM_COMMA));
     }
     consume(TokenType::SYM_PAREN_R, "Expected')' after fuction name.");

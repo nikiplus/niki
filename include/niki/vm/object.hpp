@@ -46,9 +46,10 @@ struct ObjArray {
 // 函数对象：包含字节码、常量池、行号信息以及函数的元数据
 // (目前我们暂时保持其 C++ 类的形态，未来如果有需要也可以拍扁成 DOD 结构)
 struct ObjFunction {
-    size_t arity = 0;  // 参数个数
+    uint32_t name_id;
+    uint8_t arity; // 参数个数
+    uint8_t max_registers;
     niki::Chunk chunk; // 属于这个函数的独立字节码块
-    std::string name;  // 函数名 (顶层脚本可为空)
 };
 //--- DOD内存分配器---
 // 分配字符串：分配头+字符+、0

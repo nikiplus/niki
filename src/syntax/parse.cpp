@@ -41,7 +41,7 @@ ASTNodeIndex Parser::parse() {
     while (current.type != TokenType::TOKEN_EOF) {
         niki::debug::trace("parser", "declaration entry token={} at {}:{}", toString(current.type), current.line,
                            current.column);
-        ASTNodeIndex decl = parseDeclaration();
+        ASTNodeIndex decl = parseTopLevelDeclaration(); // 改为调用严格的顶层声明解析
         declarations.push_back(decl);
     }
     niki::debug::debug("parser", "finish parse, decl_count={}", declarations.size());

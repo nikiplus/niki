@@ -1,6 +1,8 @@
 #pragma once
 #include "niki/semantic/nktype.hpp"
 #include "niki/syntax/ast.hpp"
+#include "nktype.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <string>
@@ -31,6 +33,7 @@ class TypeChecker {
     const syntax::ASTPool *currentPool = nullptr;
     std::vector<TypeError> errors;
     std::vector<NKType> typeTable; // 正在构建的类型表
+    NKType currentReturnType = NKType::makeUnknown();
 
     //---符号表管理---
     struct Symbol {
@@ -56,6 +59,7 @@ class TypeChecker {
                 currentPool->locations[idx.index].column};
     }
 
+    NKType resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx);
     //---错误报告---
     void reportError(uint32_t line, uint32_t column, const std::string &message);
 

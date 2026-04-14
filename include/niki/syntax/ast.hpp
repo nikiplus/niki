@@ -1293,6 +1293,13 @@ struct TokenLocation {
 // ASTPool 是一个简单的容器，用来存储所有的 ASTNode。
 // 它的存在主要是为了方便序列化。
 struct ASTPool {
+    // --- 预定义的内置基础类型 ID ---
+    // 它们在 ASTPool 构造时被立刻注入，保证 ID 绝对固定为 0, 1, 2, 3
+    uint32_t ID_INT = 0;
+    uint32_t ID_FLOAT = 1;
+    uint32_t ID_BOOL = 2;
+    uint32_t ID_STRING = 3;
+
     // 所有的ASTNode都存储在nodes中
     std::vector<ASTNode> nodes;
     // 所有的变长子节点索引都紧凑地存储在这里
@@ -1327,6 +1334,19 @@ struct ASTPool {
     std::vector<KitsData> kits_data;
     std::vector<MapData> map_data; // Map字典数据
 
+    // 获取或注册函数签名，返回其在池中的索引
+    std::vector<semantic::FunctionSignature> func_sigs;
+    uint32_t internFuncSignature(const std::vector<semantic::NKType> &params, semantic::NKType retType) {
+        semantic::FunctionSignature sig{params, retType};
+        for (size_t i = 0; i < func_sigs.size(); ++i) {
+            if (func_sigs[i] == sig) {
+                return i;
+            }
+        }
+        func_sigs.push_back(sig);
+        return func_sigs.size() - 1;
+    }
+
     // 使用 std::deque 替代 std::vector 来存储字符串。
     // std::deque 在向两端添加元素时，不会使现有的引用或指针失效。
     // 这样，string_to_id 里面存储的 std::string_view 就能永远安全地指向底层字符串内存！
@@ -1337,6 +1357,9 @@ struct ASTPool {
     // std::span相当于一个指向数组的视图，只要我们提供这个数组的起始地址和长度，它就会返回一个指向这个数组的子数组的视图。
     // 注意！std::span不负责管理内存，是只读的，我们不能用它来修改数组的内容。这样同时导致其是安全和高性能的。
     std::span<const ASTNodeIndex> get_list(ASTListIndex list_info) const;
+    
+    ASTPool(); // 构造函数声明，用于初始化内置类型字符串
+
     ASTNodeIndex allocateNode(NodeType type);
     // 调用ASTListIndex，装载指定区域的astnode，并返回对应的astlist切片。
     ASTListIndex allocateList(std::span<const ASTNodeIndex> elements);

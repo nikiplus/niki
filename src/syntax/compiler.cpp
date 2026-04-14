@@ -35,10 +35,9 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
     traceIndent = 0;
     opcodeEmitCount.fill(0);
 
-    // 移动（move）到编译器内部。我们将其封装在一个顶层objfunction�?
+    // 移动（move）到编译器内部。我们将其封装在一个顶层objfunction
     niki::vm::ObjFunction *topLevelFunc = new niki::vm::ObjFunction();
-    niki::vm::ObjFunction();
-    topLevelFunc->name = "<script>";
+    topLevelFunc->name_id = const_cast<ASTPool *>(currentPool)->internString("<script>");
     topLevelFunc->chunk = std::move(initial_chunk);
     topLevelFunc->chunk.code.clear();
     topLevelFunc->chunk.constants.clear();
@@ -58,6 +57,13 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
 
     // 编译成功！再次通过 Move 语义，把填满数据�?Chunk 移交出去�?
     niki::Chunk final_chunk = std::move(topContext.function->chunk);
+
+    // 将前端 std::deque<std::string> 形式的字符串池，转换并深拷贝给后端
+    final_chunk.string_pool.reserve(pool.string_pool.size());
+    for (const auto &str : pool.string_pool) {
+        final_chunk.string_pool.push_back(str);
+    }
+
     uint32_t totalOpCount = 0;
     for (uint32_t count : opcodeEmitCount) {
         totalOpCount += count;
@@ -69,15 +75,15 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
 }
 
 void Compiler::pushContext(niki::vm::ObjFunction *func) {
-    // 保存当前状态（若有�?
+    // 保存当前状态（若有）
     if (compilingFunction != nullptr) {
         contextStack.push_back({compilingFunction, compilingChunk, regAlloc, locals, scopeDepth, loop_stack});
     }
-    // 切换到新上下�?
+    // 切换到新上下文
     compilingFunction = func;
     compilingChunk = &func->chunk;
 
-    // 初始化新状�?
+    // 初始化新状态
     regAlloc.reset();
     locals.clear();
     scopeDepth = 0;
@@ -145,8 +151,9 @@ uint8_t Compiler::resolveLocal(uint32_t name_id, uint32_t line, uint32_t column)
             return locals[i].reg;
         }
     }
-    reportError(line, column, "Undeclared variable.");
-    return 0;
+    // 仅仅返回没找到的标记（255），不要在这里报错！
+    // 因为调用者可能需要退化为全局查找。
+    return 255;
 }
 //---跳转相关---
 
@@ -336,14 +343,12 @@ void Compiler::compileNode(ASTNodeIndex nodeIdx) {
 void Compiler::reportError(const Token &token, std::string_view message) {}
 
 void Compiler::reportError(uint32_t line, uint32_t column, std::string_view message) {
-    spdlog::error("[compiler] at {}:{} - {}", line, column, message);
     errorPool.push_back({line, column, std::string(message)});
     hadError = true;
 }
 
 void Compiler::reportWarning(uint32_t line, uint32_t column, std::string_view message) {
     warningCount++;
-    spdlog::warn("[compiler] at {}:{} - {}", line, column, message);
 }
 
 } // namespace niki::syntax

@@ -224,8 +224,34 @@ ExprResult Compiler::compileLiteralExpr(ASTNodeIndex nodeIdx) {
 
 ExprResult Compiler::compileIdentifierExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    uint8_t reg = resolveLocal(node.payload.identifier.name_id, line, column);
-    return ExprResult{reg, false};
+    uint32_t name_id = node.payload.identifier.name_id;
+
+    // 1. 尝试在局部变量表（当前函数寄存器窗口）中查找
+    uint8_t localReg = resolveLocal(name_id, line, column);
+
+    // 2. 如果没找到，退化为尝试从全局函数表加载！
+    if (localReg == 255) {
+        // 这是对 MVP 阶段的一个巨大架构让步：
+        // 在未来的强类型系统中，如果找不到局部变量，TypeChecker 会报错。
+        // 但现在，我们要把这个“名字（如 calculate_total）”的信息打包，
+        // 在运行时通过 OP_GET_GLOBAL，以 name_id 作为常量的形式，让 VM 去哈希表里找函数。
+        
+        // 我们把 name_id 这个数字本身，作为一个常量塞进常量池。
+        // 这样 VM 执行 OP_GET_GLOBAL 时，就能拿到 name_id，然后去哈希表查找函数指针。
+        vm::Value nameVal = vm::Value::makeInt(name_id);
+        uint16_t constIdx = makeConstant(nameVal, line, column);
+
+        uint8_t targetReg = regAlloc.allocate();
+        if (constIdx < 255) {
+            emitOp(vm::OPCODE::OP_GET_GLOBAL, targetReg, static_cast<uint8_t>(constIdx), line, column);
+        } else {
+            // MVP 暂时不写宽指令，假设 ID 小于 255
+            emitOp(vm::OPCODE::OP_GET_GLOBAL, targetReg, static_cast<uint8_t>(constIdx), line, column);
+        }
+        return ExprResult{targetReg, true};
+    }
+
+    return ExprResult{localReg, false};
 }
 
 // 复杂数据结构

@@ -51,7 +51,7 @@ class ParserTest : public ::testing::Test {
 
 // 【测试用例 1】最简单的变量声明解析
 TEST_F(ParserTest, ParseVarDecl_Simple) {
-    auto root = parseSource("var x = 10;");
+    auto root = parseSource("func test() { var x = 10; }");
 
     // 验证根节点是否生成成功
     ASSERT_TRUE(root.isvalid());
@@ -59,21 +59,21 @@ TEST_F(ParserTest, ParseVarDecl_Simple) {
     ASTPrinter printer(pool);
     std::string astStr = printer.print(root);
 
-    // 预期输出: (module\n  (var x = 10))
-    EXPECT_EQ(astStr, "(module\n  (var x = 10))");
+    // 预期输出: (module\n  (func test() (block (var x = 10))))
+    EXPECT_EQ(astStr, "(module\n  (func test() (block (var x = 10))))");
 }
 
 // 【测试用例 2】基础的二元表达式测试 (测试优先级和结合性)
 TEST_F(ParserTest, ParseExpression_Precedence) {
     // 1 + 2 * 3 应该被解析为 1 + (2 * 3)
-    auto root = parseSource("var result = 1 + 2 * 3;");
+    auto root = parseSource("func test() { var result = 1 + 2 * 3; }");
     ASSERT_TRUE(root.isvalid());
 
     ASTPrinter printer(pool);
     std::string astStr = printer.print(root);
 
-    // 预期输出: (module\n  (var result = (+ 1 (* 2 3))))
-    EXPECT_EQ(astStr, "(module\n  (var result = (+ 1 (* 2 3))))");
+    // 预期输出: (module\n  (func test() (block (var result = (+ 1 (* 2 3))))))
+    EXPECT_EQ(astStr, "(module\n  (func test() (block (var result = (+ 1 (* 2 3))))))");
 }
 
 // 【测试用例 3】解析完整的 test.nk 脚本文件

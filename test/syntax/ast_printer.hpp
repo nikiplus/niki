@@ -76,6 +76,17 @@ class ASTPrinter {
             res += ")";
             return res;
         }
+        case NodeType::FunctionDecl: {
+            const auto &func_data = pool.function_data[node.payload.func_decl.function_index];
+            std::string res = "(func " + pool.getStringId(func_data.name_id) + "(";
+            auto params = pool.get_list(func_data.params);
+            for (size_t i = 0; i < params.size(); ++i) {
+                res += print(params[i]);
+                if (i < params.size() - 1) res += ", ";
+            }
+            res += ") " + print(func_data.body) + ")";
+            return res;
+        }
         default:
             return "<unimplemented node " + std::to_string(static_cast<int>(node.type)) + ">";
         }
