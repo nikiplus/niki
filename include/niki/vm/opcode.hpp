@@ -110,9 +110,11 @@ enum class OPCODE : uint8_t {
     _DATA_START, // 数据操作指令开始
     __VAR_START, // 变量操作指令开始
     // [GlobalVarExpr]全局变量与函数池
-    OP_DEFINE_GLOBAL, // 定义全局函数 (操作数: constIdx)
-    OP_GET_GLOBAL,    // 获取全局函数 (操作数: targetReg, constIdx)
-    __VAR_END,        // 变量操作指令结束
+    OP_DEFINE_GLOBAL,   // 定义全局函数 (操作数: constIdx)
+    OP_DEFINE_GLOBAL_W, // 新增
+    OP_GET_GLOBAL,      // 获取全局函数 (操作数: targetReg, constIdx)
+    OP_GET_GLOBAL_W,    // 新增
+    __VAR_END,          // 变量操作指令结束
     // [ComplexDSExpr]复杂数据结构（MAP + ARRAY）
     __DS_START,      // 复杂数据结构指令开始
     OP_NEW_MAP,      // 新创建一个 map 类型的对象

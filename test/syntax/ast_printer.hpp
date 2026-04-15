@@ -31,7 +31,7 @@ class ASTPrinter {
             if (val.type == vm::ValueType::Integer)
                 return std::to_string(val.as.integer);
             if (val.type == vm::ValueType::Float)
-                return std::to_string(val.as.number);
+                return std::to_string(val.as.floating);
             if (val.type == vm::ValueType::Bool)
                 return val.as.boolean ? "true" : "false";
             if (val.type == vm::ValueType::Object)

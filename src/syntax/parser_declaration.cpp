@@ -38,15 +38,9 @@ ASTNodeIndex Parser::parseTopLevelDeclaration() {
         return parseTagGroupDecl();
     }
 
-    // 到了这里，说明遇到了非法结构（比如 '1+2;'，'return;' 等）
-    // 我们必须当场报错，绝不能降级给 parseStatement！
-    errorAtCurrent(
-        "Expressions and statements are strictly forbidden at the top level. Only declarations are allowed.");
-
-    // 为了防止死循环（卡在错误字符上），我们需要强行吃掉错误字符，或者进行同步（synchronize）
-    advance();
-    synchronize();
-    return emitNode(NodeType::ErrorNode, ASTNodePayload{});
+    // 顶层回退：允许 REPL/脚本入口出现语句与表达式语句。
+    // 这会和 compileModuleDecl 的“最后表达式回显”策略保持一致。
+    return parseStatement();
 }
 
 // 普通代码块（BlockStmt）内部的声明解析入口

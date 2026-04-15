@@ -50,7 +50,7 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
         return compileImplicitCastExpr(exprIdx);
 
     case NodeType::WildcardExpr:
-        reportWarning(line, column, "WildcardExpr is a stub.");
+        reportError(line, column, "Wildcard expression compilation is not implemented yet.");
         return ExprResult{0, true};
     default:
         reportWarning(line, column, "Unknown Expression Node Type: " + std::to_string(static_cast<int>(node.type)));
@@ -62,6 +62,11 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
 void Compiler::emitBinaryOp(vm::OPCODE int_op, vm::OPCODE float_op, uint8_t resultReg, uint8_t leftReg,
                             uint8_t rightReg, semantic::NKType leftType, semantic::NKType rightType, uint32_t line,
                             uint32_t column, const std::string &opName) {
+    if (leftType.getBase() == semantic::NKBaseType::Unknown || rightType.getBase() == semantic::NKBaseType::Unknown) {
+        reportWarning(line, column, "Unknown operand type for '" + opName + "', fallback to integer opcode.");
+        emitOp(int_op, resultReg, leftReg, rightReg, line, column);
+        return;
+    }
     if (leftType.getBase() == semantic::NKBaseType::Integer && rightType.getBase() == semantic::NKBaseType::Integer) {
         emitOp(int_op, resultReg, leftReg, rightReg, line, column);
     } else if (leftType.getBase() == semantic::NKBaseType::Float &&
@@ -244,11 +249,11 @@ ExprResult Compiler::compileUnaryExpr(ASTNodeIndex nodeIdx) {
         }
         break;
     case TokenType::SYM_BANG:
-        // 在强类型语言中，逻辑非通常只允许作用于 Bool 类型
-        if (opType.getBase() == semantic::NKBaseType::Bool) {
+        // 与 VM 的真值语义保持一致：! 支持 Bool 和 Int
+        if (opType.getBase() == semantic::NKBaseType::Bool || opType.getBase() == semantic::NKBaseType::Integer) {
             emitOp(vm::OPCODE::OP_NOT, resultReg.reg, reg.reg, line, column);
         } else {
-            reportError(line, column, "Type mismatch for operator '!': Expected Bool.");
+            reportError(line, column, "Type mismatch for operator '!': Expected Bool or Int.");
         }
         break;
     case TokenType::SYM_BIT_NOT:
@@ -314,15 +319,15 @@ ExprResult Compiler::compileIdentifierExpr(ASTNodeIndex nodeIdx) {
         // 我们把 name_id 这个数字本身，作为一个常量塞进常量池。
         // 这样 VM 执行 OP_GET_GLOBAL 时，就能拿到 name_id，然后去哈希表查找函数指针。
         vm::Value nameVal = vm::Value::makeInt(name_id);
-        uint16_t constIdx = makeConstant(nameVal, line, column);
+        uint32_t constIdx = makeConstant(nameVal, line, column);
 
         uint8_t targetReg = regAlloc.allocate();
-        if (constIdx < 255) {
+        if (constIdx <= 0xFF) {
             emitOp(vm::OPCODE::OP_GET_GLOBAL, targetReg, static_cast<uint8_t>(constIdx), line, column);
-        } else {
-            // MVP 暂时不写宽指令，假设 ID 小于 255
-            emitOp(vm::OPCODE::OP_GET_GLOBAL, targetReg, static_cast<uint8_t>(constIdx), line, column);
+        } else if (constIdx <= 0xFFFF) {
+            emitOp(vm::OPCODE::OP_GET_GLOBAL_W, targetReg, static_cast<uint16_t>(constIdx), line, column);
         }
+
         return ExprResult{targetReg, true};
     }
 
@@ -487,7 +492,7 @@ ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
 
     uint16_t propNameId = node.payload.member.property_id;
 
-    reportWarning(line, column, "compileMemberExpr is a stub.");
+    reportError(line, column, "Member expression compilation is not implemented yet.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
     freeIfTemp(objRes);
@@ -499,29 +504,29 @@ ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
 */
 ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    reportWarning(line, column, "compileDispatchExpr is a stub.");
+    reportError(line, column, "Dispatch expression compilation is not implemented yet.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
     return {outReg, true};
 }
-// 闭包与高级特性
+// 高级特性
 ExprResult Compiler::compileAwaitExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    reportWarning(line, column, "compileAwaitExpr is a stub.");
+    reportError(line, column, "Await expression compilation is not implemented yet.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
     return {outReg, true};
 }
 ExprResult Compiler::compileBorrowExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    reportWarning(line, column, "compileBorrowExpr is a stub.");
+    reportError(line, column, "Borrow expression compilation is not implemented yet.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
     return {outReg, true};
 }
 ExprResult Compiler::compileImplicitCastExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    reportWarning(line, column, "compileImplicitCastExpr is a stub.");
+    reportError(line, column, "Implicit cast compilation is not implemented yet.");
     uint8_t outReg = regAlloc.allocate();
     emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
     return {outReg, true};

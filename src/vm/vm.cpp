@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <iostream>
 
 using namespace niki::vm;
@@ -97,6 +98,14 @@ void VM::runtime_error(const char *format, ...) {
     }
 };
 
+std::expected<Value, InterpretResult> VM::readConstantByIndex(uint32_t index) {
+    if (index >= currentFrame->function->chunk.constants.size()) {
+        runtime_error("Constant index out of range: %u", index);
+        return std::unexpected(InterpretResult::RUNTIME_ERROR);
+    }
+    return currentFrame->function->chunk.constants[index];
+};
+
 std::expected<Value, InterpretResult> VM::run(bool should_print) {
     while (true) {
         uint8_t instruction = readByte();
@@ -104,13 +113,21 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         case OPCODE::OP_LOAD_CONST: {
             uint8_t targetReg = readByte();
             uint8_t constIdx = readByte();
-            currentRegisters()[targetReg] = readConstant(constIdx);
+            auto constant = readConstantByIndex(static_cast<uint32_t>(constIdx));
+            if (!constant.has_value()) {
+                return std::unexpected(constant.error());
+            }
+            currentRegisters()[targetReg] = constant.value();
             break;
         }
         case OPCODE::OP_LOAD_CONST_W: {
             uint8_t targetReg = readByte();
             uint16_t constIdx = readShort();
-            currentRegisters()[targetReg] = readConstant(static_cast<uint8_t>(constIdx));
+            auto constant = readConstantByIndex(static_cast<uint32_t>(constIdx));
+            if (!constant.has_value()) {
+                return std::unexpected(constant.error());
+            }
+            currentRegisters()[targetReg] = constant.value();
             break;
         }
         case OPCODE::OP_MOVE: {
@@ -355,6 +372,48 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         case OPCODE::OP_NIL: {
             uint8_t targetReg = readByte();
             currentRegisters()[targetReg] = Value::makeNil();
+            break;
+        }
+        case OPCODE::OP_NEW_MAP: {
+            uint8_t targetReg = readByte();
+            uint8_t initial_capacity = readByte();
+            ObjMap *map = allocateMap(initial_capacity);
+            currentRegisters()[targetReg] = Value::makeObject(map);
+            break;
+        }
+        case OPCODE::OP_SET_MAP: {
+            uint8_t mapReg = readByte();
+            uint8_t keyReg = readByte();
+            uint8_t valReg = readByte();
+
+            Value mapVal = currentRegisters()[mapReg];
+            if (!isMap(mapVal)) {
+                runtime_error("Target of set must be a map.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
+            ObjMap *map = asMap(mapVal);
+            mapSet(map, currentRegisters()[keyReg], currentRegisters()[valReg]);
+            break;
+        }
+        case OPCODE::OP_GET_MAP: {
+            uint8_t targetReg = readByte();
+            uint8_t mapReg = readByte();
+            uint8_t keyReg = readByte();
+
+            Value mapVal = currentRegisters()[mapReg];
+            if (!isMap(mapVal)) {
+                runtime_error("Target of get must be a map.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
+            ObjMap *map = asMap(mapVal);
+            Value out = Value::makeNil();
+            if (!mapGet(map, currentRegisters()[keyReg], &out)) {
+                runtime_error("Map key not found.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            currentRegisters()[targetReg] = out;
             break;
         }
         case OPCODE::OP_NEW_ARRAY: {
@@ -669,19 +728,36 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         // --- 全局变量与函数池 ---
         case OPCODE::OP_DEFINE_GLOBAL: {
             uint8_t constIdx = readByte();
-            Value funcVal = readConstant(constIdx);
-            ObjFunction *func = static_cast<ObjFunction *>(funcVal.as.object);
+            auto funcVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
+            if (!funcVal.has_value()) {
+                return std::unexpected(funcVal.error());
+            }
+            ObjFunction *func = static_cast<ObjFunction *>(funcVal.value().as.object);
 
             // 注册到全局表
             globals[func->name_id] = func;
             break;
         }
 
+        case OPCODE::OP_DEFINE_GLOBAL_W: {
+            uint16_t constIdx = readShort();
+            auto funcVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
+            if (!funcVal.has_value()) {
+                return std::unexpected(funcVal.error());
+            }
+            ObjFunction *func = static_cast<ObjFunction *>(funcVal.value().as.object);
+
+            globals[func->name_id] = func;
+            break;
+        }
         case OPCODE::OP_GET_GLOBAL: {
             uint8_t targetReg = readByte();
             uint8_t constIdx = readByte();
-            Value nameIdVal = readConstant(constIdx);
-            uint32_t name_id = static_cast<uint32_t>(nameIdVal.as.integer);
+            auto nameIdVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
+            if (!nameIdVal.has_value()) {
+                return std::unexpected(nameIdVal.error());
+            }
+            uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
 
             auto it = globals.find(name_id);
             if (it == globals.end()) {
@@ -690,6 +766,24 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             // 把找到的函数对象装回虚拟寄存器里，供下一步的 OP_CALL 使用
+            currentRegisters()[targetReg] = Value::makeObject(it->second);
+            break;
+        }
+        case OPCODE::OP_GET_GLOBAL_W: {
+            uint8_t targetReg = readByte();
+            uint16_t constIdx = readShort();
+            auto nameIdVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
+            if (!nameIdVal.has_value()) {
+                return std::unexpected(nameIdVal.error());
+            }
+            uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
+
+            auto it = globals.find(name_id);
+            if (it == globals.end()) {
+                runtime_error("Undefined global variable or function.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
             currentRegisters()[targetReg] = Value::makeObject(it->second);
             break;
         }
@@ -740,9 +834,6 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         case OPCODE::OP_OEQ:
         case OPCODE::OP_ONE:
         case OPCODE::OP_INVOKE:
-        case OPCODE::OP_NEW_MAP:
-        case OPCODE::OP_SET_MAP:
-        case OPCODE::OP_GET_MAP:
         case OPCODE::OP_GET_PROPERTY:
         case OPCODE::OP_SET_PROPERTY:
         case OPCODE::OP_METHOD:

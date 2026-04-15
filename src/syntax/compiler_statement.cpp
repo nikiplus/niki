@@ -289,8 +289,14 @@ void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {
 
     loop_stack.pop_back(); // 修复泄漏：必须出栈，保证状态
 }
-void Compiler::compileMatchStmt(ASTNodeIndex nodeIdx) {}
-void Compiler::compileMatchCaseStmt(ASTNodeIndex nodeIdx) {}
+void Compiler::compileMatchStmt(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Match statement compilation is not implemented yet.");
+}
+void Compiler::compileMatchCaseStmt(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Match case compilation is not implemented yet.");
+}
 // 跳转与中断
 void Compiler::compileContinueStmt(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
@@ -323,12 +329,24 @@ void Compiler::compileReturnStmt(ASTNodeIndex nodeIdx) {
 
     emitOp(vm::OPCODE::OP_RETURN, line, column);
 }
-void Compiler::compileNockStmt(ASTNodeIndex nodeIdx) {}
+void Compiler::compileNockStmt(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Nock statement compilation is not implemented yet.");
+}
 
 // 组件挂载与卸载
-void Compiler::compileAttachStmt(ASTNodeIndex nodeIdx) {}
-void Compiler::compileDetachStmt(ASTNodeIndex nodeIdx) {}
-void Compiler::compileTargetStmt(ASTNodeIndex nodeIdx) {}
+void Compiler::compileAttachStmt(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Attach statement compilation is not implemented yet.");
+}
+void Compiler::compileDetachStmt(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Detach statement compilation is not implemented yet.");
+}
+void Compiler::compileTargetStmt(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Target statement compilation is not implemented yet.");
+}
 
 // 异常处理
 

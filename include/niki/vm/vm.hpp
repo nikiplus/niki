@@ -46,7 +46,7 @@ class VM {
 
     // 快捷访问当前帧的寄存器 0 的物理地址
     Value *currentRegisters() { return &stack[currentFrame->base_register]; }
-
+    std::expected<Value, InterpretResult> readConstantByIndex(uint32_t index);
     uint8_t readByte() { return *(currentFrame->ip)++; };
     /*画个图来理解readShort
     startip(s) = 0
@@ -101,8 +101,6 @@ class VM {
         currentFrame->ip += 2;
         return static_cast<uint16_t>((currentFrame->ip[-2] << 8) | currentFrame->ip[-1]);
     }
-
-    Value readConstant(uint8_t index) { return currentFrame->function->chunk.constants[index]; };
 
     void runtime_error(const char *format, ...);
 };

@@ -134,12 +134,30 @@ void Compiler::compileFunctionDecl(ASTNodeIndex nodeIdx) {
         emitOp(vm::OPCODE::OP_DEFINE_GLOBAL, static_cast<uint8_t>(constIdx), line, column);
     }
 }
-void Compiler::compileInterfaceMethod(ASTNodeIndex nodeIdx) {}
-void Compiler::compileStructDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileEnumDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileTypeAliasDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileInterfaceDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileImplDecl(ASTNodeIndex nodeIdx) {}
+void Compiler::compileInterfaceMethod(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Interface method compilation is not implemented yet.");
+}
+void Compiler::compileStructDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Struct declaration compilation is not implemented yet.");
+}
+void Compiler::compileEnumDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Enum declaration compilation is not implemented yet.");
+}
+void Compiler::compileTypeAliasDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Type alias compilation is not implemented yet.");
+}
+void Compiler::compileInterfaceDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Interface declaration compilation is not implemented yet.");
+}
+void Compiler::compileImplDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Impl declaration compilation is not implemented yet.");
+}
 
 // NIKI特有
 void Compiler::compileModuleDecl(ASTNodeIndex nodeIdx) {
@@ -173,15 +191,36 @@ void Compiler::compileModuleDecl(ASTNodeIndex nodeIdx) {
     }
 }
 
-void Compiler::compileSystemDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileComponentDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileFlowDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileKitsDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileTagDecl(ASTNodeIndex nodeIdx) {}
-void Compiler::compileTagGroupDecl(ASTNodeIndex nodeIdx) {}
+void Compiler::compileSystemDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "System declaration compilation is not implemented yet.");
+}
+void Compiler::compileComponentDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Component declaration compilation is not implemented yet.");
+}
+void Compiler::compileFlowDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Flow declaration compilation is not implemented yet.");
+}
+void Compiler::compileKitsDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Kits declaration compilation is not implemented yet.");
+}
+void Compiler::compileTagDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Tag declaration compilation is not implemented yet.");
+}
+void Compiler::compileTagGroupDecl(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "TagGroup declaration compilation is not implemented yet.");
+}
 
 // 程序根与错误
 void Compiler::compileProgramRoot(ASTNodeIndex nodeIdx) { compileModuleDecl(nodeIdx); }
-void Compiler::compileErrorNode(ASTNodeIndex nodeIdx) {}
+void Compiler::compileErrorNode(ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    reportError(line, column, "Encountered parser error node during compilation.");
+}
 
 } // namespace niki::syntax

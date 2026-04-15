@@ -12,7 +12,8 @@ namespace niki::vm {
 enum class ObjType : uint8_t {
     String,
     Array,
-    // 未来可扩展 Map, Struct 等
+    Map,
+    // 未来可扩展 Struct 等
 };
 
 // 基础对象头 (所有堆对象的公共前缀)
@@ -41,6 +42,19 @@ struct ObjArray {
     uint32_t capacity; // 物理容量
     uint32_t count;    // 实际元素个数
     Value *elements;   // 指向堆上另一块独立连续内存的指针！
+};
+
+struct ObjMapEntry {
+    Value key;
+    Value value;
+    bool occupied;
+};
+
+struct ObjMap {
+    Object obj;          // 对象头
+    uint32_t capacity;   // 物理容量（entry 数）
+    uint32_t count;      // 已占用 entry 数
+    ObjMapEntry *entries;
 };
 
 // 函数对象：包含字节码、常量池、行号信息以及函数的元数据
@@ -99,6 +113,122 @@ inline void expandArray(ObjArray *array, uint32_t new_capacity) {
     }
     array->capacity = new_capacity;
 }
+
+inline ObjMap *allocateMap(uint32_t capacity) {
+    // 线性探测至少需要一个小容量，避免 0 容量导致每次 set 都要扩容
+    if (capacity < 8) {
+        capacity = 8;
+    }
+    ObjMap *map = static_cast<ObjMap *>(std::malloc(sizeof(ObjMap)));
+    map->obj.type = ObjType::Map;
+    map->obj.isMarked = false;
+    map->capacity = capacity;
+    map->count = 0;
+    map->entries = static_cast<ObjMapEntry *>(std::malloc(sizeof(ObjMapEntry) * capacity));
+    for (uint32_t i = 0; i < capacity; ++i) {
+        map->entries[i].occupied = false;
+        map->entries[i].key = Value::makeNil();
+        map->entries[i].value = Value::makeNil();
+    }
+    return map;
+}
+
+inline bool valueKeyEquals(Value lhs, Value rhs) {
+    if (lhs.type != rhs.type) {
+        return false;
+    }
+    switch (lhs.type) {
+    case ValueType::Nil:
+        return true;
+    case ValueType::Bool:
+        return lhs.as.boolean == rhs.as.boolean;
+    case ValueType::Integer:
+        return lhs.as.integer == rhs.as.integer;
+    case ValueType::Float:
+        return lhs.as.floating == rhs.as.floating;
+    case ValueType::Object: {
+        auto *lobj = static_cast<Object *>(lhs.as.object);
+        auto *robj = static_cast<Object *>(rhs.as.object);
+        if (lobj->type != robj->type) {
+            return false;
+        }
+        if (lobj->type == ObjType::String) {
+            auto *ls = static_cast<ObjString *>(lhs.as.object);
+            auto *rs = static_cast<ObjString *>(rhs.as.object);
+            return ls->length == rs->length && std::memcmp(ls->chars, rs->chars, ls->length) == 0;
+        }
+        // 其他对象类型退化为地址等价
+        return lhs.as.object == rhs.as.object;
+    }
+    }
+    return false;
+}
+
+inline void expandMap(ObjMap *map, uint32_t new_capacity) {
+    if (new_capacity <= map->capacity) {
+        return;
+    }
+    ObjMapEntry *new_entries = static_cast<ObjMapEntry *>(std::malloc(sizeof(ObjMapEntry) * new_capacity));
+    for (uint32_t i = 0; i < new_capacity; ++i) {
+        new_entries[i].occupied = false;
+        new_entries[i].key = Value::makeNil();
+        new_entries[i].value = Value::makeNil();
+    }
+    for (uint32_t i = 0; i < map->capacity; ++i) {
+        if (!map->entries[i].occupied) {
+            continue;
+        }
+        // 线性探测插入到新表
+        for (uint32_t j = 0; j < new_capacity; ++j) {
+            if (!new_entries[j].occupied) {
+                new_entries[j].occupied = true;
+                new_entries[j].key = map->entries[i].key;
+                new_entries[j].value = map->entries[i].value;
+                break;
+            }
+        }
+    }
+    std::free(map->entries);
+    map->entries = new_entries;
+    map->capacity = new_capacity;
+}
+
+inline void mapSet(ObjMap *map, Value key, Value value) {
+    // 无删除场景，超过容量阈值后扩容
+    if (map->count >= map->capacity) {
+        expandMap(map, map->capacity < 8 ? 8 : map->capacity * 2);
+    }
+    // 先尝试覆盖已有 key
+    for (uint32_t i = 0; i < map->capacity; ++i) {
+        if (map->entries[i].occupied && valueKeyEquals(map->entries[i].key, key)) {
+            map->entries[i].value = value;
+            return;
+        }
+    }
+    // 再写入空槽
+    for (uint32_t i = 0; i < map->capacity; ++i) {
+        if (!map->entries[i].occupied) {
+            map->entries[i].occupied = true;
+            map->entries[i].key = key;
+            map->entries[i].value = value;
+            map->count++;
+            return;
+        }
+    }
+}
+
+inline bool mapGet(ObjMap *map, Value key, Value *out_value) {
+    for (uint32_t i = 0; i < map->capacity; ++i) {
+        if (!map->entries[i].occupied) {
+            continue;
+        }
+        if (valueKeyEquals(map->entries[i].key, key)) {
+            *out_value = map->entries[i].value;
+            return true;
+        }
+    }
+    return false;
+}
 //---安全类型转换与识别---
 inline bool isObjType(Value value, ObjType type) {
     return value.type == ValueType::Object && static_cast<Object *>(value.as.object)->type == type;
@@ -106,9 +236,11 @@ inline bool isObjType(Value value, ObjType type) {
 
 inline bool isString(Value value) { return isObjType(value, ObjType::String); }
 inline bool isArray(Value value) { return isObjType(value, ObjType::Array); }
+inline bool isMap(Value value) { return isObjType(value, ObjType::Map); }
 
 inline ObjString *asString(Value value) { return static_cast<ObjString *>(value.as.object); }
 inline ObjArray *asArray(Value value) { return static_cast<ObjArray *>(value.as.object); }
+inline ObjMap *asMap(Value value) { return static_cast<ObjMap *>(value.as.object); }
 // 注意：由于我们目前没有实现 GC 和 OP_FREE，
 // 调用 allocateString 和 allocateArray 产生的内存暂时会泄漏。
 // 这是 MVP 阶段的架构妥协。

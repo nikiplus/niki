@@ -104,7 +104,7 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
     // 注册参数
     for (size_t i = 0; i < paramNodes.size(); ++i) {
         auto [paramNode, p_line, p_col] = getNodeCtx(paramNodes[i]);
-        uint32_t param_name_id = paramNode.payload.identifier.name_id;
+        uint32_t param_name_id = paramNode.payload.var_decl.name_id;
 
         // MVP阶段：我们尚未在语法中强制参数类型声明，所以参数类型暂时视为 Unknown
         declareSymbol(param_name_id, paramTypes[i], p_line, p_col);

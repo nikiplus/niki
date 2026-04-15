@@ -196,8 +196,9 @@ NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) {
         }
         return opType; // 返回操作数本身的类型
     case syntax::TokenType::SYM_BANG:
-        if (opType.getBase() != NKBaseType::Unknown && opType.getBase() != NKBaseType::Bool) {
-            reportError(line, column, "Operand for '!' must be Bool.");
+        if (opType.getBase() != NKBaseType::Unknown && opType.getBase() != NKBaseType::Bool &&
+            opType.getBase() != NKBaseType::Integer) {
+            reportError(line, column, "Operand for '!' must be Bool or Int.");
         }
         return NKType::makeBool();
     case syntax::TokenType::SYM_BIT_NOT:
