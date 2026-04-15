@@ -42,8 +42,6 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
         return compileMemberExpr(exprIdx);
     case NodeType::DispatchExpr:
         return compileDispatchExpr(exprIdx);
-    case NodeType::ClosureExpr:
-        return compileClosureExpr(exprIdx);
     case NodeType::AwaitExpr:
         return compileAwaitExpr(exprIdx);
     case NodeType::BorrowExpr:
@@ -61,6 +59,20 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
     }
 }
 
+void Compiler::emitBinaryOp(vm::OPCODE int_op, vm::OPCODE float_op, uint8_t resultReg, uint8_t leftReg,
+                            uint8_t rightReg, semantic::NKType leftType, semantic::NKType rightType, uint32_t line,
+                            uint32_t column, const std::string &opName) {
+    if (leftType.getBase() == semantic::NKBaseType::Integer && rightType.getBase() == semantic::NKBaseType::Integer) {
+        emitOp(int_op, resultReg, leftReg, rightReg, line, column);
+    } else if (leftType.getBase() == semantic::NKBaseType::Float &&
+               rightType.getBase() == semantic::NKBaseType::Float) {
+        emitOp(float_op, resultReg, leftReg, rightReg, line, column);
+    } else {
+        reportError(line, column,
+                    "Type mismatch for operator '" + opName + "': Expected (Int, Int) or (Float, Float).");
+    }
+}
+
 // 基础计算
 ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid()) {
@@ -70,59 +82,106 @@ ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
 
     ExprResult leftReg = compileExpression(node.payload.binary.left);
     ExprResult rightReg = compileExpression(node.payload.binary.right);
+
+    semantic::NKType leftType = (*currentTypeTable)[node.payload.binary.left];
+    semantic::NKType rightType = (*currentTypeTable)[node.payload.binary.right];
     ExprResult resultReg = {regAlloc.allocate(), true};
 
     switch (node.payload.binary.op) {
     case TokenType::SYM_PLUS:
-        emitOp(vm::OPCODE::OP_IADD, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_IADD, vm::OPCODE::OP_FADD, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, "+");
         break;
     case TokenType::SYM_MINUS:
-        emitOp(vm::OPCODE::OP_ISUB, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_ISUB, vm::OPCODE::OP_FSUB, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, "-");
         break;
     case TokenType::SYM_STAR:
-        emitOp(vm::OPCODE::OP_IMUL, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_IMUL, vm::OPCODE::OP_FMUL, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, "*");
         break;
     case TokenType::SYM_SLASH:
-        emitOp(vm::OPCODE::OP_IDIV, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_IDIV, vm::OPCODE::OP_FDIV, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, "/");
         break;
     case TokenType::SYM_MOD:
-        emitOp(vm::OPCODE::OP_IMOD, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        if (leftType.getBase() == semantic::NKBaseType::Integer &&
+            rightType.getBase() == semantic::NKBaseType::Integer) {
+            emitOp(vm::OPCODE::OP_IMOD, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '%': Expected (Int, Int).");
+        }
         break;
     case TokenType::SYM_EQUAL_EQUAL:
-        emitOp(vm::OPCODE::OP_IEQ, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_IEQ, vm::OPCODE::OP_FEQ, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, "==");
         break;
     case TokenType::SYM_BANG_EQUAL:
-        emitOp(vm::OPCODE::OP_INE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_INE, vm::OPCODE::OP_FNE, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, "!=");
         break;
     case TokenType::SYM_GREATER:
-        emitOp(vm::OPCODE::OP_IGT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_IGT, vm::OPCODE::OP_FGT, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, ">");
         break;
     case TokenType::SYM_LESS:
-        emitOp(vm::OPCODE::OP_ILT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_ILT, vm::OPCODE::OP_FLT, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, "<");
         break;
     case TokenType::SYM_LESS_EQUAL:
-        emitOp(vm::OPCODE::OP_ILE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_ILE, vm::OPCODE::OP_FLE, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, "<=");
         break;
     case TokenType::SYM_GREATER_EQUAL:
-        emitOp(vm::OPCODE::OP_IGE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        emitBinaryOp(vm::OPCODE::OP_IGE, vm::OPCODE::OP_FGE, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
+                     rightType, line, column, ">=");
         break;
     case TokenType::SYM_BIT_AND:
-        emitOp(vm::OPCODE::OP_BIT_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        if (leftType.getBase() == semantic::NKBaseType::Integer &&
+            rightType.getBase() == semantic::NKBaseType::Integer) {
+            emitOp(vm::OPCODE::OP_BIT_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '&': Expected (Int, Int).");
+        }
         break;
     case TokenType::SYM_BIT_OR:
-        emitOp(vm::OPCODE::OP_BIT_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        if (leftType.getBase() == semantic::NKBaseType::Integer &&
+            rightType.getBase() == semantic::NKBaseType::Integer) {
+            emitOp(vm::OPCODE::OP_BIT_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '|': Expected (Int, Int).");
+        }
         break;
     case TokenType::SYM_BIT_XOR:
-        emitOp(vm::OPCODE::OP_BIT_XOR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        if (leftType.getBase() == semantic::NKBaseType::Integer &&
+            rightType.getBase() == semantic::NKBaseType::Integer) {
+            emitOp(vm::OPCODE::OP_BIT_XOR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '^': Expected (Int, Int).");
+        }
         break;
     case TokenType::SYM_BIT_SHL:
-        emitOp(vm::OPCODE::OP_BIT_SHL, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        if (leftType.getBase() == semantic::NKBaseType::Integer &&
+            rightType.getBase() == semantic::NKBaseType::Integer) {
+            emitOp(vm::OPCODE::OP_BIT_SHL, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '<<': Expected (Int, Int).");
+        }
         break;
     case TokenType::SYM_BIT_SHR:
-        emitOp(vm::OPCODE::OP_BIT_SHR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        if (leftType.getBase() == semantic::NKBaseType::Integer &&
+            rightType.getBase() == semantic::NKBaseType::Integer) {
+            emitOp(vm::OPCODE::OP_BIT_SHR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '>>': Expected (Int, Int).");
+        }
         break;
     case TokenType::SYM_CONCAT:
-        emitOp(vm::OPCODE::OP_CONCAT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        if (leftType.getBase() == semantic::NKBaseType::String && rightType.getBase() == semantic::NKBaseType::String) {
+            emitOp(vm::OPCODE::OP_CONCAT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '..': Expected (String, String).");
+        }
         break;
     default:
         reportError(line, column, "Unknown binary operator.");
@@ -171,17 +230,33 @@ ExprResult Compiler::compileUnaryExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
     ExprResult reg = compileExpression(node.payload.unary.operand);
+    semantic::NKType opType = (*currentTypeTable)[node.payload.unary.operand];
     ExprResult resultReg = {regAlloc.allocate(), true};
 
     switch (node.payload.unary.op) {
     case TokenType::SYM_MINUS:
-        emitOp(vm::OPCODE::OP_NEG, resultReg.reg, reg.reg, line, column);
+        if (opType.getBase() == semantic::NKBaseType::Integer) {
+            emitOp(vm::OPCODE::OP_NEG, resultReg.reg, reg.reg, line, column);
+        } else if (opType.getBase() == semantic::NKBaseType::Float) {
+            emitOp(vm::OPCODE::OP_FNEG, resultReg.reg, reg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '-': Expected Int or Float.");
+        }
         break;
     case TokenType::SYM_BANG:
-        emitOp(vm::OPCODE::OP_NOT, resultReg.reg, reg.reg, line, column);
+        // 在强类型语言中，逻辑非通常只允许作用于 Bool 类型
+        if (opType.getBase() == semantic::NKBaseType::Bool) {
+            emitOp(vm::OPCODE::OP_NOT, resultReg.reg, reg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '!': Expected Bool.");
+        }
         break;
     case TokenType::SYM_BIT_NOT:
-        emitOp(vm::OPCODE::OP_BIT_NOT, resultReg.reg, reg.reg, line, column);
+        if (opType.getBase() == semantic::NKBaseType::Integer) {
+            emitOp(vm::OPCODE::OP_BIT_NOT, resultReg.reg, reg.reg, line, column);
+        } else {
+            reportError(line, column, "Type mismatch for operator '~': Expected Int.");
+        }
         break;
     default:
         reportError(line, column, "Unknown unary operator.");
@@ -235,7 +310,7 @@ ExprResult Compiler::compileIdentifierExpr(ASTNodeIndex nodeIdx) {
         // 在未来的强类型系统中，如果找不到局部变量，TypeChecker 会报错。
         // 但现在，我们要把这个“名字（如 calculate_total）”的信息打包，
         // 在运行时通过 OP_GET_GLOBAL，以 name_id 作为常量的形式，让 VM 去哈希表里找函数。
-        
+
         // 我们把 name_id 这个数字本身，作为一个常量塞进常量池。
         // 这样 VM 执行 OP_GET_GLOBAL 时，就能拿到 name_id，然后去哈希表查找函数指针。
         vm::Value nameVal = vm::Value::makeInt(name_id);
@@ -430,13 +505,6 @@ ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) {
     return {outReg, true};
 }
 // 闭包与高级特性
-ExprResult Compiler::compileClosureExpr(ASTNodeIndex nodeIdx) {
-    auto [node, line, column] = getNodeCtx(nodeIdx);
-    reportWarning(line, column, "compileClosureExpr is a stub.");
-    uint8_t outReg = regAlloc.allocate();
-    emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
-    return {outReg, true};
-}
 ExprResult Compiler::compileAwaitExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
     reportWarning(line, column, "compileAwaitExpr is a stub.");

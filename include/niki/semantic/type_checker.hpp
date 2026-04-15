@@ -79,7 +79,6 @@ class TypeChecker {
     NKType checkCallExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkMemberExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkDispatchExpr(syntax::ASTNodeIndex nodeIdx);
-    NKType checkClosureExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkAwaitExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkBorrowExpr(syntax::ASTNodeIndex nodeIdx);
     NKType checkWildcardExpr(syntax::ASTNodeIndex nodeIdx);

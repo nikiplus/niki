@@ -130,6 +130,10 @@ class Compiler {
     那我们返回那个用8bit寄存器储存constant的设计？但这样的话又会很快导致那个上限过少的老问题……能不能结合两个方案？让constant小的时候使用8bit存储，大的时候使用16bit存储……？
     没错！这正式现代绝大多数寄存器都在使用的指令设计方案——变长指令。*/
     //---辅助函数---
+    void emitBinaryOp(vm::OPCODE int_op, vm::OPCODE float_op, uint8_t resultReg, uint8_t leftReg, uint8_t rightReg,
+                      semantic::NKType leftType, semantic::NKType rightType, uint32_t line, uint32_t column,
+                      const std::string &opName);
+
     void freeIfTemp(const ExprResult &res);
     std::string makeTracePrefix() const;
     uint16_t makeConstant(vm::Value value, uint32_t line, uint32_t column);
@@ -197,7 +201,6 @@ class Compiler {
     ExprResult compileMemberExpr(ASTNodeIndex nodeIdx);
     ExprResult compileDispatchExpr(ASTNodeIndex nodeIdx);
     // 闭包与高级特性
-    ExprResult compileClosureExpr(ASTNodeIndex nodeIdx);
     ExprResult compileAwaitExpr(ASTNodeIndex nodeIdx);
     ExprResult compileBorrowExpr(ASTNodeIndex nodeIdx);
     ExprResult compileWildcardExpr(ASTNodeIndex nodeIdx);

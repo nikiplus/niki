@@ -47,9 +47,6 @@ NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
     case syntax::NodeType::DispatchExpr:
         resultType = checkDispatchExpr(exprIdx);
         break;
-    case syntax::NodeType::ClosureExpr:
-        resultType = checkClosureExpr(exprIdx);
-        break;
     case syntax::NodeType::AwaitExpr:
         resultType = checkAwaitExpr(exprIdx);
         break;
@@ -161,7 +158,7 @@ NKType TypeChecker::checkMapExpr(syntax::ASTNodeIndex nodeIdx) {
 
 NKType TypeChecker::checkIndexExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    
+
     NKType targetType = checkExpression(node.payload.index.target);
     NKType indexType = checkExpression(node.payload.index.index);
 
@@ -188,10 +185,29 @@ NKType TypeChecker::checkLogicalExpr(syntax::ASTNodeIndex nodeIdx) {
 }
 
 NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = currentPool->getNode(nodeIdx);
-    checkExpression(node.payload.unary.operand);
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    NKType opType = checkExpression(node.payload.unary.operand);
 
-    return NKType::makeUnknown();
+    switch (node.payload.unary.op) {
+    case syntax::TokenType::SYM_MINUS:
+        if (opType.getBase() != NKBaseType::Unknown && opType.getBase() != NKBaseType::Integer &&
+            opType.getBase() != NKBaseType::Float) {
+            reportError(line, column, "Operand for '-' must be Int or Float.");
+        }
+        return opType; // 返回操作数本身的类型
+    case syntax::TokenType::SYM_BANG:
+        if (opType.getBase() != NKBaseType::Unknown && opType.getBase() != NKBaseType::Bool) {
+            reportError(line, column, "Operand for '!' must be Bool.");
+        }
+        return NKType::makeBool();
+    case syntax::TokenType::SYM_BIT_NOT:
+        if (opType.getBase() != NKBaseType::Unknown && opType.getBase() != NKBaseType::Integer) {
+            reportError(line, column, "Operand for '~' must be Int.");
+        }
+        return NKType::makeInt();
+    default:
+        return NKType::makeUnknown();
+    }
 }
 NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
@@ -230,7 +246,6 @@ NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
 }
 NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 NKType TypeChecker::checkDispatchExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
-NKType TypeChecker::checkClosureExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 NKType TypeChecker::checkAwaitExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 NKType TypeChecker::checkBorrowExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 NKType TypeChecker::checkWildcardExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }

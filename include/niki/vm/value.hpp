@@ -21,7 +21,7 @@ struct Value {
     union {
         bool boolean;
         int64_t integer;
-        double number;
+        double floating;
         void *object; // 指向堆上的实际数据
     } as;
 
@@ -29,7 +29,7 @@ struct Value {
     static Value makeNil() { return {ValueType::Nil, {.integer = 0}}; }
     static Value makeBool(bool b) { return {ValueType::Bool, {.boolean = b}}; }
     static Value makeInt(int64_t i) { return {ValueType::Integer, {.integer = i}}; }
-    static Value makeFloat(double f) { return {ValueType::Float, {.number = f}}; }
+    static Value makeFloat(double f) { return {ValueType::Float, {.floating = f}}; }
     static Value makeObject(void *obj) { return {ValueType::Object, {.object = obj}}; }
 };
 

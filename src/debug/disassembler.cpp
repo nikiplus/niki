@@ -105,6 +105,8 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
         return unaryInstruction("OP_BIT_NOT", chunk, offset);
     case OPCODE::OP_NEG:
         return unaryInstruction("OP_NEG", chunk, offset);
+    case OPCODE::OP_FNEG:
+        return unaryInstruction("OP_FNEG", chunk, offset);
 
     // === [JmpExpr] 跳转指令 (待定字节宽度，通常是 Op + Offset) ===
     case OPCODE::OP_JMP:
@@ -122,9 +124,9 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
         uint8_t callee = chunk.code[offset + 2];
         uint8_t arg_start = chunk.code[offset + 3];
         uint8_t argc = chunk.code[offset + 4];
-        std::cout << std::left << std::setw(16) << "OP_CALL" 
-                  << " R" << (int)dst << " = R" << (int)callee 
-                  << " (Args: R" << (int)arg_start << " ~ R" << (arg_start + argc - 1) << ")\n";
+        std::cout << std::left << std::setw(16) << "OP_CALL"
+                  << " R" << (int)dst << " = R" << (int)callee << " (Args: R" << (int)arg_start << " ~ R"
+                  << (arg_start + argc - 1) << ")\n";
         return offset + 5;
     }
     case OPCODE::OP_INVOKE:
@@ -132,25 +134,7 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
     case OPCODE::OP_RETURN:
         return simpleInstruction("OP_RETURN", offset);
 
-    // === [ClosureExpr] 闭包 ===
-    case OPCODE::OP_CLOSURE:
-        return simpleInstruction("OP_CLOSURE", offset);
-    case OPCODE::OP_CLOSE_UPVALUE:
-        return simpleInstruction("OP_CLOSE_UPVALUE", offset);
-
     // === [VarExpr] 变量操作 ===
-    case OPCODE::OP_GET_LOCAL:
-        return simpleInstruction("OP_GET_LOCAL", offset); // 寄存器机器中通常不需要，变量就在寄存器里
-    case OPCODE::OP_SET_LOCAL:
-        return simpleInstruction("OP_SET_LOCAL", offset);
-    case OPCODE::OP_GET_UPVALUE:
-        return simpleInstruction("OP_GET_UPVALUE", offset);
-    case OPCODE::OP_SET_UPVALUE:
-        return simpleInstruction("OP_SET_UPVALUE", offset);
-    case OPCODE::OP_GET_GLOBAL:
-        return simpleInstruction("OP_GET_GLOBAL", offset);
-    case OPCODE::OP_SET_GLOBAL:
-        return simpleInstruction("OP_SET_GLOBAL", offset);
 
     // === [ComplexDSExpr] 复杂数据结构 ===
     case OPCODE::OP_NEW_MAP:
@@ -230,8 +214,6 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
     case OPCODE::__JMP_END:
     case OPCODE::__CALL_START:
     case OPCODE::__CALL_END:
-    case OPCODE::__CLOSURE_START:
-    case OPCODE::__CLOSURE_END:
     case OPCODE::_CTRL_END:
     case OPCODE::_DATA_START:
     case OPCODE::__VAR_START:

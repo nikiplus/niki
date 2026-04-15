@@ -169,6 +169,42 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 Value::makeInt(currentRegisters()[leftReg].as.integer % currentRegisters()[rightReg].as.integer);
             break;
         }
+        case OPCODE::OP_FADD: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeFloat(currentRegisters()[leftReg].as.floating + currentRegisters()[rightReg].as.floating);
+            break;
+        }
+        case OPCODE::OP_FSUB: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeFloat(currentRegisters()[leftReg].as.floating - currentRegisters()[rightReg].as.floating);
+            break;
+        }
+        case OPCODE::OP_FMUL: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeFloat(currentRegisters()[leftReg].as.floating * currentRegisters()[rightReg].as.floating);
+            break;
+        }
+        case OPCODE::OP_FDIV: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            if (currentRegisters()[rightReg].as.floating == 0.0) {
+                runtime_error("Division by zero.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            currentRegisters()[targetReg] =
+                Value::makeFloat(currentRegisters()[leftReg].as.floating / currentRegisters()[rightReg].as.floating);
+            break;
+        }
         case OPCODE::OP_CONCAT: {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
@@ -208,6 +244,12 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             currentRegisters()[targetReg] = Value::makeInt(-currentRegisters()[srcReg].as.integer);
+            break;
+        }
+        case OPCODE::OP_FNEG: {
+            uint8_t targetReg = readByte();
+            uint8_t srcReg = readByte();
+            currentRegisters()[targetReg] = Value::makeFloat(-currentRegisters()[srcReg].as.floating);
             break;
         }
         case OPCODE::OP_NOT: {
@@ -494,6 +536,54 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 Value::makeBool(currentRegisters()[leftReg].as.integer >= currentRegisters()[rightReg].as.integer);
             break;
         }
+        case OPCODE::OP_FEQ: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeBool(currentRegisters()[leftReg].as.floating == currentRegisters()[rightReg].as.floating);
+            break;
+        }
+        case OPCODE::OP_FNE: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeBool(currentRegisters()[leftReg].as.floating != currentRegisters()[rightReg].as.floating);
+            break;
+        }
+        case OPCODE::OP_FLT: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeBool(currentRegisters()[leftReg].as.floating < currentRegisters()[rightReg].as.floating);
+            break;
+        }
+        case OPCODE::OP_FGT: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeBool(currentRegisters()[leftReg].as.floating > currentRegisters()[rightReg].as.floating);
+            break;
+        }
+        case OPCODE::OP_FLE: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeBool(currentRegisters()[leftReg].as.floating <= currentRegisters()[rightReg].as.floating);
+            break;
+        }
+        case OPCODE::OP_FGE: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+            currentRegisters()[targetReg] =
+                Value::makeBool(currentRegisters()[leftReg].as.floating >= currentRegisters()[rightReg].as.floating);
+            break;
+        }
         case OPCODE::OP_RETURN: {
             Value result = currentRegisters()[0];
 
@@ -645,6 +735,21 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             currentFrame = &frames.back();
             break;
         }
+        case OPCODE::OP_SEQ:
+        case OPCODE::OP_SNE:
+        case OPCODE::OP_OEQ:
+        case OPCODE::OP_ONE:
+        case OPCODE::OP_INVOKE:
+        case OPCODE::OP_NEW_MAP:
+        case OPCODE::OP_SET_MAP:
+        case OPCODE::OP_GET_MAP:
+        case OPCODE::OP_GET_PROPERTY:
+        case OPCODE::OP_SET_PROPERTY:
+        case OPCODE::OP_METHOD:
+        case OPCODE::OP_THROW:
+        case OPCODE::OP_CATCH:
+            runtime_error("Opcode not implemented yet.");
+            return std::unexpected(InterpretResult::RUNTIME_ERROR);
         default:
             runtime_error("Unknown opcode.");
             return std::unexpected(InterpretResult::RUNTIME_ERROR);

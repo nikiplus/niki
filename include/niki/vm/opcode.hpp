@@ -84,6 +84,7 @@ enum class OPCODE : uint8_t {
     OP_NOT,        //! 非
     OP_BIT_NOT,    //~ 非运算
     OP_NEG,        //- 取负运算
+    OP_FNEG,       //- 浮点数取负运算
     __UNARY_END,   // 一元运算指令结束
 
     _CALC_END, // 运算指令结束
@@ -108,9 +109,6 @@ enum class OPCODE : uint8_t {
     /*---[DataExpr]数据操作（局部变量等）---*/
     _DATA_START, // 数据操作指令开始
     __VAR_START, // 变量操作指令开始
-    // [LocalVarExpr]局部变量（GET_LOCAL, SET_LOCAL）
-    OP_GET_LOCAL, // 获取局部变量
-    OP_SET_LOCAL, // 设置局部变量
     // [GlobalVarExpr]全局变量与函数池
     OP_DEFINE_GLOBAL, // 定义全局函数 (操作数: constIdx)
     OP_GET_GLOBAL,    // 获取全局函数 (操作数: targetReg, constIdx)
