@@ -1,43 +1,50 @@
-func calculate_total(base, multiplier, offset, arr_val) {
-    var temp = base * multiplier;
+struct Player {
+    hp: int,
+    mp: int,
+    name: string
+}
+
+func calculate_total(base: int, multiplier: int, offset: int, arr_val: int) -> int {
+    var temp: int = base * multiplier;
     return temp + offset + arr_val; 
 }
 
-func main() {
+func main() -> int {
     // 1. 变量与常量声明
-    var a = 10;
-    const b = 20;
-    var c = a + b;//30
+    var a: int = 10;
+    const b: int = 20;
+    var c: int = a + b;//30
 
     // 2. 算术运算与一元操作
-    var d = (c * 2 - 5) / 5; // 结果应该是 (30 * 2 - 5) / 5 = 55 / 5 = 11
-    var e = -d;              // 结果应该是 -11
+    var d: int = (c * 2 - 5) / 5; // 结果应该是 (30 * 2 - 5) / 5 = 55 / 5 = 11
+    var e: int = -d;              // 结果应该是 -11
 
     // 3. 布尔逻辑与比较运算
-    var is_greater = c > d;  // 30 > 11 -> true
-    var is_equal = (a == 10); // true
-    var logic_and = is_greater && is_equal; // true && true = true
-    var logic_or = !is_greater || false;    // false || false = false
+    var is_greater: bool = c > d;  // 30 > 11 -> true
+    var is_equal: bool = (a == 10); // true
+    var logic_and: bool = is_greater && is_equal; // true && true = true
+    var logic_or: bool = !is_greater || false;    // false || false = false
 
     // 3.5. 位运算
-    var bit_and = a & b;     // 10 (1010) & 20 (10100) = 0
-    var bit_or = a | b;      // 10 (1010) | 20 (10100) = 30 (11110)
-    var bit_xor = a ^ b;     // 10 (1010) ^ 20 (10100) = 30 (11110)
-    var bit_shl = a << 1;    // 10 << 1 = 20
-    var bit_shr = b >> 1;    // 20 >> 1 = 10
+    var bit_and: int = a & b;     // 10 (1010) & 20 (10100) = 0
+    var bit_or: int = a | b;      // 10 (1010) | 20 (10100) = 30 (11110)
+    var bit_xor: int = a ^ b;     // 10 (1010) ^ 20 (10100) = 30 (11110)
+    var bit_shl: int = a << 1;    // 10 << 1 = 20
+    var bit_shr: int = b >> 1;    // 20 >> 1 = 10
 
     // 3.8. 字符串拼接 (使用专用的 .. 操作符)
-    var str1 = "hello, ";
-    var str2 = "NIKI";
-    var str3 = str1 .. str2; // 产生一个新的堆分配字符串 "hello, NIKI"
+    var str1: string = "hello, ";
+    var str2: string = "NIKI";
+    var str3: string = str1 .. str2; // 产生一个新的堆分配字符串 "hello, NIKI"
 
     // 3.9. 数组操作 (Array)
+    // 数组目前没有泛型支持，所以取值时会退化为 Unknown，我们用显式的 : int 接住它
     var arr = [10, 20, 30];
     arr[1] = 99;         // 写入数组 (Mutation)
-    var arr_item = arr[1]; // 读取数组 (99)
+    var arr_item: int = arr[1]; // 读取数组 (99)
 
     // 4. 控制流：If-Else
-    var f = 0;
+    var f: int = 0;
     if (is_greater) {
         f = 100;
     } else {
@@ -45,14 +52,22 @@ func main() {
     }
 
     // 5. 控制流：Loop 循环
-    var counter = 0;
-    var sum = 0;
+    var counter: int = 0;
+    var sum: int = 0;
     loop (counter < 5) {
         sum = sum + counter; // 0 + 1 + 2 + 3 + 4 = 10
         counter = counter + 1;
     }
 
-    var final_result = calculate_total(f, 2, sum, arr_item); // 100 * 2 + 10 + 99 = 309
+    var final_result: int = calculate_total(f, 2, sum, arr_item); // 100 * 2 + 10 + 99 = 309
+
+    // 6. 结构体 (Struct) 与面向数据设计 (DOD) 测试
+    var hero: Player = Player(100, 50, "NIKI_Hero"); // OP_NEW_INSTANCE
+    hero.hp = hero.hp - 20;                          // OP_GET_FIELD, OP_SUB, OP_SET_FIELD
+    var current_hp: int = hero.hp;                   // 80
+
+    // 当 main 函数的 } 结束时，编译器将自动为 hero 发射 OP_FREE
+    // 并且根据 Object 的 type (ObjInstance)，自动释放堆上的柔性数组内存
 
     return final_result;
 }

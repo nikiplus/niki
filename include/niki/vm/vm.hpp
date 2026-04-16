@@ -35,6 +35,8 @@ class VM {
 
     // --- 全局函数表（MVP） ---
     std::unordered_map<uint32_t, ObjFunction *> globals;
+    // --- 全局结构体与对象蓝图表 ---
+    std::unordered_map<uint32_t, Object *> global_objects;
 
     const std::vector<std::string> *current_string_pool = nullptr; // 用于运行时打印函数名等调试信息
 

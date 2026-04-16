@@ -735,10 +735,17 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             if (!funcVal.has_value()) {
                 return std::unexpected(funcVal.error());
             }
-            ObjFunction *func = static_cast<ObjFunction *>(funcVal.value().as.object);
 
-            // 注册到全局表
-            globals[func->name_id] = func;
+            // 安全反序列化：检查 obj 的 type 来分类存放
+            Object *obj = static_cast<Object *>(funcVal.value().as.object);
+            if (obj != nullptr && obj->type == ObjType::StructDef) {
+                global_objects[static_cast<ObjStructDef *>(static_cast<void *>(obj))->name_id] = obj;
+            } else if (obj != nullptr && obj->type == ObjType::Function) {
+                globals[static_cast<ObjFunction *>(static_cast<void *>(obj))->name_id] = static_cast<ObjFunction *>(static_cast<void *>(obj));
+            } else {
+                runtime_error("Invalid global definition type.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
             break;
         }
 
@@ -748,11 +755,18 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             if (!funcVal.has_value()) {
                 return std::unexpected(funcVal.error());
             }
-            ObjFunction *func = static_cast<ObjFunction *>(funcVal.value().as.object);
-
-            globals[func->name_id] = func;
+            Object *obj = static_cast<Object *>(funcVal.value().as.object);
+            if (obj != nullptr && obj->type == ObjType::StructDef) {
+                global_objects[static_cast<ObjStructDef *>(static_cast<void *>(obj))->name_id] = obj;
+            } else if (obj != nullptr && obj->type == ObjType::Function) {
+                globals[static_cast<ObjFunction *>(static_cast<void *>(obj))->name_id] = static_cast<ObjFunction *>(static_cast<void *>(obj));
+            } else {
+                runtime_error("Invalid global definition type.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
             break;
         }
+
         case OPCODE::OP_GET_GLOBAL: {
             uint8_t targetReg = readByte();
             uint8_t constIdx = readByte();
@@ -762,16 +776,22 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
             uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
 
+            // 先查函数，再查结构体蓝图
             auto it = globals.find(name_id);
-            if (it == globals.end()) {
-                runtime_error("Undefined global variable or function.");
-                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            if (it != globals.end()) {
+                currentRegisters()[targetReg] = Value::makeObject(it->second);
+            } else {
+                auto obj_it = global_objects.find(name_id);
+                if (obj_it != global_objects.end()) {
+                    currentRegisters()[targetReg] = Value::makeObject(obj_it->second);
+                } else {
+                    runtime_error("Undefined global variable or function.");
+                    return std::unexpected(InterpretResult::RUNTIME_ERROR);
+                }
             }
-
-            // 把找到的函数对象装回虚拟寄存器里，供下一步的 OP_CALL 使用
-            currentRegisters()[targetReg] = Value::makeObject(it->second);
             break;
         }
+
         case OPCODE::OP_GET_GLOBAL_W: {
             uint8_t targetReg = readByte();
             uint16_t constIdx = readShort();
@@ -782,12 +802,81 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
 
             auto it = globals.find(name_id);
-            if (it == globals.end()) {
-                runtime_error("Undefined global variable or function.");
+            if (it != globals.end()) {
+                currentRegisters()[targetReg] = Value::makeObject(it->second);
+            } else {
+                auto obj_it = global_objects.find(name_id);
+                if (obj_it != global_objects.end()) {
+                    currentRegisters()[targetReg] = Value::makeObject(obj_it->second);
+                } else {
+                    runtime_error("Undefined global variable or function.");
+                    return std::unexpected(InterpretResult::RUNTIME_ERROR);
+                }
+            }
+            break;
+        }
+
+        case OPCODE::OP_NEW_INSTANCE: {
+            uint8_t outReg = readByte();
+            uint8_t calleeReg = readByte();
+            uint8_t argStartReg = readByte();
+            uint8_t argc = readByte();
+
+            Value callee = currentRegisters()[calleeReg];
+            if (!isStructDef(callee)) {
+                runtime_error("Can only instantiate struct definitions.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            ObjStructDef* def = static_cast<ObjStructDef*>(callee.as.object);
+            if (def->field_count != argc) {
+                runtime_error("Struct instance argument count mismatch.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
-            currentRegisters()[targetReg] = Value::makeObject(it->second);
+            ObjInstance* instance = allocateInstance(def);
+            for (uint8_t i = 0; i < argc; ++i) {
+                instance->fields[i] = currentRegisters()[argStartReg + i];
+            }
+            // 实例拥有自己的堆内存，因此我们目前将所有新实例视为主权对象（生命周期开始）
+            currentRegisters()[outReg] = Value::makeObject(instance);
+            break;
+        }
+
+        case OPCODE::OP_GET_FIELD: {
+            uint8_t outReg = readByte();
+            uint8_t instanceReg = readByte();
+            uint8_t fieldIndex = readByte();
+
+            Value instanceVal = currentRegisters()[instanceReg];
+            if (!isInstance(instanceVal)) {
+                runtime_error("Can only get fields from struct instances.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            ObjInstance* instance = static_cast<ObjInstance*>(instanceVal.as.object);
+            if (fieldIndex >= instance->def->field_count) {
+                runtime_error("Field index out of bounds.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            currentRegisters()[outReg] = instance->fields[fieldIndex];
+            break;
+        }
+
+        case OPCODE::OP_SET_FIELD: {
+            uint8_t instanceReg = readByte();
+            uint8_t fieldIndex = readByte();
+            uint8_t valueReg = readByte();
+
+            Value instanceVal = currentRegisters()[instanceReg];
+            if (!isInstance(instanceVal)) {
+                runtime_error("Can only set fields on struct instances.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            ObjInstance* instance = static_cast<ObjInstance*>(instanceVal.as.object);
+            if (fieldIndex >= instance->def->field_count) {
+                runtime_error("Field index out of bounds.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            instance->fields[fieldIndex] = currentRegisters()[valueReg];
             break;
         }
 
@@ -798,13 +887,12 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             uint8_t argc = readByte();
 
             Value callee = currentRegisters()[calleeReg];
-            if (callee.type != ValueType::Object) {
+            if (!isFunction(callee)) {
                 runtime_error("Can only call functions");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
-            // 这里先简化处理，假设object一定是objfuction
-            ObjFunction *fuction = static_cast<ObjFunction *>(callee.as.object);
+            ObjFunction *fuction = asFunction(callee);
 
             if (argc != fuction->arity) {
                 runtime_error("Expected %d .", fuction->arity, argc);
@@ -830,6 +918,48 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                                        .base_register = new_base,
                                        .out_register = outReg});
             currentFrame = &frames.back();
+            break;
+        }
+        case OPCODE::OP_FREE: {
+            uint8_t targetReg = readByte();
+            Value val = currentRegisters()[targetReg];
+            if (val.type == ValueType::Object && val.as.object != nullptr) {
+                // 根据具体的对象类型，执行彻底的物理销毁
+                Object* obj = static_cast<Object*>(val.as.object);
+                switch (obj->type) {
+                    case ObjType::Function:
+                        // Function 对象在全局池中，不应被局部 FREE，但如果是闭包分配的，未来需要在这里释放 chunk
+                        // 目前安全起见，什么也不做。
+                        break;
+                    case ObjType::String:
+                        std::free(val.as.object); // 柔性数组，直接 free 头指针即可
+                        break;
+                    case ObjType::Array: {
+                        ObjArray* arr = asArray(val);
+                        if (arr->elements != nullptr) {
+                            std::free(arr->elements); // 释放分离的数据块
+                        }
+                        std::free(arr); // 释放头
+                        break;
+                    }
+                    case ObjType::Map: {
+                        ObjMap* map = asMap(val);
+                        if (map->entries != nullptr) {
+                            std::free(map->entries);
+                        }
+                        std::free(map);
+                        break;
+                    }
+                    case ObjType::Instance:
+                        std::free(val.as.object); // 柔性数组，直接 free 头指针
+                        break;
+                    case ObjType::StructDef:
+                        // 蓝图存活在全局区，通常在虚拟机销毁时统一释放，不应被局部变量 FREE
+                        break;
+                }
+            }
+            // 释放后，将寄存器清空（置为 NIL），防止重复释放或幽灵访问
+            currentRegisters()[targetReg] = Value::makeNil();
             break;
         }
         case OPCODE::OP_SEQ:

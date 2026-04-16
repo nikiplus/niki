@@ -17,6 +17,8 @@ void Compiler::preCompileNode(ASTNodeIndex nodeIdx) {
     const auto &node = getNodeCtx(nodeIdx).node;
     if (node.type == NodeType::FunctionDecl) {
         preCompileFunctionDecl(nodeIdx);
+    } else if (node.type == NodeType::StructDecl) {
+        compileStructDecl(nodeIdx);
     }
 }
 

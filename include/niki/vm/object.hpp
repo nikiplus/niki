@@ -16,6 +16,7 @@ enum class ObjType : uint8_t {
     Map,
     StructDef,
     Instance,
+    Function,
 };
 
 // 基础对象头 (所有堆对象的公共前缀)
@@ -74,6 +75,7 @@ struct ObjMap {
 // 函数对象：包含字节码、常量池、行号信息以及函数的元数据
 // (目前我们暂时保持其 C++ 类的形态，未来如果有需要也可以拍扁成 DOD 结构)
 struct ObjFunction {
+    Object obj; // 补齐对象头，使其参与 VM 的 C-style 多态
     uint32_t name_id;
     uint8_t arity; // 参数个数
     uint8_t max_registers;
@@ -277,10 +279,12 @@ inline bool isInstance(Value value) { return isObjType(value, ObjType::Instance)
 inline bool isString(Value value) { return isObjType(value, ObjType::String); }
 inline bool isArray(Value value) { return isObjType(value, ObjType::Array); }
 inline bool isMap(Value value) { return isObjType(value, ObjType::Map); }
+inline bool isFunction(Value value) { return isObjType(value, ObjType::Function); }
 
 inline ObjString *asString(Value value) { return static_cast<ObjString *>(value.as.object); }
 inline ObjArray *asArray(Value value) { return static_cast<ObjArray *>(value.as.object); }
 inline ObjMap *asMap(Value value) { return static_cast<ObjMap *>(value.as.object); }
+inline ObjFunction *asFunction(Value value) { return static_cast<ObjFunction *>(value.as.object); }
 // 注意：由于我们目前没有实现 GC 和 OP_FREE，
 // 调用 allocateString 和 allocateArray 产生的内存暂时会泄漏。
 // 这是 MVP 阶段的架构妥协。

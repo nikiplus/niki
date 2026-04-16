@@ -116,7 +116,11 @@ ASTNodeIndex Parser::parseFunctionDecl() {
     consume(TokenType::SYM_PAREN_R, "Expected')' after fuction name.");
     func_data.params = astPool.allocateList(params);
 
-    func_data.return_type = ASTNodeIndex::invalid();
+    if (match(TokenType::SYM_ARROW)) {
+        func_data.return_type = parseExpression(Precedence::None);
+    } else {
+        func_data.return_type = ASTNodeIndex::invalid();
+    }
 
     consume(TokenType::SYM_BRACE_L, "Expected '{' before function body.");
     func_data.body = parseBlockStmt();
@@ -129,13 +133,43 @@ ASTNodeIndex Parser::parseStructDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
 
-    // 1. 解析组件名
-    consume(TokenType::IDENTIFIER, "Expected component name.");
-    payload.component_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+    StructData struct_data{};
 
-    // 2. 解析组件体 (复用 parseBlockStmt，将语义验证留给下游 Checker)
-    consume(TokenType::SYM_BRACE_L, "Expected '{' before component body.");
-    payload.component_decl.body = parseBlockStmt();
+    // 1. 解析结构体名
+    consume(TokenType::IDENTIFIER, "Expected struct name.");
+    struct_data.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+
+    // 2. 解析结构体字段 (直接在 parser 里将 name 和 type 拆分存储到 side-table)
+    consume(TokenType::SYM_BRACE_L, "Expected '{' before struct body.");
+    
+    std::vector<ASTNodeIndex> field_names;
+    std::vector<ASTNodeIndex> field_types;
+
+    while (!check(TokenType::SYM_BRACE_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
+        // 解析字段名
+        consume(TokenType::IDENTIFIER, "Expected field name.");
+        ASTNodePayload name_payload{};
+        name_payload.identifier.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+        field_names.push_back(emitNode(NodeType::IdentifierExpr, name_payload, previous));
+
+        // 解析冒号
+        consume(TokenType::SYM_COLON, "Expected ':' after field name.");
+
+        // 解析类型
+        field_types.push_back(parseExpression(Precedence::None));
+
+        // 可选的逗号或分号
+        if (check(TokenType::SYM_COMMA) || check(TokenType::SYM_SEMICOLON)) {
+            advance();
+        }
+    }
+    consume(TokenType::SYM_BRACE_R, "Expected '}' after struct body.");
+
+    struct_data.names = astPool.allocateList(field_names);
+    struct_data.types = astPool.allocateList(field_types);
+
+    astPool.struct_data.push_back(struct_data);
+    payload.struct_decl.struct_index = static_cast<uint32_t>(astPool.struct_data.size() - 1);
 
     return emitNode(NodeType::StructDecl, payload, startToken);
 }

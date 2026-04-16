@@ -44,8 +44,11 @@ void TypeChecker::preDeclareFunction(syntax::ASTNodeIndex nodeIdx) {
         paramTypes.push_back(resolveTypeAnnotation(type_expr_idx));
     }
 
-    // 未来这里要解析func.data.returntype
-    NKType retType = NKType::makeUnknown();
+    // 解析函数返回类型
+    NKType retType = NKType(NKBaseType::Void, -1);
+    if (func_data.return_type.isvalid()) {
+        retType = resolveTypeAnnotation(func_data.return_type);
+    }
 
     // 将签名注册到签名池中，获取唯一的typeid
     uint32_t sig_id = const_cast<syntax::ASTPool *>(currentPool)->internFuncSignature(paramTypes, retType);

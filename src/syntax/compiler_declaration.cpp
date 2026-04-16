@@ -21,13 +21,11 @@ void Compiler::compileDeclaration(ASTNodeIndex nodeIdx) {
 
     switch (node.type) {
     case NodeType::FunctionDecl:
-        // 在第二遍扫描时，直接跳过函数声明，因为在 preCompile 时已经发射过了
+    case NodeType::StructDecl:
+        // 在第二遍扫描时，直接跳过函数和结构体声明，因为在 preCompile 时已经发射过了
         break;
     case NodeType::InterfaceMethod:
         compileInterfaceMethod(nodeIdx);
-        break;
-    case NodeType::StructDecl:
-        compileStructDecl(nodeIdx);
         break;
     case NodeType::EnumDecl:
         compileEnumDecl(nodeIdx);
@@ -86,7 +84,10 @@ void Compiler::compileFunctionDecl(ASTNodeIndex nodeIdx) {
     // 目前niki mvp将函数作为顶层声明
 
     // 创建一个新的objfuction，准备编译其内部字节码
+    // 注意：ObjFunction 现在包含了 Object obj 头，必须正确初始化以避免野指针和强转崩溃
     niki::vm::ObjFunction *funcObj = new niki::vm::ObjFunction();
+    funcObj->obj.type = vm::ObjType::Function;
+    funcObj->obj.isMarked = false;
     funcObj->name_id = func_data.name_id; // Initialize name_id from FunctionData
 
     std::span<const ASTNodeIndex> paramNodes = currentPool->get_list(func_data.params);
@@ -140,7 +141,26 @@ void Compiler::compileInterfaceMethod(ASTNodeIndex nodeIdx) {
 }
 void Compiler::compileStructDecl(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    reportError(line, column, "Struct declaration compilation is not implemented yet.");
+    
+    uint32_t struct_idx = node.payload.struct_decl.struct_index;
+    const StructData &struct_data = currentPool->struct_data[struct_idx];
+
+    std::span<const ASTNodeIndex> fields = currentPool->get_list(struct_data.names);
+    uint32_t field_count = static_cast<uint32_t>(fields.size());
+
+    // 1. 在编译期创建一个结构体蓝图对象
+    vm::ObjStructDef *structDef = vm::allocateStructDef(struct_data.name_id, field_count);
+    
+    // 2. 将其放入当前 chunk 的常量池
+    vm::Value defValue = vm::Value::makeObject(structDef);
+    uint16_t constIdx = makeConstant(defValue, line, column);
+
+    // 3. 发射 OP_DEFINE_GLOBAL，把蓝图注册到 VM 的全局表中
+    if (constIdx < 255) {
+        emitOp(vm::OPCODE::OP_DEFINE_GLOBAL, static_cast<uint8_t>(constIdx), line, column);
+    } else {
+        emitOp(vm::OPCODE::OP_DEFINE_GLOBAL_W, static_cast<uint8_t>((constIdx >> 8) & 0xFF), static_cast<uint8_t>(constIdx & 0xFF), line, column);
+    }
 }
 void Compiler::compileEnumDecl(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);

@@ -92,7 +92,10 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
         paramTypes.push_back(resolveTypeAnnotation(type_expr_idx));
     }
 
-    NKType retType = NKType::makeUnknown();
+    NKType retType = NKType(NKBaseType::Void, -1);
+    if (func_data.return_type.isvalid()) {
+        retType = resolveTypeAnnotation(func_data.return_type);
+    }
 
     // 进入函数作用域
     beginScope();
