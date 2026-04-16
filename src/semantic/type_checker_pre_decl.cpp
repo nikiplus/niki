@@ -16,8 +16,19 @@ void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
     const auto &node = currentPool->getNode(declIdx);
     if (node.type == syntax::NodeType::FunctionDecl) {
         preDeclareFunction(declIdx);
+    } else if (node.type == syntax::NodeType::StructDecl) {
+        preDeclareStruct(declIdx);
     }
-    // 未来在这里增加对 StructDecl, InterfaceDecl 等全局类型的预声明
+    // 未来在这里增加对 InterfaceDecl 等全局类型的预声明
+}
+
+void TypeChecker::preDeclareStruct(syntax::ASTNodeIndex nodeIdx) {
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    uint32_t struct_idx = node.payload.struct_decl.struct_index;
+    const syntax::StructData &struct_data = currentPool->struct_data[struct_idx];
+
+    NKType structType(NKBaseType::Object, static_cast<int32_t>(struct_idx));
+    declareSymbol(struct_data.name_id, structType, line, column);
 }
 
 void TypeChecker::preDeclareFunction(syntax::ASTNodeIndex nodeIdx) {

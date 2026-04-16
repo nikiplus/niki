@@ -40,13 +40,15 @@ class TypeChecker {
         uint32_t name_id;
         NKType type;
         int depth;
+        bool is_owned; // 灵魂拷问1：该符号是否是数据的主人？(决定作用域结束时是否生成 OP_FREE)
+        bool is_moved; // 灵魂拷问2：该符号的所有权是否已被转移？(如果被转移，后续严禁使用)
     };
     std::vector<Symbol> symbols;
     int currentDepth = 0;
 
     void beginScope() { currentDepth++; }
     void endScope();
-    void declareSymbol(uint32_t name_id, NKType type, uint32_t line, uint32_t column);
+    void declareSymbol(uint32_t name_id, NKType type, uint32_t line, uint32_t column, bool is_owned = false);
     NKType resolveSymbol(uint32_t name_id, uint32_t line, uint32_t column);
     //---辅助方法---
     struct NodeContext {
@@ -106,6 +108,7 @@ class TypeChecker {
     // --- 顶层声明预声明 (两遍扫描的第一遍) ---
     void preDeclareNode(syntax::ASTNodeIndex declIdx);
     void preDeclareFunction(syntax::ASTNodeIndex nodeIdx);
+    void preDeclareStruct(syntax::ASTNodeIndex nodeIdx);
 
     // --- 顶层声明 ---
     void checkDeclaration(syntax::ASTNodeIndex declIdx);

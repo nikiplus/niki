@@ -140,6 +140,12 @@ uint16_t Compiler::makeConstant(vm::Value value, uint32_t line, uint32_t column)
 void Compiler::endScope() {
     scopeDepth--;
     while (locals.size() > 0 && locals.back().depth > scopeDepth) {
+        Local &local = locals.back();
+        if (local.is_owned && !local.is_moved) {
+            emitOp(vm::OPCODE::OP_FREE, local.reg, currentPool->locations.back().line,
+                   currentPool->locations.back().column);
+        }
+
         regAlloc.free(locals.back().reg);
         locals.pop_back();
     }
@@ -347,8 +353,6 @@ void Compiler::reportError(uint32_t line, uint32_t column, std::string_view mess
     hadError = true;
 }
 
-void Compiler::reportWarning(uint32_t line, uint32_t column, std::string_view message) {
-    warningCount++;
-}
+void Compiler::reportWarning(uint32_t line, uint32_t column, std::string_view message) { warningCount++; }
 
 } // namespace niki::syntax

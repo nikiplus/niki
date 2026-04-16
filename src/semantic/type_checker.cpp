@@ -41,7 +41,7 @@ void TypeChecker::endScope() {
     currentDepth--;
 }
 
-void TypeChecker::declareSymbol(uint32_t name_id, NKType type, uint32_t line, uint32_t column) {
+void TypeChecker::declareSymbol(uint32_t name_id, NKType type, uint32_t line, uint32_t column, bool is_owned) {
     // 【变量声明登记】
     // 当遇到 var a = 10; 这样的语句时调用。
 
@@ -57,8 +57,8 @@ void TypeChecker::declareSymbol(uint32_t name_id, NKType type, uint32_t line, ui
         }
     }
 
-    // 2. 把新变量的名字和它的类型，推入符号栈
-    symbols.push_back({name_id, type, currentDepth});
+    // 2. 把新变量的名字、它的类型以及所有权状态，推入符号栈
+    symbols.push_back({name_id, type, currentDepth, is_owned, false});
 }
 
 NKType TypeChecker::resolveSymbol(uint32_t name_id, uint32_t line, uint32_t column) {
@@ -114,7 +114,12 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
         if (name_id == currentPool->ID_STRING)
             return NKType(NKBaseType::String, -1);
 
-        // 查找用户自定义类型（mvp只返回unknow或占位，未来在实现查找struct）
+        // 查找用户自定义结构体类型
+        for (size_t i = 0; i < currentPool->struct_data.size(); ++i) {
+            if (currentPool->struct_data[i].name_id == name_id) {
+                return NKType(NKBaseType::Object, static_cast<int32_t>(i));
+            }
+        }
 
         // 如果都不认识，才去取字符串用于报错
         std::string_view typeName = currentPool->getStringId(name_id);

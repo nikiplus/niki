@@ -139,8 +139,9 @@ enum class OPCODE : uint8_t {
     OP_LOAD_CONST,     // 从常量池加载到目标寄存器
     OP_LOAD_CONST_W,   // 从常量池加载宽索引到目标寄存器
     OP_MOVE,           // 寄存器搬运
-    __DATA_CTRL_END,   // 常用数据操作指令结束
-    _DATA_END,         // 数据操作指令结束
+    OP_FREE,
+    __DATA_CTRL_END, // 常用数据操作指令结束
+    _DATA_END,       // 数据操作指令结束
 
     /*---[SysExpr]系统相关指令（THROW, CATCH）---*/
     _SYS_START, // 系统相关指令开始

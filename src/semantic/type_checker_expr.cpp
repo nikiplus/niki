@@ -118,19 +118,27 @@ NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
             return NKType::makeInt();
         if (leftType.getBase() == NKBaseType::Float && rightType.getBase() == NKBaseType::Float)
             return NKType::makeFloat();
+
         reportError(line, column, "Arithmetic operations require both Int or both Float.");
-        return NKType::makeUnknown();
+
+        // 启发式错误恢复 (Heuristic Error Recovery)
+        // 如果哪怕有一边是浮点数，我们就猜测程序员的意图是浮点运算
+        if (leftType.getBase() == NKBaseType::Float || rightType.getBase() == NKBaseType::Float) {
+            return NKType::makeFloat();
+        }
+        // 否则（包括一边是 Int，或者两边都是像 String 这种完全不相干的类型），强行兜底为 Int
+        return NKType::makeInt();
     case syntax::TokenType::SYM_MOD:
         if (leftType.getBase() == NKBaseType::Integer && rightType.getBase() == NKBaseType::Integer)
             return NKType::makeInt();
         reportError(line, column, "Modulo operation requires Int.");
-        return NKType::makeUnknown();
+        return NKType::makeInt(); // 错误恢复：取模运算必定产生 Int
     case syntax::TokenType::SYM_CONCAT:
         if (leftType.getBase() == NKBaseType::String && rightType.getBase() == NKBaseType::String) {
             return NKType(NKBaseType::String, -1);
         }
         reportError(line, column, "String concatenation '..' requires both operands to be string.");
-        return NKType::makeUnknown();
+        return NKType(NKBaseType::String, -1); // 错误恢复：字符串拼接必定产生 String
 
     case syntax::TokenType::SYM_EQUAL_EQUAL:
     case syntax::TokenType::SYM_BANG_EQUAL:
@@ -158,7 +166,7 @@ NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
             return NKType::makeInt();
         } else {
             reportError(line, column, "Operands must be Int for bitwise operations.");
-            return NKType::makeUnknown();
+            return NKType::makeInt(); // 错误恢复：位运算必定产生 Int
         }
     default:
         reportError(line, column, "Unknown binary operator.");
@@ -291,17 +299,40 @@ NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
         return NKType::makeUnknown();
     }
 
-    if (calleeType.getBase() != NKBaseType::Function && calleeType.getBase() != NKBaseType::Unknown) {
-        reportError(line, column, "Attempt to call a non-function value.");
+    if (calleeType.getBase() != NKBaseType::Function && calleeType.getBase() != NKBaseType::Object) {
+        reportError(line, column, "Attempt to call a non-callable value.");
         return NKType::makeUnknown();
     }
 
-    // 提取签名进行比对
+    std::span<const syntax::ASTNodeIndex> argNodes = currentPool->get_list(node.payload.call.arguments);
+
+    if (calleeType.getBase() == NKBaseType::Object) {
+        // 结构体实例化 (Constructor)
+        uint32_t struct_id = calleeType.getTypeId();
+        const syntax::StructData &struct_data = currentPool->struct_data[struct_id];
+        std::span<const syntax::ASTNodeIndex> fieldTypeNodes = currentPool->get_list(struct_data.types);
+
+        if (argNodes.size() != fieldTypeNodes.size()) {
+            reportError(line, column, "Argument count mismatch for struct instantiation.");
+        }
+
+        for (size_t i = 0; i < argNodes.size(); ++i) {
+            NKType argType = checkExpression(argNodes[i]);
+            if (i < fieldTypeNodes.size()) {
+                NKType expectedType = resolveTypeAnnotation(fieldTypeNodes[i]);
+                if (argType.getBase() != NKBaseType::Unknown && expectedType.getBase() != NKBaseType::Unknown &&
+                    argType != expectedType) {
+                    reportError(line, column, "Type mismatch in struct argument.");
+                }
+            }
+        }
+        return calleeType; // 返回实例类型本身
+    }
+
+    // 提取签名进行比对 (Function)
     uint32_t sig_id = calleeType.handle & 0x00FFFFFF; // 提取低24位
     const FunctionSignature &sig = const_cast<syntax::ASTPool *>(currentPool)->func_sigs[sig_id];
 
-    // 2. 检查所有的参数表达式
-    std::span<const syntax::ASTNodeIndex> argNodes = currentPool->get_list(node.payload.call.arguments);
     if (argNodes.size() != sig.param_types.size()) {
         reportError(line, column, "Argument count mismatch.");
     }
@@ -309,14 +340,54 @@ NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
     // 参数类型校验
     for (size_t i = 0; i < argNodes.size(); ++i) {
         NKType argType = checkExpression(argNodes[i]);
-        // if (i < sig.param_types.size() && argType != sig.param_types[i]) {
-        //     reportError(... "Type mismatch in argument");
-        // }
+        if (i < sig.param_types.size()) {
+            NKType expectedType = sig.param_types[i];
+            if (argType.getBase() != NKBaseType::Unknown && expectedType.getBase() != NKBaseType::Unknown &&
+                argType != expectedType) {
+                reportError(line, column, "Type mismatch in function argument.");
+            }
+        }
     }
-    // 3. 返回值类型
     return sig.return_type;
 }
-NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+
+NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+
+    NKType objType = checkExpression(node.payload.member.object);
+    if (objType.getBase() == NKBaseType::Unknown) {
+        return NKType::makeUnknown();
+    }
+
+    if (objType.getBase() != NKBaseType::Object) {
+        reportError(line, column, "Cannot access member of non-struct type.");
+        return NKType::makeUnknown();
+    }
+
+    uint32_t struct_id = objType.getTypeId();
+    if (struct_id >= currentPool->struct_data.size()) {
+        reportError(line, column, "Invalid struct type.");
+        return NKType::makeUnknown();
+    }
+
+    const syntax::StructData &struct_data = currentPool->struct_data[struct_id];
+    std::span<const syntax::ASTNodeIndex> fieldNames = currentPool->get_list(struct_data.names);
+    std::span<const syntax::ASTNodeIndex> fieldTypes = currentPool->get_list(struct_data.types);
+    uint32_t target_name_id = node.payload.member.property_id;
+
+    for (size_t i = 0; i < fieldNames.size(); ++i) {
+        uint32_t name_id = currentPool->getNode(fieldNames[i]).payload.identifier.name_id;
+        if (name_id == target_name_id) {
+            if (i < fieldTypes.size()) {
+                return resolveTypeAnnotation(fieldTypes[i]);
+            }
+            break;
+        }
+    }
+
+    reportError(line, column, "Struct does not have this field.");
+    return NKType::makeUnknown();
+}
 NKType TypeChecker::checkDispatchExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 NKType TypeChecker::checkAwaitExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 NKType TypeChecker::checkBorrowExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }

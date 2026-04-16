@@ -96,8 +96,7 @@ void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
     NKType finalType = declType.getBase() != semantic::NKBaseType::Unknown ? declType : initType;
 
     if (finalType.getBase() == semantic::NKBaseType::Unknown) {
-        // 在目前的MVP阶段，我们暂时不报硬性错误，放宽通过。
-        // reportError(line, column, "Cannot infer type for variable.Type annotation or initializer required.");
+        reportError(line, column, "Cannot infer type for variable.Type annotation or initializer required.");
     }
     declareSymbol(node.payload.var_decl.name_id, finalType, line, column);
 }
@@ -138,13 +137,13 @@ void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
 
     // 2. 如果我们不在函数里（这不应该发生，但防御性编程要做好）或者允许返回任何类型
     if (currentReturnType.getBase() == NKBaseType::Unknown) {
-        return; // MVP兜底放过
+        reportError(line, column, "Cannot return from outside a function.");
+        return;
     }
     // 3. 严格比对：实际返回的类型 vs 函数签名期待的类型
-    // 在 MVP 中，我们如果看到 exprType 是 Unknown，我们也选择放过（因为可能有未实现的表达式检查返回了 Unknown）
     if (exprType.getBase() != NKBaseType::Unknown && exprType != currentReturnType) {
         reportError(line, column,
-                    "Returen type mismatch.Expected" + std::to_string((int)currentReturnType.getBase()) + ", got" +
+                    "Return type mismatch. Expected " + std::to_string((int)currentReturnType.getBase()) + ", got " +
                         std::to_string((int)exprType.getBase()));
     }
 }

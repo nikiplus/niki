@@ -25,6 +25,8 @@ struct Local {
     uint32_t name_id; // AST 中标识符的字符串 ID
     uint8_t reg;      // 绑定的物理寄存器
     int depth;        // 作用域深度（处理大括号块的变量覆盖和销毁）
+    bool is_owned;    // 该变量是否为数据所有者？——基本类型和借用引用为false，new出来的对象为true
+    bool is_moved;    // 其所有权是否被转移？
 };
 /*表达式结果的物理载体与生命周期描述符。
 
@@ -184,7 +186,7 @@ class Compiler {
     //---AST遍历核心(Visitor)---
     void preCompileNode(ASTNodeIndex nodeIdx);
     void preCompileFunctionDecl(ASTNodeIndex nodeIdx);
-    
+
     void compileNode(ASTNodeIndex nodeIdx);
 
     //---表达式编译 (返回装载结果的物理寄存器编号)---

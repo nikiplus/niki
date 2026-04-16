@@ -116,7 +116,16 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
     endScope();
 }
 void TypeChecker::checkInterfaceMethod(syntax::ASTNodeIndex nodeIdx) {}
-void TypeChecker::checkStructDecl(syntax::ASTNodeIndex nodeIdx) {}
+void TypeChecker::checkStructDecl(syntax::ASTNodeIndex nodeIdx) {
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    uint32_t struct_idx = node.payload.struct_decl.struct_index;
+    const syntax::StructData &struct_data = currentPool->struct_data[struct_idx];
+
+    std::span<const syntax::ASTNodeIndex> types = currentPool->get_list(struct_data.types);
+    for (size_t i = 0; i < types.size(); ++i) {
+        resolveTypeAnnotation(types[i]); // 这里会隐式地报错如果类型不存在
+    }
+}
 void TypeChecker::checkEnumDecl(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkTypeAliasDecl(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkInterfaceDecl(syntax::ASTNodeIndex nodeIdx) {}
