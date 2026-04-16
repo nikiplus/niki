@@ -7,15 +7,15 @@
 
 namespace niki::semantic {
 
-std::expected<TypeCheckResult, TypeCheckErrorResult> TypeChecker::check(const syntax::ASTPool &pool,
+std::expected<TypeCheckResult, TypeCheckErrorResult> TypeChecker::check(syntax::ASTPool &pool,
                                                                         syntax::ASTNodeIndex root) {
     currentPool = &pool;
     errors.clear();
     symbols.clear();
     currentDepth = 0;
 
-    // 1. 初始化类型表
-    typeTable.resize(pool.nodes.size(), NKType::makeUnknown());
+    // 1. node_types 已经在 ASTPool 分配时预填充了 Unknown，
+    // 我们不需要再做初始化操作，直接开始遍历覆盖它即可。
 
     // 2. 开始遍历
     checkNode(root);
@@ -26,7 +26,7 @@ std::expected<TypeCheckResult, TypeCheckErrorResult> TypeChecker::check(const sy
         return std::unexpected(TypeCheckErrorResult{std::move(errors)});
     }
 
-    return TypeCheckResult{std::move(typeTable)};
+    return TypeCheckResult{};
 }
 
 void TypeChecker::endScope() {
@@ -83,26 +83,46 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
 
     auto [node, line, column] = getNodeCtx(typeNodeIdx);
 
-    // 目前类型标注只能是标识符（比如 Int, String, Player）
-    // 暂不支持复杂的泛型如 Array<Int>，那是后话。
-    if (node.type != syntax::NodeType::IdentifierExpr) {
-        reportError(line, column, "Invalid type annotation.Expected an identifier.");
+    // 如果是专门的 TypeExpr 节点
+    if (node.type == syntax::NodeType::TypeExpr) {
+        switch (node.payload.type_expr.base_type) {
+        case syntax::TokenType::KW_INT:
+            return NKType::makeInt();
+        case syntax::TokenType::KW_FLOAT:
+            return NKType::makeFloat();
+        case syntax::TokenType::KW_BOOL:
+            return NKType::makeBool();
+        case syntax::TokenType::KW_STRING:
+            return NKType(NKBaseType::String, -1);
+        default:
+            reportError(line, column, "Unknown built-in type annotation.");
+            return NKType::makeUnknown();
+        }
+    }
+
+    // 兼容退化的 IdentifierExpr (比如用户自定义结构体或首字母大写的 Int)
+    if (node.type == syntax::NodeType::IdentifierExpr) {
+        uint32_t name_id = node.payload.identifier.name_id;
+
+        // --- 极速 O(1) 整数比对 ---
+        if (name_id == currentPool->ID_INT)
+            return NKType::makeInt();
+        if (name_id == currentPool->ID_FLOAT)
+            return NKType::makeFloat();
+        if (name_id == currentPool->ID_BOOL)
+            return NKType::makeBool();
+        if (name_id == currentPool->ID_STRING)
+            return NKType(NKBaseType::String, -1);
+
+        // 查找用户自定义类型（mvp只返回unknow或占位，未来在实现查找struct）
+
+        // 如果都不认识，才去取字符串用于报错
+        std::string_view typeName = currentPool->getStringId(name_id);
+        reportError(line, column, "Unknown type name :" + std::string(typeName));
         return NKType::makeUnknown();
     }
 
-    uint32_t name_id = node.payload.identifier.name_id;
-
-    // --- 极速 O(1) 整数比对 ---
-    if (name_id == currentPool->ID_INT) return NKType::makeInt();
-    if (name_id == currentPool->ID_FLOAT) return NKType::makeFloat();
-    if (name_id == currentPool->ID_BOOL) return NKType::makeBool();
-    if (name_id == currentPool->ID_STRING) return NKType(NKBaseType::String, -1);
-
-    // 查找用户自定义类型（mvp只返回unknow或占位，未来在实现查找struct）
-
-    // 如果都不认识，才去取字符串用于报错
-    std::string_view typeName = currentPool->getStringId(name_id);
-    reportError(line, column, "Unknown type name :" + std::string(typeName));
+    reportError(line, column, "Invalid type annotation. Expected a type or identifier.");
     return NKType::makeUnknown();
 };
 

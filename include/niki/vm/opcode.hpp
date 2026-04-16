@@ -114,6 +114,9 @@ enum class OPCODE : uint8_t {
     OP_DEFINE_GLOBAL_W, // 新增
     OP_GET_GLOBAL,      // 获取全局函数 (操作数: targetReg, constIdx)
     OP_GET_GLOBAL_W,    // 新增
+    OP_NEW_INSTANCE,    // [新增] 实例化结构体 (操作数: targetReg, calleeReg, argStartReg, argCount)
+    OP_GET_FIELD,       // [新增] 极速字段访问 (操作数: targetReg, instanceReg, fieldIndex)
+    OP_SET_FIELD,       // [新增] 极速字段写入 (操作数: instanceReg, fieldIndex, valueReg)
     __VAR_END,          // 变量操作指令结束
     // [ComplexDSExpr]复杂数据结构（MAP + ARRAY）
     __DS_START,      // 复杂数据结构指令开始

@@ -61,24 +61,45 @@ void TypeChecker::checkStatement(syntax::ASTNodeIndex stmtIdx) {
 }
 
 void TypeChecker::checkExpressionStmt(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = getNodeCtx(nodeIdx).node;
+    auto &node = getNodeCtx(nodeIdx).node;
     checkExpression(node.payload.expr_stmt.expression);
 }
 
 void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = getNodeCtx(nodeIdx).node;
-    checkExpression(node.payload.assign_stmt.target);
-    checkExpression(node.payload.assign_stmt.value);
+    auto [node, line, column] = getNodeCtx(nodeIdx);
+    NKType targetType = checkExpression(node.payload.assign_stmt.target);
+    NKType valueType = checkExpression(node.payload.assign_stmt.value);
+    if (targetType.getBase() != semantic::NKBaseType::Unknown && valueType.getBase() != semantic::NKBaseType::Unknown) {
+        if (targetType != valueType) {
+            reportError(line, column, "Type mismatch in assignment statement.");
+        }
+    }
 }
 
 void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
+    NKType declType = NKType::makeUnknown();
+    if (node.payload.var_decl.type_expr.isvalid()) {
+        declType = resolveTypeAnnotation(node.payload.var_decl.type_expr);
+    }
+
     NKType initType = NKType::makeUnknown();
     if (node.payload.var_decl.init_expr.isvalid()) {
         initType = checkExpression(node.payload.var_decl.init_expr);
     }
-    declareSymbol(node.payload.var_decl.name_id, initType, line, column);
+    if (declType.getBase() != semantic::NKBaseType::Unknown && initType.getBase() != semantic::NKBaseType::Unknown) {
+        if (declType != initType) {
+            reportError(line, column, "Type mismatch in varibale declaration.");
+        }
+    }
+    NKType finalType = declType.getBase() != semantic::NKBaseType::Unknown ? declType : initType;
+
+    if (finalType.getBase() == semantic::NKBaseType::Unknown) {
+        // 在目前的MVP阶段，我们暂时不报硬性错误，放宽通过。
+        // reportError(line, column, "Cannot infer type for variable.Type annotation or initializer required.");
+    }
+    declareSymbol(node.payload.var_decl.name_id, finalType, line, column);
 }
 
 void TypeChecker::checkBlockStmt(syntax::ASTNodeIndex nodeIdx) {

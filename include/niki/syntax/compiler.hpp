@@ -182,6 +182,9 @@ class Compiler {
                 currentPool->locations[idx.index].column};
     }
     //---AST遍历核心(Visitor)---
+    void preCompileNode(ASTNodeIndex nodeIdx);
+    void preCompileFunctionDecl(ASTNodeIndex nodeIdx);
+    
     void compileNode(ASTNodeIndex nodeIdx);
 
     //---表达式编译 (返回装载结果的物理寄存器编号)---

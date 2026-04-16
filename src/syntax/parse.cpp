@@ -128,6 +128,7 @@ ASTNodeIndex Parser::emitNode(NodeType type, const ASTNodePayload &payload, Toke
         location.column = startToken.column;
     }
     astPool.locations.push_back(location);
+    astPool.node_types.push_back(semantic::NKType::makeUnknown()); // 同步初始化node_types，防止TypeChecker越界
 
     return nodeIndex;
 };

@@ -41,6 +41,7 @@ enum class NodeType : uint8_t {
     AwaitExpr,    // 等待表达式
     BorrowExpr,   // 借用表达式 (&x 或 &mut x)
     WildcardExpr, // 用于 match 语句中的 _
+    TypeExpr,     // 类型标注表达式 (如 Int, String, 或者自定义类型)
     //---隐式节点---
     ImplicitCastExpr, // 隐式类型转换表达式
     /*---语句---*/
@@ -126,6 +127,8 @@ inline std::string_view toString(NodeType type) {
         return "BorrowExpr";
     case NodeType::WildcardExpr:
         return "WildcardExpr";
+    case NodeType::TypeExpr:
+        return "TypeExpr";
     case NodeType::ImplicitCastExpr:
         return "ImplicitCastExpr";
     case NodeType::ExpressionStmt:
@@ -320,8 +323,9 @@ struct IdentifierExprPayload {
     uint32_t name_id;
 };
 
-struct ArrayExprPayload {
-    ASTListIndex elements;
+struct TypeExprPayload {
+    TokenType base_type; // 如 KW_INT, KW_FLOAT，如果是自定义类型可以用 IDENTIFIER
+    uint32_t name_id;    // 如果是自定义类型，存储其字符串ID；如果是内置类型，可以为0
 };
 
 struct IndexExprPayload {
@@ -378,10 +382,6 @@ struct VarDeclStmtPayload {
     uint32_t name_id;
     ASTNodeIndex type_expr;
     ASTNodeIndex init_expr;
-};
-
-struct BlockStmtPayload {
-    ASTListIndex statements;
 };
 
 struct IfStmtPayload {

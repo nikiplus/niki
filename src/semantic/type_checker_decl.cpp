@@ -66,6 +66,12 @@ void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
     const auto &bodyNode = currentPool->getNode(node.payload.module_decl.body);
     auto declarations = currentPool->get_list(bodyNode.payload.list.elements);
 
+    // 第一遍扫描：预声明所有顶层符号 (Two-Pass Compilation 第一步)
+    for (auto child : declarations) {
+        preDeclareNode(child);
+    }
+
+    // 第二遍扫描：检查具体的函数体和声明细节
     for (auto child : declarations) {
         checkNode(child);
     }
@@ -74,39 +80,27 @@ void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
 void TypeChecker::checkProgramRoot(syntax::ASTNodeIndex nodeIdx) { checkModuleDecl(nodeIdx); }
 void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
     const auto [node, line, column] = getNodeCtx(nodeIdx);
-    uint32_t func_index = node.payload.func_decl.function_index;
     const syntax::FunctionData &func_data = currentPool->function_data[node.payload.func_decl.function_index];
 
-    // 提取签名
+    // 提取签名 (由于我们在 preDeclareFunction 已经做过一次，这里为了获取 paramTypes 我们再提取一次，
+    // 也可以将结果缓存在某个地方，但对于 MVP 来说重新解析一遍开销极小)
     std::span<const syntax::ASTNodeIndex> paramNodes = currentPool->get_list(func_data.params);
     std::vector<NKType> paramTypes;
     for (size_t i = 0; i < paramNodes.size(); ++i) {
         const syntax::ASTNode &paramNode = currentPool->getNode(paramNodes[i]);
-
         syntax::ASTNodeIndex type_expr_idx = paramNode.payload.var_decl.type_expr;
-
         paramTypes.push_back(resolveTypeAnnotation(type_expr_idx));
     }
 
-    // 未来这里要解析func.data.returntype
     NKType retType = NKType::makeUnknown();
-
-    // 将签名注册到签名池中，获取唯一的typeid
-    uint32_t sig_id = const_cast<syntax::ASTPool *>(currentPool)->internFuncSignature(paramTypes, retType);
-    NKType funcType(NKBaseType::Function, static_cast<int32_t>(sig_id));
-
-    // 将函数类型注册到外层作用域
-    declareSymbol(func_data.name_id, funcType, line, column);
 
     // 进入函数作用域
     beginScope();
 
-    // 注册参数
+    // 注册参数到局部作用域
     for (size_t i = 0; i < paramNodes.size(); ++i) {
         auto [paramNode, p_line, p_col] = getNodeCtx(paramNodes[i]);
         uint32_t param_name_id = paramNode.payload.var_decl.name_id;
-
-        // MVP阶段：我们尚未在语法中强制参数类型声明，所以参数类型暂时视为 Unknown
         declareSymbol(param_name_id, paramTypes[i], p_line, p_col);
     }
 

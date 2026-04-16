@@ -48,7 +48,10 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
         return compileBorrowExpr(exprIdx);
     case NodeType::ImplicitCastExpr:
         return compileImplicitCastExpr(exprIdx);
-
+    case NodeType::TypeExpr:
+        // TypeExpr 仅在 Semantic 阶段用于类型解析，在运行时没有物理值，不应被编译发射！
+        reportError(line, column, "Type expression cannot be evaluated at runtime.");
+        return ExprResult{0, true};
     case NodeType::WildcardExpr:
         reportError(line, column, "Wildcard expression compilation is not implemented yet.");
         return ExprResult{0, true};
@@ -59,25 +62,7 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
     }
 }
 
-void Compiler::emitBinaryOp(vm::OPCODE int_op, vm::OPCODE float_op, uint8_t resultReg, uint8_t leftReg,
-                            uint8_t rightReg, semantic::NKType leftType, semantic::NKType rightType, uint32_t line,
-                            uint32_t column, const std::string &opName) {
-    if (leftType.getBase() == semantic::NKBaseType::Unknown || rightType.getBase() == semantic::NKBaseType::Unknown) {
-        reportWarning(line, column, "Unknown operand type for '" + opName + "', fallback to integer opcode.");
-        emitOp(int_op, resultReg, leftReg, rightReg, line, column);
-        return;
-    }
-    if (leftType.getBase() == semantic::NKBaseType::Integer && rightType.getBase() == semantic::NKBaseType::Integer) {
-        emitOp(int_op, resultReg, leftReg, rightReg, line, column);
-    } else if (leftType.getBase() == semantic::NKBaseType::Float &&
-               rightType.getBase() == semantic::NKBaseType::Float) {
-        emitOp(float_op, resultReg, leftReg, rightReg, line, column);
-    } else {
-        reportError(line, column,
-                    "Type mismatch for operator '" + opName + "': Expected (Int, Int) or (Float, Float).");
-    }
-}
-
+// 移除过度抽象的 emitBinaryOp
 // 基础计算
 ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid()) {
@@ -92,106 +77,122 @@ ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
     semantic::NKType rightType = (*currentTypeTable)[node.payload.binary.right];
     ExprResult resultReg = {regAlloc.allocate(), true};
 
+    // 提取基底类型，方便后续判断
+    auto lBase = leftType.getBase();
+    auto rBase = rightType.getBase();
+
+    // 兜底处理：如果 TypeChecker 放过了 Unknown，我们默认当成 Int 发射，避免编译器崩溃
+    if (lBase == semantic::NKBaseType::Unknown || rBase == semantic::NKBaseType::Unknown) {
+        reportWarning(line, column, "Unknown operand type, fallback to integer opcode.");
+        lBase = semantic::NKBaseType::Integer;
+        rBase = semantic::NKBaseType::Integer;
+    }
+
     switch (node.payload.binary.op) {
+    // --- 算术运算 ---
     case TokenType::SYM_PLUS:
-        emitBinaryOp(vm::OPCODE::OP_IADD, vm::OPCODE::OP_FADD, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, "+");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_IADD, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FADD, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_MINUS:
-        emitBinaryOp(vm::OPCODE::OP_ISUB, vm::OPCODE::OP_FSUB, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, "-");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_ISUB, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FSUB, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_STAR:
-        emitBinaryOp(vm::OPCODE::OP_IMUL, vm::OPCODE::OP_FMUL, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, "*");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_IMUL, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FMUL, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_SLASH:
-        emitBinaryOp(vm::OPCODE::OP_IDIV, vm::OPCODE::OP_FDIV, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, "/");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_IDIV, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FDIV, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_MOD:
-        if (leftType.getBase() == semantic::NKBaseType::Integer &&
-            rightType.getBase() == semantic::NKBaseType::Integer) {
+        if (lBase == semantic::NKBaseType::Integer)
             emitOp(vm::OPCODE::OP_IMOD, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        } else {
-            reportError(line, column, "Type mismatch for operator '%': Expected (Int, Int).");
-        }
         break;
+
+    // --- 字符串运算 ---
+    case TokenType::SYM_CONCAT:
+        if (lBase == semantic::NKBaseType::String)
+            emitOp(vm::OPCODE::OP_CONCAT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+
+    // --- 比较运算 ---
     case TokenType::SYM_EQUAL_EQUAL:
-        emitBinaryOp(vm::OPCODE::OP_IEQ, vm::OPCODE::OP_FEQ, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, "==");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_IEQ, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FEQ, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::String)
+            emitOp(vm::OPCODE::OP_SEQ, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else
+            emitOp(vm::OPCODE::OP_OEQ, resultReg.reg, leftReg.reg, rightReg.reg, line, column); // 对象比较
         break;
     case TokenType::SYM_BANG_EQUAL:
-        emitBinaryOp(vm::OPCODE::OP_INE, vm::OPCODE::OP_FNE, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, "!=");
-        break;
-    case TokenType::SYM_GREATER:
-        emitBinaryOp(vm::OPCODE::OP_IGT, vm::OPCODE::OP_FGT, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, ">");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_INE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FNE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::String)
+            emitOp(vm::OPCODE::OP_SNE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else
+            emitOp(vm::OPCODE::OP_ONE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_LESS:
-        emitBinaryOp(vm::OPCODE::OP_ILT, vm::OPCODE::OP_FLT, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, "<");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_ILT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FLT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_LESS_EQUAL:
-        emitBinaryOp(vm::OPCODE::OP_ILE, vm::OPCODE::OP_FLE, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, "<=");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_ILE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FLE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
+    case TokenType::SYM_GREATER:
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_IGT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FGT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_GREATER_EQUAL:
-        emitBinaryOp(vm::OPCODE::OP_IGE, vm::OPCODE::OP_FGE, resultReg.reg, leftReg.reg, rightReg.reg, leftType,
-                     rightType, line, column, ">=");
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_IGE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        else if (lBase == semantic::NKBaseType::Float)
+            emitOp(vm::OPCODE::OP_FGE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
+
+    // --- 位运算 ---
     case TokenType::SYM_BIT_AND:
-        if (leftType.getBase() == semantic::NKBaseType::Integer &&
-            rightType.getBase() == semantic::NKBaseType::Integer) {
-            emitOp(vm::OPCODE::OP_BIT_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        } else {
-            reportError(line, column, "Type mismatch for operator '&': Expected (Int, Int).");
-        }
+        emitOp(vm::OPCODE::OP_BIT_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_BIT_OR:
-        if (leftType.getBase() == semantic::NKBaseType::Integer &&
-            rightType.getBase() == semantic::NKBaseType::Integer) {
-            emitOp(vm::OPCODE::OP_BIT_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        } else {
-            reportError(line, column, "Type mismatch for operator '|': Expected (Int, Int).");
-        }
+        emitOp(vm::OPCODE::OP_BIT_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_BIT_XOR:
-        if (leftType.getBase() == semantic::NKBaseType::Integer &&
-            rightType.getBase() == semantic::NKBaseType::Integer) {
-            emitOp(vm::OPCODE::OP_BIT_XOR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        } else {
-            reportError(line, column, "Type mismatch for operator '^': Expected (Int, Int).");
-        }
+        emitOp(vm::OPCODE::OP_BIT_XOR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_BIT_SHL:
-        if (leftType.getBase() == semantic::NKBaseType::Integer &&
-            rightType.getBase() == semantic::NKBaseType::Integer) {
-            emitOp(vm::OPCODE::OP_BIT_SHL, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        } else {
-            reportError(line, column, "Type mismatch for operator '<<': Expected (Int, Int).");
-        }
+        emitOp(vm::OPCODE::OP_BIT_SHL, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
     case TokenType::SYM_BIT_SHR:
-        if (leftType.getBase() == semantic::NKBaseType::Integer &&
-            rightType.getBase() == semantic::NKBaseType::Integer) {
-            emitOp(vm::OPCODE::OP_BIT_SHR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        } else {
-            reportError(line, column, "Type mismatch for operator '>>': Expected (Int, Int).");
-        }
+        emitOp(vm::OPCODE::OP_BIT_SHR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
-    case TokenType::SYM_CONCAT:
-        if (leftType.getBase() == semantic::NKBaseType::String && rightType.getBase() == semantic::NKBaseType::String) {
-            emitOp(vm::OPCODE::OP_CONCAT, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        } else {
-            reportError(line, column, "Type mismatch for operator '..': Expected (String, String).");
-        }
-        break;
+
     default:
-        reportError(line, column, "Unknown binary operator.");
+        reportError(line, column, "Unsupported binary operator in compilation.");
         break;
     }
+
     freeIfTemp(leftReg);
     freeIfTemp(rightReg);
     return ExprResult{resultReg.reg, true};
@@ -203,32 +204,42 @@ ExprResult Compiler::compileLogicalExpr(ASTNodeIndex nodeIdx) {
     }
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
+    // 1. 先计算左操作数
     ExprResult leftReg = compileExpression(node.payload.logical.left);
+
+    // 2. 准备存放最终结果的寄存器
     ExprResult resultReg = {regAlloc.allocate(), true};
 
-    // 对于 && 和 ||，我们使用短路求值。这里我们简单发射对应的逻辑指令，
-    // 但未来应该在这里发射 JZ (对于 &&) 或 JNZ (对于 ||) 来跳过右侧表达式的计算。
-    // 为了 MVP 进度，我们暂时假设 OP_AND 和 OP_OR 可以处理两个寄存器的值并输出到目标寄存器。
-    // TODO: 实现真正的短路跳转逻辑。
+    // 3. 将左侧的结果先放进最终寄存器里（以备短路时直接返回）
+    emitOp(vm::OPCODE::OP_MOVE, resultReg.reg, leftReg.reg, line, column);
 
-    ExprResult rightReg = compileExpression(node.payload.logical.right);
-
-    switch (node.payload.logical.op) {
-    case TokenType::SYM_AND:
-        emitOp(vm::OPCODE::OP_AND, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        break;
-    case TokenType::SYM_OR:
-        emitOp(vm::OPCODE::OP_OR, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
-        break;
-    default:
+    // 4. 根据操作符决定跳转条件
+    size_t patch_pos;
+    if (node.payload.logical.op == TokenType::SYM_AND) {
+        // 对于 && (AND)：如果左边是 false (0)，直接跳过右边的计算 (OP_JZ)
+        patch_pos = emitJump(vm::OPCODE::OP_JZ, resultReg.reg, line, column);
+    } else if (node.payload.logical.op == TokenType::SYM_OR) {
+        // 对于 || (OR)：如果左边是 true (非0)，直接跳过右边的计算 (OP_JNZ)
+        patch_pos = emitJump(vm::OPCODE::OP_JNZ, resultReg.reg, line, column);
+    } else {
         reportError(line, column, "Unknown logical operator.");
-        break;
+        return resultReg;
     }
 
-    freeIfTemp(leftReg);
+    // --- 这里是被跳转保护的“右侧表达式”区域 ---
+    // 5. 只有没有被短路跳过，VM 才会执行到这里，编译右侧表达式
+    ExprResult rightReg = compileExpression(node.payload.logical.right);
+
+    // 6. 如果执行了右侧，那么整个逻辑表达式的最终结果就是右侧的结果
+    emitOp(vm::OPCODE::OP_MOVE, resultReg.reg, rightReg.reg, line, column);
     freeIfTemp(rightReg);
 
-    return ExprResult{resultReg.reg, true};
+    // --- 保护区结束 ---
+    // 7. 回填跳转指令的目标地址，让短路跳跃直接落在这里
+    patchJump(patch_pos, currentCodePos());
+
+    freeIfTemp(leftReg);
+    return resultReg;
 }
 
 ExprResult Compiler::compileUnaryExpr(ASTNodeIndex nodeIdx) {
@@ -433,8 +444,12 @@ ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) {
 这不是网络意义上的“远程调用”，只是运行时内部的一次可调用实体执行。*/
 ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    // 先编译被调用目标（函数值/可调用对象）
+    // 先编译被调用目标（可能是函数，也可能是结构体名）
     ExprResult calleeRes = compileExpression(node.payload.call.callee);
+    
+    // 查询被调用目标的类型，判断它是函数调用还是结构体实例化！
+    semantic::NKType calleeType = currentPool->node_types[node.payload.call.callee.index];
+
     // arguments 是 AST 节点列表，不是寄存器列表
     std::span<const ASTNodeIndex> argNodes = currentPool->get_list(node.payload.call.arguments);
 
@@ -469,8 +484,13 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
     // 参数窗口的起始物理地址就是我们预分配的第一个连续寄存器
     uint8_t argStartReg = contiguous_arg_regs.empty() ? 0 : contiguous_arg_regs[0];
 
-    emitOp(vm::OPCODE::OP_CALL, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()), line,
-           column);
+    // 如果 callee 的类型是 Object（即它是一个结构体蓝图），我们发射 OP_NEW_INSTANCE！
+    // 否则（如 Function 或 Unknown 兜底），我们发射普通的 OP_CALL。
+    if (calleeType.getBase() == semantic::NKBaseType::Object) {
+        emitOp(vm::OPCODE::OP_NEW_INSTANCE, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()), line, column);
+    } else {
+        emitOp(vm::OPCODE::OP_CALL, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()), line, column);
+    }
 
     freeIfTemp(calleeRes);
     // 调用结束后，清理为参数窗口分配的临时连续寄存器
@@ -488,13 +508,52 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
 ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
+    // 1. 编译对象本身 (比如 p.hp 中的 p)
     ExprResult objRes = compileExpression(node.payload.member.object);
+    uint32_t propNameId = node.payload.member.property_id;
 
-    uint16_t propNameId = node.payload.member.property_id;
+    // 2. 查表：p 是什么类型？
+    semantic::NKType objType = currentPool->node_types[node.payload.member.object.index];
 
-    reportError(line, column, "Member expression compilation is not implemented yet.");
     uint8_t outReg = regAlloc.allocate();
-    emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
+
+    if (objType.getBase() == semantic::NKBaseType::Object) {
+        uint32_t struct_id = objType.getTypeId(); // StructData 的索引
+        if (struct_id < currentPool->struct_data.size()) {
+            const StructData &struct_data = currentPool->struct_data[struct_id];
+            std::span<const ASTNodeIndex> field_names = currentPool->get_list(struct_data.names);
+
+            uint8_t field_index = 255;
+            for (size_t i = 0; i < field_names.size(); ++i) {
+                // StructDecl 中 names 列表存的是 IdentifierExpr
+                uint32_t name_id = currentPool->getNode(field_names[i]).payload.identifier.name_id;
+                if (name_id == propNameId) {
+                    if (i > 254) {
+                        reportError(line, column, "Struct has too many fields (max 254 supported).");
+                        freeIfTemp(objRes);
+                        return {outReg, true};
+                    }
+                    field_index = static_cast<uint8_t>(i);
+                    break;
+                }
+            }
+
+            if (field_index == 255) {
+                reportError(line, column, "Struct does not have this field.");
+            } else {
+                // 3. 完美发射 O(1) 的物理字段访问指令！
+                emitOp(vm::OPCODE::OP_GET_FIELD, outReg, objRes.reg, field_index, line, column);
+            }
+        } else {
+            reportError(line, column, "Invalid struct type id.");
+        }
+    } else {
+        // 如果不是静态已知的结构体，或者是 map 字典，
+        // 我们需要回退到动态的 OP_GET_PROPERTY 字符串哈希查找（MVP暂不实现）
+        reportError(line, column, "Dynamic property access on non-struct objects is not implemented yet.");
+        emitOp(vm::OPCODE::OP_NIL, outReg, line, column);
+    }
+
     freeIfTemp(objRes);
     return {outReg, true};
 }

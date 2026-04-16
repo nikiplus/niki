@@ -63,7 +63,9 @@ NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
         break;
     }
 
-    typeTable[exprIdx.index] = resultType;
+    // 将推导出的类型记录到 ASTPool 的旁侧表 node_types 中，供 Compiler 阶段查询
+    currentPool->node_types[exprIdx.index] = resultType;
+
     return resultType;
 }
 
@@ -96,9 +98,72 @@ NKType TypeChecker::checkIdentifierExpr(syntax::ASTNodeIndex nodeIdx) {
 
 NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    checkExpression(node.payload.binary.left);
-    checkExpression(node.payload.binary.right);
-    return NKType::makeInt();
+    NKType leftType = checkExpression(node.payload.binary.left);
+    NKType rightType = checkExpression(node.payload.binary.right);
+
+    if (leftType.getBase() == NKBaseType::Unknown || rightType.getBase() == NKBaseType::Unknown) {
+        if (node.payload.binary.op >= syntax::TokenType::SYM_EQUAL_EQUAL &&
+            node.payload.binary.op <= syntax::TokenType::SYM_GREATER_EQUAL) {
+            return NKType::makeBool();
+        }
+        return NKType::makeUnknown();
+    }
+
+    switch (node.payload.binary.op) {
+    case syntax::TokenType::SYM_PLUS:
+    case syntax::TokenType::SYM_MINUS:
+    case syntax::TokenType::SYM_STAR:
+    case syntax::TokenType::SYM_SLASH:
+        if (leftType.getBase() == NKBaseType::Integer && rightType.getBase() == NKBaseType::Integer)
+            return NKType::makeInt();
+        if (leftType.getBase() == NKBaseType::Float && rightType.getBase() == NKBaseType::Float)
+            return NKType::makeFloat();
+        reportError(line, column, "Arithmetic operations require both Int or both Float.");
+        return NKType::makeUnknown();
+    case syntax::TokenType::SYM_MOD:
+        if (leftType.getBase() == NKBaseType::Integer && rightType.getBase() == NKBaseType::Integer)
+            return NKType::makeInt();
+        reportError(line, column, "Modulo operation requires Int.");
+        return NKType::makeUnknown();
+    case syntax::TokenType::SYM_CONCAT:
+        if (leftType.getBase() == NKBaseType::String && rightType.getBase() == NKBaseType::String) {
+            return NKType(NKBaseType::String, -1);
+        }
+        reportError(line, column, "String concatenation '..' requires both operands to be string.");
+        return NKType::makeUnknown();
+
+    case syntax::TokenType::SYM_EQUAL_EQUAL:
+    case syntax::TokenType::SYM_BANG_EQUAL:
+        if (leftType != rightType) {
+            reportError(line, column, "Type mismatch in equality ");
+            return NKType::makeBool();
+        }
+        return NKType::makeBool(); // 补充返回语句
+    case niki::syntax::TokenType::SYM_LESS:
+    case niki::syntax::TokenType::SYM_LESS_EQUAL:
+    case niki::syntax::TokenType::SYM_GREATER:
+    case niki::syntax::TokenType::SYM_GREATER_EQUAL:
+        if (leftType != rightType ||
+            (leftType.getBase() != NKBaseType::Integer && leftType.getBase() != NKBaseType::Float)) {
+            reportError(line, column, "Relational operations require matching Int or Float.");
+            return NKType::makeBool();
+        }
+        return NKType::makeBool(); // 补充返回语句
+    case niki::syntax::TokenType::SYM_BIT_AND:
+    case syntax::TokenType::SYM_BIT_OR: // 补齐位或
+    case syntax::TokenType::SYM_BIT_SHL:
+    case syntax::TokenType::SYM_BIT_SHR:
+    case syntax::TokenType::SYM_BIT_XOR:
+        if (leftType.getBase() == NKBaseType::Integer && rightType.getBase() == NKBaseType::Integer) {
+            return NKType::makeInt();
+        } else {
+            reportError(line, column, "Operands must be Int for bitwise operations.");
+            return NKType::makeUnknown();
+        }
+    default:
+        reportError(line, column, "Unknown binary operator.");
+        return NKType::makeUnknown();
+    }
 }
 
 NKType TypeChecker::checkArrayExpr(syntax::ASTNodeIndex nodeIdx) {
@@ -179,8 +244,14 @@ NKType TypeChecker::checkIndexExpr(syntax::ASTNodeIndex nodeIdx) {
 
 NKType TypeChecker::checkLogicalExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
-    checkExpression(node.payload.logical.left);
-    checkExpression(node.payload.logical.right);
+    NKType leftType = checkExpression(node.payload.logical.left);
+    NKType rightType = checkExpression(node.payload.logical.right);
+    if (leftType.getBase() != NKBaseType::Unknown && leftType.getBase() != NKBaseType::Bool) {
+        reportError(line, column, "Left operand of logical expression must be Bool.");
+    }
+    if (rightType.getBase() != NKBaseType::Unknown && rightType.getBase() != NKBaseType::Bool) {
+        reportError(line, column, "Right operand of logical expression must be Bool.");
+    }
     return NKType::makeBool();
 }
 

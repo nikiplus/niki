@@ -90,10 +90,14 @@ ASTNodeIndex Parser::parseVarDeclStmt() {
     } else {
         payload.var_decl.type_expr = ASTNodeIndex::invalid();
     }
-    consume(TokenType::SYM_EQUAL, "Expected'='after 'var'.");
-    payload.var_decl.init_expr = parseExpression(Precedence::None);
 
-    consume(TokenType::SYM_SEMICOLON, "Expected';'after expression.");
+    if (match(TokenType::SYM_EQUAL)) {
+        payload.var_decl.init_expr = parseExpression(Precedence::None);
+    } else {
+        payload.var_decl.init_expr = ASTNodeIndex::invalid();
+    }
+
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after variable declaration.");
 
     return emitNode(NodeType::VarDeclStmt, payload, startToken);
 };
@@ -241,13 +245,13 @@ ASTNodeIndex Parser::parseBreakStmt() {
 ASTNodeIndex Parser::parseReturnStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
-    
+
     if (check(TokenType::SYM_SEMICOLON)) {
         payload.return_stmt.expression = ASTNodeIndex::invalid();
     } else {
         payload.return_stmt.expression = parseExpression(Precedence::None);
     }
-    
+
     consume(TokenType::SYM_SEMICOLON, "Expected ';' after 'return'.");
     return emitNode(NodeType::ReturnStmt, payload, startToken);
 }

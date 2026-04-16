@@ -21,7 +21,7 @@ void Compiler::compileDeclaration(ASTNodeIndex nodeIdx) {
 
     switch (node.type) {
     case NodeType::FunctionDecl:
-        compileFunctionDecl(nodeIdx);
+        // 在第二遍扫描时，直接跳过函数声明，因为在 preCompile 时已经发射过了
         break;
     case NodeType::InterfaceMethod:
         compileInterfaceMethod(nodeIdx);
@@ -164,6 +164,13 @@ void Compiler::compileModuleDecl(ASTNodeIndex nodeIdx) {
     const auto &node = getNodeCtx(nodeIdx).node;
     const auto &bodyNode = getNodeCtx(node.payload.module_decl.body).node;
     std::span<const ASTNodeIndex> declarations = currentPool->get_list(bodyNode.payload.list.elements);
+
+    // 第一遍：把所有的顶层函数声明提前编译，发射 OP_DEFINE_GLOBAL
+    for (size_t i = 0; i < declarations.size(); ++i) {
+        preCompileNode(declarations[i]);
+    }
+
+    // 第二遍：编译剩下的所有非函数声明和执行语句
     for (size_t i = 0; i < declarations.size(); ++i) {
         ASTNodeIndex child = declarations[i];
         auto [childNode, line, column] = getNodeCtx(child);

@@ -1,6 +1,7 @@
 #pragma once
 #include "niki/vm/chunk.hpp"
 #include "niki/vm/value.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -13,7 +14,8 @@ enum class ObjType : uint8_t {
     String,
     Array,
     Map,
-    // 未来可扩展 Struct 等
+    StructDef,
+    Instance,
 };
 
 // 基础对象头 (所有堆对象的公共前缀)
@@ -21,6 +23,18 @@ enum class ObjType : uint8_t {
 struct Object {
     ObjType type;
     bool isMarked; // 预留给未来内存池/生命周期扫描的标记位
+};
+// 结构体蓝图(元数据)：存活在VM全局表中，描述了一个自定义类型的物理形状
+struct ObjStructDef {
+    Object obj;
+    uint32_t name_id;     // 结构体名字的字符串id
+    uint32_t field_count; // 字段数量
+};
+// 结构体实例：真正的物理数据实体，分配在堆上
+struct ObjInstance {
+    Object obj;
+    ObjStructDef *def; // 指向蓝图，这样实例才知道自己是什么类型
+    Value fields[];    // 柔性数组 (Flexible Array Member)：真正的 O(1) 紧凑内存布局
 };
 
 // DOD 风格的字符串对象
@@ -51,9 +65,9 @@ struct ObjMapEntry {
 };
 
 struct ObjMap {
-    Object obj;          // 对象头
-    uint32_t capacity;   // 物理容量（entry 数）
-    uint32_t count;      // 已占用 entry 数
+    Object obj;        // 对象头
+    uint32_t capacity; // 物理容量（entry 数）
+    uint32_t count;    // 已占用 entry 数
     ObjMapEntry *entries;
 };
 
@@ -65,7 +79,32 @@ struct ObjFunction {
     uint8_t max_registers;
     niki::Chunk chunk; // 属于这个函数的独立字节码块
 };
+
 //--- DOD内存分配器---
+
+// 分配结构体蓝图
+inline ObjStructDef *allocateStructDef(uint32_t name_id, uint32_t field_count) {
+    ObjStructDef *def = static_cast<ObjStructDef *>(std::malloc(sizeof(ObjStructDef)));
+    def->obj.type = ObjType::StructDef;
+    def->obj.isMarked = false;
+    def->name_id = name_id;
+    def->field_count = field_count;
+    return def;
+}
+// 分配结构体实例
+inline ObjInstance *allocateInstance(ObjStructDef *def) {
+    size_t size = sizeof(ObjInstance) + def->field_count * sizeof(Value);
+    ObjInstance *instance = static_cast<ObjInstance *>(std::malloc(size));
+    instance->obj.type = ObjType::Instance;
+    instance->obj.isMarked = false;
+    instance->def = def;
+
+    for (uint32_t i = 0; i < def->field_count; ++i) {
+        instance->fields[i] = Value::makeNil();
+    }
+    return instance;
+}
+
 // 分配字符串：分配头+字符+、0
 inline ObjString *allocateString(const char *chars, uint32_t length) {
     // 分配结构体大小，加上字符串，再加一个字节给\0
@@ -233,7 +272,8 @@ inline bool mapGet(ObjMap *map, Value key, Value *out_value) {
 inline bool isObjType(Value value, ObjType type) {
     return value.type == ValueType::Object && static_cast<Object *>(value.as.object)->type == type;
 }
-
+inline bool isStructDef(Value value) { return isObjType(value, ObjType::StructDef); }
+inline bool isInstance(Value value) { return isObjType(value, ObjType::Instance); }
 inline bool isString(Value value) { return isObjType(value, ObjType::String); }
 inline bool isArray(Value value) { return isObjType(value, ObjType::Array); }
 inline bool isMap(Value value) { return isObjType(value, ObjType::Map); }

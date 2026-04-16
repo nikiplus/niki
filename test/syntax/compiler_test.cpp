@@ -53,7 +53,8 @@ class CompilerTest : public ::testing::Test {
         }
 
         Compiler compiler;
-        return compiler.compile(pool, root, checkResult.value().type_table);
+        auto type_table = pool.node_types;
+        return compiler.compile(pool, root, type_table);
     }
 
     void SetUp() override { pool.clear(); }

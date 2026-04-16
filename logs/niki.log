@@ -428,3 +428,32 @@
 [2026-04-1417:32:43.245][debug][67172][niki] [parser] start parse, token_count=248
 [2026-04-1417:32:43.246][debug][67172][niki] [parser] finish parse, decl_count=2
 [2026-04-1417:32:43.247][debug][67172][niki] [compiler] emit summary: ops=102, code_bytes=5, constants=2, warnings=0
+[2026-04-1516:48:22.727][info][35732][niki] NIKI started argc=1
+[2026-04-1516:50:47.513][info][3832][niki] NIKI started argc=2
+[2026-04-1516:51:22.622][info][2084][niki] NIKI started argc=2
+[2026-04-1516:53:05.148][info][14128][niki] NIKI started argc=2
+[2026-04-1516:53:05.148][error][14128][niki] [parser] at 2:19 token=SYM_EQUAL lexeme='=' - Expected expression.
+[2026-04-1516:53:32.101][info][15124][niki] NIKI started argc=2
+[2026-04-1516:53:32.101][error][15124][niki] [parser] at 2:19 token=SYM_EQUAL lexeme='=' - Expected expression.
+[2026-04-1516:53:35.379][info][1384][niki] NIKI started argc=2
+[2026-04-1516:53:42.368][info][19904][niki] NIKI started argc=2
+[2026-04-1516:53:42.369][error][19904][niki] [parser] at 2:9 token=IDENTIFIER lexeme='temp' - Expected expression.
+[2026-04-1516:53:51.885][info][7804][niki] NIKI started argc=2
+[2026-04-1516:53:51.886][error][7804][niki] [parser] at 2:9 token=KW_INT lexeme='int' - Expected'value name'after'var'.
+[2026-04-1516:54:19.949][info][31212][niki] NIKI started argc=2
+[2026-04-1516:54:29.334][info][14404][niki] NIKI started argc=2
+[2026-04-1516:54:29.336][error][14404][niki] [parser] at 2:19 token=SYM_EQUAL lexeme='=' - Expected expression.
+[2026-04-1516:54:43.737][info][32508][niki] NIKI started argc=2
+[2026-04-1516:54:43.739][error][32508][niki] [parser] at 2:19 token=SYM_EQUAL lexeme='=' - Expected expression.
+[2026-04-1517:01:53.582][info][32524][niki] NIKI started argc=2
+[2026-04-1517:01:53.582][error][32524][niki] [parser] at 2:19 token=SYM_EQUAL lexeme='=' - Expected expression.
+[2026-04-1517:09:44.328][info][34472][niki] NIKI started argc=2
+[2026-04-1517:09:44.329][error][34472][niki] [parser] at 2:19 token=SYM_EQUAL lexeme='=' - Expected expression.
+[2026-04-1517:10:10.010][info][36604][niki] NIKI started argc=2
+[2026-04-1517:25:56.980][info][14040][niki] NIKI started argc=2
+[2026-04-1517:26:02.277][info][30060][niki] NIKI started argc=4
+[2026-04-1517:27:35.543][info][6700][niki] NIKI started argc=2
+[2026-04-1517:53:45.658][info][27256][niki] NIKI started argc=1
+[2026-04-1517:54:01.365][info][24964][niki] NIKI started argc=2
+[2026-04-1518:33:23.379][info][23848][niki] NIKI started argc=1
+[2026-04-1518:33:35.118][info][19512][niki] NIKI started argc=2

@@ -107,6 +107,9 @@ std::expected<Value, InterpretResult> VM::readConstantByIndex(uint32_t index) {
 };
 
 std::expected<Value, InterpretResult> VM::run(bool should_print) {
+    // 本地化热点状态——未来再实现。
+    // uint8_t *ip = currentFrame->ip;
+    // Value *regs = &stack[currentFrame->base_register];
     while (true) {
         uint8_t instruction = readByte();
         switch (static_cast<OPCODE>(instruction)) {

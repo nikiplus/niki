@@ -50,6 +50,7 @@ union ASTNodePayload {
     IdentifierExprPayload identifier;
     //---复杂数据结构---
     // ArrayExprPayload 合并至 ListPayload
+    TypeExprPayload type_expr;
     MapExprPayload map;
     IndexExprPayload index;
     CallExprPayload call;
@@ -145,6 +146,8 @@ struct ASTPool {
     我们的旁侧表等信息也都是用这个手段进行存储的。
     */
     std::vector<TokenLocation> locations; // 报错时使用，用于报错定位。
+    // 存储每个节点的推导类型（由 TypeChecker 填充，供 Compiler 使用）
+    std::vector<semantic::NKType> node_types;
 
     // 前端常量池（Side-buffer）：
     // 为了保证 ASTNode 严格维持 16 字节大小（4字节对齐），我们绝对不能把包含 8 字节对齐（double/void*）的 vm::Value

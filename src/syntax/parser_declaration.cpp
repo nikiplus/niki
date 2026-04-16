@@ -108,6 +108,8 @@ ASTNodeIndex Parser::parseFunctionDecl() {
             }
             param_payload.var_decl.init_expr = ASTNodeIndex::invalid();
 
+            // 参数本质上就是带有可选类型标注的变量声明，但它没有 '=' 和 ';'
+            // 为了复用 VarDeclStmtPayload 的结构且避免报错，这里直接 emit
             params.push_back(emitNode(NodeType::VarDeclStmt, param_payload, previous));
         } while (match(TokenType::SYM_COMMA));
     }

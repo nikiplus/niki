@@ -194,6 +194,16 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         return emitNode(NodeType::LiteralExpr, payload, startToken);
     }
 
+    //---类型标注表达式---
+    case TokenType::KW_INT:
+    case TokenType::KW_FLOAT:
+    case TokenType::KW_STRING:
+    case TokenType::KW_BOOL: {
+        payload.type_expr.base_type = type;
+        payload.type_expr.name_id = 0;
+        return emitNode(NodeType::TypeExpr, payload, startToken);
+    }
+
     case TokenType::IDENTIFIER: {
         std::string_view name_view = source.substr(startToken.start_offset, startToken.length);
 
@@ -297,7 +307,7 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
         payload.logical.op = type;
         payload.logical.left = left;
         Precedence precedence = getPrecedence(type);
-        
+
         payload.logical.right = parseExpression(precedence);
         return emitNode(NodeType::LogicalExpr, payload, startToken);
     }

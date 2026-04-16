@@ -50,6 +50,7 @@ void runRepl() {
 
         niki::semantic::TypeChecker checker;
         auto checkResult = checker.check(pool, rootNode);
+        auto type_table = pool.node_types;
         if (!checkResult.has_value()) {
             std::cerr << "Type Error:\n";
             for (const auto &err : checkResult.error().errors) {
@@ -59,7 +60,7 @@ void runRepl() {
         }
 
         niki::syntax::Compiler compiler;
-        auto chunkResult = compiler.compile(pool, rootNode, checkResult.value().type_table);
+        auto chunkResult = compiler.compile(pool, rootNode, type_table);
 
         if (!chunkResult.has_value()) {
             std::cerr << "Compile Error:\n";
@@ -115,7 +116,8 @@ void runFile(const std::string &path) {
     }
 
     niki::syntax::Compiler compiler;
-    auto chunkResult = compiler.compile(pool, rootNode, checkResult.value().type_table);
+    auto type_table = pool.node_types;
+    auto chunkResult = compiler.compile(pool, rootNode, type_table);
 
     if (!chunkResult.has_value()) {
         std::cerr << "Compile Error:\n";

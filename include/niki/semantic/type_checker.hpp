@@ -16,9 +16,9 @@ struct TypeError {
     uint32_t column;
     std::string message;
 };
-// 检查结果：成功则返回类型表，失败则返回错误列表
+// 检查结果：成功则返回空，失败则返回错误列表
 struct TypeCheckResult {
-    std::vector<semantic::NKType> type_table; // 与 ASTPool.nodes 一一对应
+    // 现已统一使用 ASTPool::node_types 存储类型，因此这里无需返回 type_table
 };
 
 struct TypeCheckErrorResult {
@@ -27,12 +27,12 @@ struct TypeCheckErrorResult {
 
 class TypeChecker {
   public:
-    std::expected<TypeCheckResult, TypeCheckErrorResult> check(const syntax::ASTPool &pool, syntax::ASTNodeIndex root);
+    // 注意：这里的 pool 不再是 const，因为我们需要写入 pool.node_types
+    std::expected<TypeCheckResult, TypeCheckErrorResult> check(syntax::ASTPool &pool, syntax::ASTNodeIndex root);
 
   private:
-    const syntax::ASTPool *currentPool = nullptr;
+    syntax::ASTPool *currentPool = nullptr;
     std::vector<TypeError> errors;
-    std::vector<NKType> typeTable; // 正在构建的类型表
     NKType currentReturnType = NKType::makeUnknown();
 
     //---符号表管理---
@@ -102,6 +102,10 @@ class TypeChecker {
     void checkAttachStmt(syntax::ASTNodeIndex nodeIdx);
     void checkDetachStmt(syntax::ASTNodeIndex nodeIdx);
     void checkTargetStmt(syntax::ASTNodeIndex nodeIdx);
+
+    // --- 顶层声明预声明 (两遍扫描的第一遍) ---
+    void preDeclareNode(syntax::ASTNodeIndex declIdx);
+    void preDeclareFunction(syntax::ASTNodeIndex nodeIdx);
 
     // --- 顶层声明 ---
     void checkDeclaration(syntax::ASTNodeIndex declIdx);

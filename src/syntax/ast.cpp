@@ -22,6 +22,7 @@ ASTNodeIndex ASTPool::allocateNode(NodeType type) {
     uint32_t index = static_cast<uint32_t>(nodes.size());
     nodes.push_back(ASTNode{type, {}});
     locations.push_back(TokenLocation{0, 0});
+    node_types.push_back(semantic::NKType::makeUnknown()); // 默认初始化为未知类型
     return ASTNodeIndex{index};
 };
 // 调用ASTListIndex，装载指定区域的astnode，并返回对应的astlist切片。
@@ -41,12 +42,13 @@ uint32_t ASTPool::addConstant(vm::Value value) {
 void ASTPool::clear() {
     nodes.clear();
     locations.clear();
+    node_types.clear();
     lists_elements.clear();
     constants.clear();
     function_data.clear();
     struct_data.clear();
     kits_data.clear();
-    
+
     // 注意：不能 clear string_pool，否则我们硬编码的内置类型 ID 就失效了！
     // 真正的重置应该是让 string_pool 退回到初始化状态，但为了简单，目前我们不清空字符串池。
 };
