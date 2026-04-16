@@ -44,8 +44,8 @@ void TypeChecker::preDeclareFunction(syntax::ASTNodeIndex nodeIdx) {
         paramTypes.push_back(resolveTypeAnnotation(type_expr_idx));
     }
 
-    // 解析函数返回类型
-    NKType retType = NKType(NKBaseType::Void, -1);
+    // 未标注返回类型时，先记录为 Unknown，避免把函数误判成固定 void 返回。
+    NKType retType = NKType::makeUnknown();
     if (func_data.return_type.isvalid()) {
         retType = resolveTypeAnnotation(func_data.return_type);
     }

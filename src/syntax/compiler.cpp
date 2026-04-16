@@ -1,6 +1,7 @@
 #include "niki/syntax/compiler.hpp"
 
 #include "niki/debug/logger.hpp"
+#include "niki/semantic/nktype.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/token.hpp"
 #include "niki/vm/chunk.hpp"

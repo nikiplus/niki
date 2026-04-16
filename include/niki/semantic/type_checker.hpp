@@ -34,6 +34,7 @@ class TypeChecker {
     syntax::ASTPool *currentPool = nullptr;
     std::vector<TypeError> errors;
     NKType currentReturnType = NKType::makeUnknown();
+    bool inFunction = false;
 
     //---符号表管理---
     struct Symbol {

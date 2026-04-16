@@ -135,13 +135,14 @@ void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
         exprType = checkExpression(node.payload.return_stmt.expression);
     }
 
-    // 2. 如果我们不在函数里（这不应该发生，但防御性编程要做好）或者允许返回任何类型
-    if (currentReturnType.getBase() == NKBaseType::Unknown) {
+    // 2. return 只能出现在函数体内
+    if (!inFunction) {
         reportError(line, column, "Cannot return from outside a function.");
         return;
     }
-    // 3. 严格比对：实际返回的类型 vs 函数签名期待的类型
-    if (exprType.getBase() != NKBaseType::Unknown && exprType != currentReturnType) {
+    // 3. 显式标注了返回类型时才做严格比对；未标注时允许推导（当前阶段不强制一致性）。
+    if (currentReturnType.getBase() != NKBaseType::Unknown && exprType.getBase() != NKBaseType::Unknown &&
+        exprType != currentReturnType) {
         reportError(line, column,
                     "Return type mismatch. Expected " + std::to_string((int)currentReturnType.getBase()) + ", got " +
                         std::to_string((int)exprType.getBase()));

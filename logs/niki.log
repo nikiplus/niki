@@ -527,3 +527,4 @@
 [2026-04-1613:08:00.769][trace][44940][niki] [compiler] declaration entry type=FunctionDecl at 7:1
 [2026-04-1613:08:00.769][trace][44940][niki] [compiler] declaration entry type=FunctionDecl at 12:1
 [2026-04-1613:08:00.770][debug][44940][niki] [compiler] emit summary: ops=118, code_bytes=7, constants=3, warnings=4
+[2026-04-1614:23:57.702][info][47264][niki] NIKI started argc=2

@@ -92,7 +92,8 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
         paramTypes.push_back(resolveTypeAnnotation(type_expr_idx));
     }
 
-    NKType retType = NKType(NKBaseType::Void, -1);
+    // 没有显式返回类型时，不强制按 void 校验，允许函数体中的 return 自由返回。
+    NKType retType = NKType::makeUnknown();
     if (func_data.return_type.isvalid()) {
         retType = resolveTypeAnnotation(func_data.return_type);
     }
@@ -108,13 +109,16 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
     }
 
     NKType enclosingReturnType = currentReturnType;
+    bool enclosingInFunction = inFunction;
     currentReturnType = retType;
+    inFunction = true;
 
     if (func_data.body.isvalid()) {
         checkStatement(func_data.body);
     }
 
     currentReturnType = enclosingReturnType;
+    inFunction = enclosingInFunction;
 
     endScope();
 }

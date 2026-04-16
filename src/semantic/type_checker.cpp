@@ -13,6 +13,7 @@ std::expected<TypeCheckResult, TypeCheckErrorResult> TypeChecker::check(syntax::
     errors.clear();
     symbols.clear();
     currentDepth = 0;
+    inFunction = false;
 
     // 1. node_types 已经在 ASTPool 分配时预填充了 Unknown，
     // 我们不需要再做初始化操作，直接开始遍历覆盖它即可。
