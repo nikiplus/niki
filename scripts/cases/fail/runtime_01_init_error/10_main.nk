@@ -1,0 +1,7 @@
+func explode_local() -> int {
+    return 1 / 0;
+}
+
+func main() -> int {
+    return explode_local();
+}

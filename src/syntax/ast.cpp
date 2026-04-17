@@ -1,15 +1,48 @@
+/*
+ * =============================================================================
+ * AST 与 ASTPool 设计说明（原 ast.hpp 长注释迁移至此，与实现同文件便于维护）
+ * =============================================================================
+ *
+ * --- ASTNodeIndex：为何用 struct 包一层 uint32_t，而不用裸索引或 ASTNode*？---
+ * - .isvalid() 可读性优于魔数 ~0U；不同类型索引不易被误混算。
+ * - 节点放在 std::vector 中，扩容会整体搬迁；物理指针会全部失效，索引是相对下标，始终有效。
+ * - 64 位下指针 8 字节，uint32_t 索引 4 字节，AST 更紧凑、缓存更友好。
+ * - 序列化：整池 vector 写出再读回，边关系仍成立。
+ *
+ * --- 旁侧表：变长数据为何不塞进 ASTNode？---
+ * - 让 ASTNode 保持定长（当前 16 字节），列表与大块数据用「扁平区 + 下标切片」外置。
+ * - 扫描等长节点数组对 CPU 缓存更友好；变长内容集中在 lists_elements 与各 decl 旁侧 vector。
+ *
+ * --- locations / node_types 与 nodes 的对齐关系（旁侧表核心约束）---
+ * allocateNode 时同时对 nodes、locations、node_types 追加一条记录，三数组按下标 i 一一对应：
+ *   nodes[i]  <->  locations[i]  <->  node_types[i]
+ * 清理时必须同步（见 clear()）；只增不减时天然保持同步。
+ * （图示：两列凹槽被同一把尺子推进，填满进度一致——原理同上。）
+ *
+ * --- constants 与 vm::Value---
+ * vm::Value 可能含 8 字节对齐成员；若塞进 ASTNodePayload 会撑大整个 ASTNode 并引入 padding。
+ * 字面量在解析期写入 constants，AST 里只存 const_pool_index。
+ *
+ * --- 字符串驻留表放在哪里？---
+ * 字符串池上移到 Driver 级 GlobalInterner，ASTPool 仅做转发。
+ * 这样多模块编译可共享同一套 name_id，避免链接阶段出现“同ID异名”的伪冲突。
+ *
+ * --- get_list 与 std::span---
+ * get_list 返回对 lists_elements 某一段的只读视图，不持有内存所有权；遍历列表时零拷贝切片。
+ * =============================================================================
+ */
+
 #include "niki/syntax/ast.hpp"
 
 #include "niki/semantic/nktype.hpp"
 
 using namespace niki::syntax;
 
-ASTPool::ASTPool() {
-    // 在池子诞生之初，强制注入内置基础类型，将它们的 ID 永久固化！
-    ID_INT = internString("int");
-    ID_FLOAT = internString("float");
-    ID_BOOL = internString("bool");
-    ID_STRING = internString("string");
+ASTPool::ASTPool(GlobalInterner &shared_interner) : interner(&shared_interner) {
+    ID_INT = interner->intern("int");
+    ID_FLOAT = interner->intern("float");
+    ID_BOOL = interner->intern("bool");
+    ID_STRING = interner->intern("string");
 }
 
 std::span<const ASTNodeIndex> ASTPool::get_list(ASTListIndex list_info) const {
@@ -49,8 +82,7 @@ void ASTPool::clear() {
     struct_data.clear();
     kits_data.clear();
 
-    // 注意：不能 clear string_pool，否则我们硬编码的内置类型 ID 就失效了！
-    // 真正的重置应该是让 string_pool 退回到初始化状态，但为了简单，目前我们不清空字符串池。
+    // 注意：共享字符串池由 GlobalInterner 持有，clear() 仅重置 AST 结构数据。
 };
 ASTNode &ASTPool::getNode(ASTNodeIndex index) {
     if (!index.isvalid() || index >= nodes.size()) {
@@ -66,14 +98,22 @@ const ASTNode &ASTPool::getNode(ASTNodeIndex index) const {
 }
 
 uint32_t ASTPool::internString(std::string_view str) {
-    auto it = string_to_id.find(str);
-    if (it != string_to_id.end()) {
-        return it->second;
+    if (interner == nullptr) {
+        throw std::runtime_error("ASTPool interner is not initialized.");
     }
-    uint32_t new_id = static_cast<uint32_t>(string_pool.size());
-    string_pool.emplace_back(str);
-    string_to_id[string_pool.back()] = new_id;
-    return new_id;
+    return interner->intern(str);
 };
 
-const std::string &ASTPool::getStringId(uint32_t id) const { return string_pool.at(id); }
+const std::string &ASTPool::getStringId(uint32_t id) const {
+    if (interner == nullptr) {
+        throw std::runtime_error("ASTPool interner is not initialized.");
+    }
+    return interner->get(id);
+}
+
+std::vector<std::string> ASTPool::snapshotStringPool() const {
+    if (interner == nullptr) {
+        throw std::runtime_error("ASTPool interner is not initialized.");
+    }
+    return interner->snapshot();
+}

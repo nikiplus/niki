@@ -10,6 +10,7 @@ find_package(EnTT CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 
 add_library(niki_core STATIC
+    src/syntax/global_interner.cpp
     src/syntax/scanner.cpp
     src/syntax/parse.cpp
     src/syntax/parser_declaration.cpp
@@ -26,6 +27,9 @@ add_library(niki_core STATIC
     src/semantic/type_checker_stmt.cpp
     src/semantic/type_checker_decl.cpp
     src/semantic/type_checker_pre_decl.cpp
+    src/driver/driver.cpp
+    src/linker/linker.cpp
+    src/runtime/launcher.cpp
     src/vm/vm.cpp
     src/debug/logger.cpp
 )

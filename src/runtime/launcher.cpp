@@ -9,14 +9,18 @@ namespace niki::runtime {
 std::expected<vm::Value, LaunchError> Launcher::launchProgram(vm::VM &vm, const linker::LinkedProgram &program,
                                                               const LaunchOptions options) {
     // 1)执行合并后的初始化段
-    auto init_ret = vm.executeChunk(program.merged_init_chunk, options.print_init_result);
-    if (!init_ret.has_value()) {
-        return std::unexpected(LaunchError{LaunchErrorCode::INIT_RUNTIME_ERROR, "初始化阶段运行失败"});
+    vm::Value last_init = vm::Value::makeNil();
+    for (const auto &chunk : program.init_chunks) {
+        auto init_ret = vm.executeChunk(chunk, options.print_init_result);
+        if (!init_ret.has_value()) {
+            return std::unexpected(LaunchError{LaunchErrorCode::INIT_RUNTIME_ERROR, "初始化阶段运行失败"});
+        }
+        last_init = init_ret.value();
     }
 
     // 2)需要入口就查入口
     if (!options.call_entry) {
-        return init_ret.value();
+        return last_init;
     }
 
     vm::ObjFunction *entry = vm.lookupGlobalFunctionById(program.entry_name_id);

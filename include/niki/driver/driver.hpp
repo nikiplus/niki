@@ -1,6 +1,7 @@
 #pragma once
 #include "niki/linker/linker.hpp"
 #include "niki/runtime/launcher.hpp"
+#include "niki/syntax/global_interner.hpp"
 #include "niki/vm/value.hpp"
 #include <expected>
 #include <string>
@@ -35,9 +36,10 @@ class Driver {
   private:
     std::vector<std::string> collectNkFiles(const std::string &root_dir, const DriverOptions &options);
 
-    std::expected<linker::ComplieModule, DriverError> compileOneModule(const std::string &source_path);
+    std::expected<linker::CompileModule, DriverError> compileOneModule(const std::string &source_path,
+                                                                       syntax::GlobalInterner &interner);
 
-    std::expected<std::vector<linker::ComplieModule>, std::vector<DriverError>> compileAll(
+    std::expected<std::vector<linker::CompileModule>, std::vector<DriverError>> compileAll(
         const std::vector<std::string> &files);
 };
 } // namespace niki::driver

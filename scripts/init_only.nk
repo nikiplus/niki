@@ -1,0 +1,4 @@
+var init_counter: int = 0;
+loop (init_counter < 3) {
+    init_counter = init_counter + 1;
+}

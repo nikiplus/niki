@@ -15,8 +15,8 @@ enum class LinkErrorCode {
     DUPLICATE_SYMBOL,
     ENTRY_NOT_FOUND,
     MULTIPLE_ENTRY,
-    SRTING_REAMP_FAILED,
-    CONSTANT_REAMP_FAILED
+    STRING_REMAP_FAILED,
+    CONSTANT_REMAP_FAILED
 };
 
 struct LinkError {
@@ -27,7 +27,7 @@ struct LinkError {
 
 //---编译产物(每个.nk一个)---
 // 这里是compile后交给linker 的单位
-struct ComplieModule {
+struct CompileModule {
     std::string module_name;
     std::string source_path;
     Chunk init_chunk;
@@ -36,8 +36,8 @@ struct ComplieModule {
 
 //---链接产物（整个项目一个）---
 struct LinkedProgram {
-    Chunk merged_init_chunk;
-    uint32_t entry_name_id;
+    std::vector<Chunk> init_chunks;
+    uint32_t entry_name_id = UINT32_MAX;
     std::vector<std::string> string_pool;
 };
 
@@ -49,7 +49,7 @@ struct LinkOptions {
 
 class Linker {
   public:
-    std::expected<LinkedProgram, std::vector<LinkError>> link(const std::vector<ComplieModule> &moudules,
+    std::expected<LinkedProgram, std::vector<LinkError>> link(const std::vector<CompileModule> &modules,
                                                               const LinkOptions &options);
 
   private:
@@ -60,7 +60,7 @@ class Linker {
     // 3)符号冲突检查+入口决议
     bool resolveSymbols(/*in/out params*/);
     // 4）生成merged_init_chunk
-    Chunk megeInitChunks(/*in params*/);
+    Chunk mergeInitChunks(/*in params*/);
 };
 
 } // namespace niki::linker

@@ -12,7 +12,8 @@ using namespace niki::syntax::test;
 // 这是一个基础的测试夹具 (Test Fixture)
 class ParserTest : public ::testing::Test {
   protected:
-    ASTPool pool;
+    GlobalInterner interner;
+    ASTPool pool{interner};
 
     // 辅助函数：将源码字符串解析为 AST 根节点
     ASTNodeIndex parseSource(std::string_view source) {

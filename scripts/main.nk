@@ -1,0 +1,5 @@
+func main() -> int {
+    var a: int = 40;
+    var b: int = 2;
+    return a + b;
+}

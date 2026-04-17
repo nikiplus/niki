@@ -42,13 +42,13 @@ class TypeChecker {
 
     //---符号表管理---
     // 一个名字在当前编译时语义里，最少要记录哪些信息，才能完成类型检查 + 作用域管理 +（将来）所有权检查？
-    //symbol这个结构体正是为了解决这个问题而存在的
+    // symbol这个结构体正是为了解决这个问题而存在的
     struct Symbol {
         uint32_t name_id;
         NKType type;
         int depth;
-        bool is_owned; // 灵魂拷问1：该符号是否是数据的主人？(决定作用域结束时是否生成 OP_FREE)
-        bool is_moved; // 灵魂拷问2：该符号的所有权是否已被转移？(如果被转移，后续严禁使用)
+        bool is_owned; // 该符号是否是数据的主人？(决定作用域结束时是否生成 OP_FREE)
+        bool is_moved; // 该符号的所有权是否已被转移？(如果被转移，后续严禁使用)
     };
     std::vector<Symbol> symbols;
     int currentDepth = 0;
