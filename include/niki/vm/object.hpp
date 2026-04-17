@@ -27,21 +27,21 @@ struct Object {
 };
 // 结构体蓝图(元数据)：存活在VM全局表中，描述了一个自定义类型的物理形状
 struct ObjStructDef {
-    Object obj;
+    Object object_header;
     uint32_t name_id;     // 结构体名字的字符串id
     uint32_t field_count; // 字段数量
 };
 // 结构体实例：真正的物理数据实体，分配在堆上
 struct ObjInstance {
-    Object obj;
-    ObjStructDef *def; // 指向蓝图，这样实例才知道自己是什么类型
+    Object object_header;
+    ObjStructDef *struct_definition; // 指向蓝图，这样实例才知道自己是什么类型
     Value fields[];    // 柔性数组 (Flexible Array Member)：真正的 O(1) 紧凑内存布局
 };
 
 // DOD 风格的字符串对象
 // 拒绝内部包含 std::string (那会导致二次堆分配和缓存不连续)
 struct ObjString {
-    Object obj;      // 对象头
+    Object object_header; // 对象头
     uint32_t length; // 字符串长度
     char chars[];    // 柔性数组 (Flexible Array Member): 字符串内容紧贴在 length 之后！
 };
@@ -53,7 +53,7 @@ struct ObjString {
 // 这会导致 VM 寄存器中原本指向这个 ObjArray 的所有 Value 指针瞬间变成悬空指针 (Dangling Pointer)。
 // 因此，对于需要动态改变大小的对象，我们必须采用“对象头与数据块分离”的设计，或者禁止重新分配地址。
 struct ObjArray {
-    Object obj;        // 对象头
+    Object object_header; // 对象头
     uint32_t capacity; // 物理容量
     uint32_t count;    // 实际元素个数
     Value *elements;   // 指向堆上另一块独立连续内存的指针！
@@ -66,7 +66,7 @@ struct ObjMapEntry {
 };
 
 struct ObjMap {
-    Object obj;        // 对象头
+    Object object_header; // 对象头
     uint32_t capacity; // 物理容量（entry 数）
     uint32_t count;    // 已占用 entry 数
     ObjMapEntry *entries;
@@ -75,7 +75,7 @@ struct ObjMap {
 // 函数对象：包含字节码、常量池、行号信息以及函数的元数据
 // (目前我们暂时保持其 C++ 类的形态，未来如果有需要也可以拍扁成 DOD 结构)
 struct ObjFunction {
-    Object obj; // 补齐对象头，使其参与 VM 的 C-style 多态
+    Object object_header; // 补齐对象头，使其参与 VM 的 C-style 多态
     uint32_t name_id;
     uint8_t arity; // 参数个数
     uint8_t max_registers;
@@ -86,23 +86,23 @@ struct ObjFunction {
 
 // 分配结构体蓝图
 inline ObjStructDef *allocateStructDef(uint32_t name_id, uint32_t field_count) {
-    ObjStructDef *def = static_cast<ObjStructDef *>(std::malloc(sizeof(ObjStructDef)));
-    def->obj.type = ObjType::StructDef;
-    def->obj.isMarked = false;
-    def->name_id = name_id;
-    def->field_count = field_count;
-    return def;
+    ObjStructDef *struct_definition = static_cast<ObjStructDef *>(std::malloc(sizeof(ObjStructDef)));
+    struct_definition->object_header.type = ObjType::StructDef;
+    struct_definition->object_header.isMarked = false;
+    struct_definition->name_id = name_id;
+    struct_definition->field_count = field_count;
+    return struct_definition;
 }
 // 分配结构体实例
-inline ObjInstance *allocateInstance(ObjStructDef *def) {
-    size_t size = sizeof(ObjInstance) + def->field_count * sizeof(Value);
-    ObjInstance *instance = static_cast<ObjInstance *>(std::malloc(size));
-    instance->obj.type = ObjType::Instance;
-    instance->obj.isMarked = false;
-    instance->def = def;
+inline ObjInstance *allocateInstance(ObjStructDef *struct_definition) {
+    size_t allocation_size = sizeof(ObjInstance) + struct_definition->field_count * sizeof(Value);
+    ObjInstance *instance = static_cast<ObjInstance *>(std::malloc(allocation_size));
+    instance->object_header.type = ObjType::Instance;
+    instance->object_header.isMarked = false;
+    instance->struct_definition = struct_definition;
 
-    for (uint32_t i = 0; i < def->field_count; ++i) {
-        instance->fields[i] = Value::makeNil();
+    for (uint32_t field_index = 0; field_index < struct_definition->field_count; ++field_index) {
+        instance->fields[field_index] = Value::makeNil();
     }
     return instance;
 }
@@ -110,29 +110,29 @@ inline ObjInstance *allocateInstance(ObjStructDef *def) {
 // 分配字符串：分配头+字符+、0
 inline ObjString *allocateString(const char *chars, uint32_t length) {
     // 分配结构体大小，加上字符串，再加一个字节给\0
-    ObjString *string = static_cast<ObjString *>(std::malloc(sizeof(ObjString) + length + 1));
-    string->obj.type = ObjType::String;
-    string->obj.isMarked = false;
-    string->length = length;
-    std::memcpy(string->chars, chars, length);
-    string->chars[length] = '\0';
-    return string;
+    ObjString *string_object = static_cast<ObjString *>(std::malloc(sizeof(ObjString) + length + 1));
+    string_object->object_header.type = ObjType::String;
+    string_object->object_header.isMarked = false;
+    string_object->length = length;
+    std::memcpy(string_object->chars, chars, length);
+    string_object->chars[length] = '\0';
+    return string_object;
 }
 
 // 分配数组：一次性分配 头+N个value
 inline ObjArray *allocateArray(uint32_t capacity) {
     // 数组对象本身是一个固定大小的块
     ObjArray *array = static_cast<ObjArray *>(std::malloc(sizeof(ObjArray)));
-    array->obj.type = ObjType::Array;
-    array->obj.isMarked = false;
+    array->object_header.type = ObjType::Array;
+    array->object_header.isMarked = false;
     array->capacity = capacity;
     array->count = 0;
     // 数据块在另一块绝对连续的堆内存中
     if (capacity > 0) {
         array->elements = static_cast<Value *>(std::malloc(capacity * sizeof(Value)));
         // 默认全部初始化位 Nil，防止读到内存垃圾
-        for (uint32_t i = 0; i < capacity; ++i) {
-            array->elements[i] = Value::makeNil();
+        for (uint32_t element_index = 0; element_index < capacity; ++element_index) {
+            array->elements[element_index] = Value::makeNil();
         }
     } else {
         array->elements = nullptr;
@@ -149,8 +149,8 @@ inline void expandArray(ObjArray *array, uint32_t new_capacity) {
     array->elements = static_cast<Value *>(std::realloc(array->elements, new_capacity * sizeof(Value)));
 
     // 初始化开辟新内存
-    for (uint32_t i = array->capacity; i < new_capacity; ++i) {
-        array->elements[i] = Value::makeNil();
+    for (uint32_t element_index = array->capacity; element_index < new_capacity; ++element_index) {
+        array->elements[element_index] = Value::makeNil();
     }
     array->capacity = new_capacity;
 }
@@ -161,15 +161,15 @@ inline ObjMap *allocateMap(uint32_t capacity) {
         capacity = 8;
     }
     ObjMap *map = static_cast<ObjMap *>(std::malloc(sizeof(ObjMap)));
-    map->obj.type = ObjType::Map;
-    map->obj.isMarked = false;
+    map->object_header.type = ObjType::Map;
+    map->object_header.isMarked = false;
     map->capacity = capacity;
     map->count = 0;
     map->entries = static_cast<ObjMapEntry *>(std::malloc(sizeof(ObjMapEntry) * capacity));
-    for (uint32_t i = 0; i < capacity; ++i) {
-        map->entries[i].occupied = false;
-        map->entries[i].key = Value::makeNil();
-        map->entries[i].value = Value::makeNil();
+    for (uint32_t entry_index = 0; entry_index < capacity; ++entry_index) {
+        map->entries[entry_index].occupied = false;
+        map->entries[entry_index].key = Value::makeNil();
+        map->entries[entry_index].value = Value::makeNil();
     }
     return map;
 }
@@ -188,15 +188,16 @@ inline bool valueKeyEquals(Value lhs, Value rhs) {
     case ValueType::Float:
         return lhs.as.floating == rhs.as.floating;
     case ValueType::Object: {
-        auto *lobj = static_cast<Object *>(lhs.as.object);
-        auto *robj = static_cast<Object *>(rhs.as.object);
-        if (lobj->type != robj->type) {
+        auto *left_object = static_cast<Object *>(lhs.as.object);
+        auto *right_object = static_cast<Object *>(rhs.as.object);
+        if (left_object->type != right_object->type) {
             return false;
         }
-        if (lobj->type == ObjType::String) {
-            auto *ls = static_cast<ObjString *>(lhs.as.object);
-            auto *rs = static_cast<ObjString *>(rhs.as.object);
-            return ls->length == rs->length && std::memcmp(ls->chars, rs->chars, ls->length) == 0;
+        if (left_object->type == ObjType::String) {
+            auto *left_string = static_cast<ObjString *>(lhs.as.object);
+            auto *right_string = static_cast<ObjString *>(rhs.as.object);
+            return left_string->length == right_string->length &&
+                   std::memcmp(left_string->chars, right_string->chars, left_string->length) == 0;
         }
         // 其他对象类型退化为地址等价
         return lhs.as.object == rhs.as.object;
@@ -210,21 +211,21 @@ inline void expandMap(ObjMap *map, uint32_t new_capacity) {
         return;
     }
     ObjMapEntry *new_entries = static_cast<ObjMapEntry *>(std::malloc(sizeof(ObjMapEntry) * new_capacity));
-    for (uint32_t i = 0; i < new_capacity; ++i) {
-        new_entries[i].occupied = false;
-        new_entries[i].key = Value::makeNil();
-        new_entries[i].value = Value::makeNil();
+    for (uint32_t new_entry_index = 0; new_entry_index < new_capacity; ++new_entry_index) {
+        new_entries[new_entry_index].occupied = false;
+        new_entries[new_entry_index].key = Value::makeNil();
+        new_entries[new_entry_index].value = Value::makeNil();
     }
-    for (uint32_t i = 0; i < map->capacity; ++i) {
-        if (!map->entries[i].occupied) {
+    for (uint32_t old_entry_index = 0; old_entry_index < map->capacity; ++old_entry_index) {
+        if (!map->entries[old_entry_index].occupied) {
             continue;
         }
         // 线性探测插入到新表
-        for (uint32_t j = 0; j < new_capacity; ++j) {
-            if (!new_entries[j].occupied) {
-                new_entries[j].occupied = true;
-                new_entries[j].key = map->entries[i].key;
-                new_entries[j].value = map->entries[i].value;
+        for (uint32_t candidate_index = 0; candidate_index < new_capacity; ++candidate_index) {
+            if (!new_entries[candidate_index].occupied) {
+                new_entries[candidate_index].occupied = true;
+                new_entries[candidate_index].key = map->entries[old_entry_index].key;
+                new_entries[candidate_index].value = map->entries[old_entry_index].value;
                 break;
             }
         }
@@ -240,18 +241,18 @@ inline void mapSet(ObjMap *map, Value key, Value value) {
         expandMap(map, map->capacity < 8 ? 8 : map->capacity * 2);
     }
     // 先尝试覆盖已有 key
-    for (uint32_t i = 0; i < map->capacity; ++i) {
-        if (map->entries[i].occupied && valueKeyEquals(map->entries[i].key, key)) {
-            map->entries[i].value = value;
+    for (uint32_t entry_index = 0; entry_index < map->capacity; ++entry_index) {
+        if (map->entries[entry_index].occupied && valueKeyEquals(map->entries[entry_index].key, key)) {
+            map->entries[entry_index].value = value;
             return;
         }
     }
     // 再写入空槽
-    for (uint32_t i = 0; i < map->capacity; ++i) {
-        if (!map->entries[i].occupied) {
-            map->entries[i].occupied = true;
-            map->entries[i].key = key;
-            map->entries[i].value = value;
+    for (uint32_t entry_index = 0; entry_index < map->capacity; ++entry_index) {
+        if (!map->entries[entry_index].occupied) {
+            map->entries[entry_index].occupied = true;
+            map->entries[entry_index].key = key;
+            map->entries[entry_index].value = value;
             map->count++;
             return;
         }
@@ -259,12 +260,12 @@ inline void mapSet(ObjMap *map, Value key, Value value) {
 }
 
 inline bool mapGet(ObjMap *map, Value key, Value *out_value) {
-    for (uint32_t i = 0; i < map->capacity; ++i) {
-        if (!map->entries[i].occupied) {
+    for (uint32_t entry_index = 0; entry_index < map->capacity; ++entry_index) {
+        if (!map->entries[entry_index].occupied) {
             continue;
         }
-        if (valueKeyEquals(map->entries[i].key, key)) {
-            *out_value = map->entries[i].value;
+        if (valueKeyEquals(map->entries[entry_index].key, key)) {
+            *out_value = map->entries[entry_index].value;
             return true;
         }
     }

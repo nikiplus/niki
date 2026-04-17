@@ -13,13 +13,13 @@ int main(int argc, char *argv[]) {
     options.file_ext = ".nk";
     options.entry_name = "main";
 
-    auto ret = driver.runProject(argv[1], options);
+    auto run_result = driver.runProject(argv[1], options);
 
-    if (!ret.has_value()) {
-        for (const auto &err : ret.error()) {
-            std::cerr << "[错误]" << err.message;
-            if (!err.file.empty()) {
-                std::cerr << " @ " << err.file;
+    if (!run_result.has_value()) {
+        for (const auto &driver_error : run_result.error()) {
+            std::cerr << "[错误]" << driver_error.message;
+            if (!driver_error.file.empty()) {
+                std::cerr << " @ " << driver_error.file;
                 std::cerr << "\n";
             }
         }

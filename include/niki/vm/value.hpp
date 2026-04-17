@@ -30,7 +30,7 @@ struct Value {
     static Value makeBool(bool b) { return {ValueType::Bool, {.boolean = b}}; }
     static Value makeInt(int64_t i) { return {ValueType::Integer, {.integer = i}}; }
     static Value makeFloat(double f) { return {ValueType::Float, {.floating = f}}; }
-    static Value makeObject(void *obj) { return {ValueType::Object, {.object = obj}}; }
+    static Value makeObject(void *object_ptr) { return {ValueType::Object, {.object = object_ptr}}; }
 };
 
 } // namespace niki::vm

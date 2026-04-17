@@ -64,11 +64,8 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
     // 编译成功！再次通过 Move 语义，把填满数据�?Chunk 移交出去�?
     niki::Chunk final_chunk = std::move(topContext.function->chunk);
 
-    // 将前端 std::deque<std::string> 形式的字符串池，转换并深拷贝给后端
-    final_chunk.string_pool.reserve(pool.string_pool.size());
-    for (const auto &str : pool.string_pool) {
-        final_chunk.string_pool.push_back(str);
-    }
+    // 使用 Driver 级共享 interner 快照，确保多模块 name_id 语义一致。
+    final_chunk.string_pool = pool.snapshotStringPool();
 
     uint32_t totalOpCount = 0;
     for (uint32_t count : opcodeEmitCount) {
@@ -199,7 +196,7 @@ void Compiler::patchJump(size_t patch_pos, size_t target_pos) {
 
     size_t offset = target_pos - base;
     if (offset > 0xFFFF) {
-        reportError(0, 0, "Jump offest too large.");
+        reportError(0, 0, "Jump offset too large.");
         return;
     }
     compilingChunk->code[patch_pos] = static_cast<uint8_t>((offset >> 8) & 0xFF);
@@ -294,7 +291,7 @@ void Compiler::emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, u
     } else {
         uint8_t high_byte = static_cast<uint8_t>((index >> 8) & 0xFF);
         uint8_t low_byte = static_cast<uint8_t>(index & 0xFF);
-        emitOp(vm::OPCODE::OP_LOAD_CONST_W, targetReg, high_byte, low_byte, column);
+        emitOp(vm::OPCODE::OP_LOAD_CONST_W, targetReg, high_byte, low_byte, line, column);
     }
 }
 

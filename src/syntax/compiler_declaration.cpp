@@ -86,10 +86,10 @@ void Compiler::compileFunctionDecl(ASTNodeIndex nodeIdx) {
     // 目前niki mvp将函数作为顶层声明
 
     // 创建一个新的objfuction，准备编译其内部字节码
-    // 注意：ObjFunction 现在包含了 Object obj 头，必须正确初始化以避免野指针和强转崩溃
+    // 注意：ObjFunction 现在包含了 Object object_header，必须正确初始化以避免野指针和强转崩溃
     niki::vm::ObjFunction *funcObj = new niki::vm::ObjFunction();
-    funcObj->obj.type = vm::ObjType::Function;
-    funcObj->obj.isMarked = false;
+    funcObj->object_header.type = vm::ObjType::Function;
+    funcObj->object_header.isMarked = false;
     funcObj->name_id = func_data.name_id; // Initialize name_id from FunctionData
 
     std::span<const ASTNodeIndex> paramNodes = currentPool->get_list(func_data.params);

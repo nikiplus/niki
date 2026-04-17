@@ -350,6 +350,6 @@ token:  |start_offset:假设为1|line|column|length:假设为5|type|
         |---------|-+-+-+-+
 string: |1|2|3|4|5|6|7|8|9|
         +↑--------+-+-+-+-+
-         |start_offest
+         |start_offset
 */
 } // namespace niki::syntax

@@ -8,59 +8,71 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <functional>
 #include <iostream>
+#include <string>
 
 using namespace niki::vm;
 
-std::expected<Value, InterpretResult> VM::interpret(const Chunk &chunk, bool is_repl) {
+std::expected<Value, InterpretResult> VM::executeChunk(const Chunk &chunk, bool should_print) {
     current_string_pool = &chunk.string_pool;
 
-    // 构造一个顶层的伪函数来容纳脚本字节码
+    // 顶层脚本：用伪 ObjFunction 持有 chunk（与旧 interpret 前半段一致；不再在此自动调用 main）
     ObjFunction *scriptFunc = new ObjFunction();
-    scriptFunc->name_id = 0; // 顶层脚本没有真正的名字，随便给个0，反正我们靠指针判断
-    // 由于是顶层脚本，我们要把传入的chunk拷进去(或者直接在compiler里生成obfuction)
-    // 但为了当前兼容，我们先及逆行浅拷贝或借用。
+    scriptFunc->name_id = 0;
     scriptFunc->chunk = chunk;
     if (scriptFunc->chunk.code.empty()) {
         delete scriptFunc;
         return Value::makeNil();
     }
     frames.clear();
-    frames.push_back(CallFrame{
-        .function = scriptFunc, .ip = const_cast<uint8_t *>(scriptFunc->chunk.code.data()), .base_register = 0});
+    frames.push_back(CallFrame{.function = scriptFunc,
+                               .ip = const_cast<uint8_t *>(scriptFunc->chunk.code.data()),
+                               .base_register = 0,
+                               .out_register = 0});
     currentFrame = &frames.back();
 
-    // 预先查找 main_id，用于判断 REPL 模式下是否要打印顶层返回值
-    uint32_t main_id = -1;
-    for (uint32_t i = 0; i < current_string_pool->size(); ++i) {
-        if ((*current_string_pool)[i] == "main") {
-            main_id = i;
-            break;
-        }
-    }
+    std::expected<Value, InterpretResult> result = run(should_print);
 
-    std::expected<Value, InterpretResult> result =
-        run(is_repl && globals.count(main_id) == 0); // 顶层脚本只在纯REPL无main时打印
-
-    // --- 自动点火：寻找并执行 main 函数 ---
-    if (result.has_value()) {
-        if (main_id != -1 && globals.count(main_id)) {
-            ObjFunction *mainFunc = globals[main_id];
-            frames.clear();
-            frames.push_back(CallFrame{
-                .function = mainFunc, .ip = const_cast<uint8_t *>(mainFunc->chunk.code.data()), .base_register = 0});
-            currentFrame = &frames.back();
-
-            // 第二次执行！这次跑的是真正的 main 业务逻辑
-            result = run(true); // 业务主函数始终打印返回值（作为MVP演示）
-        }
-    }
-
-    // 清理顶层伪函数
     delete scriptFunc;
+    currentFrame = nullptr;
     return result;
-};
+}
+
+std::expected<Value, InterpretResult> VM::executeFunction(ObjFunction *function, bool should_print) {
+    if (function == nullptr) {
+        return std::unexpected(InterpretResult::RUNTIME_ERROR);
+    }
+    current_string_pool = &function->chunk.string_pool;
+
+    if (function->chunk.code.empty()) {
+        return Value::makeNil();
+    }
+    frames.clear();
+    frames.push_back(CallFrame{.function = function,
+                               .ip = const_cast<uint8_t *>(function->chunk.code.data()),
+                               .base_register = 0,
+                               .out_register = 0});
+    currentFrame = &frames.back();
+
+    return run(should_print);
+}
+
+ObjFunction *VM::lookupGlobalFunctionById(uint32_t id) {
+    auto global_function_iter = globals.find(id);
+    return global_function_iter == globals.end() ? nullptr : global_function_iter->second;
+}
+
+ObjFunction *VM::lookupGlobalFunctionByName(const std::string &name) {
+    if (current_string_pool == nullptr) {
+        return nullptr;
+    }
+    for (uint32_t string_index = 0; string_index < current_string_pool->size(); ++string_index) {
+        if ((*current_string_pool)[string_index] == name) {
+            return lookupGlobalFunctionById(string_index);
+        }
+    }
+    return nullptr;
+}
 
 void VM::runtime_error(const char *format, ...) {
     std::cerr << "Runtime Error:";
@@ -71,8 +83,8 @@ void VM::runtime_error(const char *format, ...) {
     std::cerr << "\n";
 
     // 打印调用栈
-    for (int i = frames.size() - 1; i >= 0; i--) {
-        CallFrame *frame = &frames[i];
+    for (int frame_index = static_cast<int>(frames.size()) - 1; frame_index >= 0; frame_index--) {
+        CallFrame *frame = &frames[frame_index];
         ObjFunction *function = frame->function;
 
         // 计算当前指令在chunk中的偏移
@@ -238,19 +250,19 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
-            ObjString *a = asString(left);
-            ObjString *b = asString(right);
+            ObjString *left_string = asString(left);
+            ObjString *right_string = asString(right);
 
-            uint32_t new_len = a->length + b->length;
+            uint32_t new_len = left_string->length + right_string->length;
             // 暂时不考虑内存释放，先分配足够大的新字符串
             ObjString *new_str = static_cast<ObjString *>(std::malloc(sizeof(ObjString) + new_len + 1));
-            new_str->obj.type = ObjType::String;
-            new_str->obj.isMarked = false;
+            new_str->object_header.type = ObjType::String;
+            new_str->object_header.isMarked = false;
             new_str->length = new_len;
 
             // 连续的内存拷贝
-            std::memcpy(new_str->chars, a->chars, a->length);
-            std::memcpy(new_str->chars + a->length, b->chars, b->length);
+            std::memcpy(new_str->chars, left_string->chars, left_string->length);
+            std::memcpy(new_str->chars + left_string->length, right_string->chars, right_string->length);
             new_str->chars[new_len] = '\0';
 
             currentRegisters()[targetReg] = Value::makeObject(new_str);
@@ -459,13 +471,13 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             ObjArray *array = asArray(arrVal);
-            int64_t idx = idxVal.as.integer;
+            int64_t element_index = idxVal.as.integer;
 
-            if (idx < 0 || idx >= array->count) {
+            if (element_index < 0 || element_index >= array->count) {
                 runtime_error("Array index out of bounds.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
-            currentRegisters()[targetReg] = array->elements[idx];
+            currentRegisters()[targetReg] = array->elements[element_index];
             break;
         }
         case OPCODE::OP_SET_ARRAY: {
@@ -486,14 +498,14 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             ObjArray *array = asArray(arrVal);
-            int64_t idx = idxVal.as.integer;
+            int64_t element_index = idxVal.as.integer;
 
-            if (idx < 0 || idx >= array->count) {
+            if (element_index < 0 || element_index >= array->count) {
                 runtime_error("Array index out of bounds.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
-            array->elements[idx] = currentRegisters()[valReg];
+            array->elements[element_index] = currentRegisters()[valReg];
             break;
         }
         case OPCODE::OP_AND: {
@@ -661,8 +673,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                     } else if (isString(result)) {
                         std::cout << "\"" << asString(result)->chars << "\"";
                     } else if (isArray(result)) {
-                        ObjArray *arr = asArray(result);
-                        std::cout << "[Array: size=" << arr->count << " cap=" << arr->capacity << "]";
+                        ObjArray *array_object = asArray(result);
+                        std::cout << "[Array: size=" << array_object->count << " cap=" << array_object->capacity
+                                  << "]";
                     } else {
                         std::cout << "[Object]";
                     }
@@ -690,7 +703,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
         case OPCODE::OP_JZ: {
             uint8_t condReg = readByte();
-            uint16_t offest = readShort();
+            uint16_t offset = readShort();
 
             bool is_false = false;
             if (currentRegisters()[condReg].type == ValueType::Bool) {
@@ -702,13 +715,13 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             if (is_false) {
-                currentFrame->ip += offest;
+                currentFrame->ip += offset;
             }
             break;
         }
         case OPCODE::OP_JNZ: {
             uint8_t condReg = readByte();
-            uint16_t offest = readShort();
+            uint16_t offset = readShort();
 
             bool is_true = false;
 
@@ -723,7 +736,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             if (is_true) {
-                currentFrame->ip += offest;
+                currentFrame->ip += offset;
             }
             break;
         }
@@ -736,12 +749,13 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 return std::unexpected(funcVal.error());
             }
 
-            // 安全反序列化：检查 obj 的 type 来分类存放
-            Object *obj = static_cast<Object *>(funcVal.value().as.object);
-            if (obj != nullptr && obj->type == ObjType::StructDef) {
-                global_objects[static_cast<ObjStructDef *>(static_cast<void *>(obj))->name_id] = obj;
-            } else if (obj != nullptr && obj->type == ObjType::Function) {
-                globals[static_cast<ObjFunction *>(static_cast<void *>(obj))->name_id] = static_cast<ObjFunction *>(static_cast<void *>(obj));
+            // 安全反序列化：检查 object 的 type 来分类存放
+            Object *object = static_cast<Object *>(funcVal.value().as.object);
+            if (object != nullptr && object->type == ObjType::StructDef) {
+                global_objects[static_cast<ObjStructDef *>(static_cast<void *>(object))->name_id] = object;
+            } else if (object != nullptr && object->type == ObjType::Function) {
+                globals[static_cast<ObjFunction *>(static_cast<void *>(object))->name_id] =
+                    static_cast<ObjFunction *>(static_cast<void *>(object));
             } else {
                 runtime_error("Invalid global definition type.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -755,11 +769,12 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             if (!funcVal.has_value()) {
                 return std::unexpected(funcVal.error());
             }
-            Object *obj = static_cast<Object *>(funcVal.value().as.object);
-            if (obj != nullptr && obj->type == ObjType::StructDef) {
-                global_objects[static_cast<ObjStructDef *>(static_cast<void *>(obj))->name_id] = obj;
-            } else if (obj != nullptr && obj->type == ObjType::Function) {
-                globals[static_cast<ObjFunction *>(static_cast<void *>(obj))->name_id] = static_cast<ObjFunction *>(static_cast<void *>(obj));
+            Object *object = static_cast<Object *>(funcVal.value().as.object);
+            if (object != nullptr && object->type == ObjType::StructDef) {
+                global_objects[static_cast<ObjStructDef *>(static_cast<void *>(object))->name_id] = object;
+            } else if (object != nullptr && object->type == ObjType::Function) {
+                globals[static_cast<ObjFunction *>(static_cast<void *>(object))->name_id] =
+                    static_cast<ObjFunction *>(static_cast<void *>(object));
             } else {
                 runtime_error("Invalid global definition type.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -777,13 +792,13 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
 
             // 先查函数，再查结构体蓝图
-            auto it = globals.find(name_id);
-            if (it != globals.end()) {
-                currentRegisters()[targetReg] = Value::makeObject(it->second);
+            auto global_function_iter = globals.find(name_id);
+            if (global_function_iter != globals.end()) {
+                currentRegisters()[targetReg] = Value::makeObject(global_function_iter->second);
             } else {
-                auto obj_it = global_objects.find(name_id);
-                if (obj_it != global_objects.end()) {
-                    currentRegisters()[targetReg] = Value::makeObject(obj_it->second);
+                auto global_object_iter = global_objects.find(name_id);
+                if (global_object_iter != global_objects.end()) {
+                    currentRegisters()[targetReg] = Value::makeObject(global_object_iter->second);
                 } else {
                     runtime_error("Undefined global variable or function.");
                     return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -801,13 +816,13 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
             uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
 
-            auto it = globals.find(name_id);
-            if (it != globals.end()) {
-                currentRegisters()[targetReg] = Value::makeObject(it->second);
+            auto global_function_iter = globals.find(name_id);
+            if (global_function_iter != globals.end()) {
+                currentRegisters()[targetReg] = Value::makeObject(global_function_iter->second);
             } else {
-                auto obj_it = global_objects.find(name_id);
-                if (obj_it != global_objects.end()) {
-                    currentRegisters()[targetReg] = Value::makeObject(obj_it->second);
+                auto global_object_iter = global_objects.find(name_id);
+                if (global_object_iter != global_objects.end()) {
+                    currentRegisters()[targetReg] = Value::makeObject(global_object_iter->second);
                 } else {
                     runtime_error("Undefined global variable or function.");
                     return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -827,15 +842,15 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 runtime_error("Can only instantiate struct definitions.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
-            ObjStructDef* def = static_cast<ObjStructDef*>(callee.as.object);
-            if (def->field_count != argc) {
+            ObjStructDef *struct_definition = static_cast<ObjStructDef *>(callee.as.object);
+            if (struct_definition->field_count != argc) {
                 runtime_error("Struct instance argument count mismatch.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
-            ObjInstance* instance = allocateInstance(def);
-            for (uint8_t i = 0; i < argc; ++i) {
-                instance->fields[i] = currentRegisters()[argStartReg + i];
+            ObjInstance *instance = allocateInstance(struct_definition);
+            for (uint8_t argument_index = 0; argument_index < argc; ++argument_index) {
+                instance->fields[argument_index] = currentRegisters()[argStartReg + argument_index];
             }
             // 实例拥有自己的堆内存，因此我们目前将所有新实例视为主权对象（生命周期开始）
             currentRegisters()[outReg] = Value::makeObject(instance);
@@ -852,8 +867,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 runtime_error("Can only get fields from struct instances.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
-            ObjInstance* instance = static_cast<ObjInstance*>(instanceVal.as.object);
-            if (fieldIndex >= instance->def->field_count) {
+            ObjInstance *instance = static_cast<ObjInstance *>(instanceVal.as.object);
+            if (fieldIndex >= instance->struct_definition->field_count) {
                 runtime_error("Field index out of bounds.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
@@ -871,8 +886,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 runtime_error("Can only set fields on struct instances.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
-            ObjInstance* instance = static_cast<ObjInstance*>(instanceVal.as.object);
-            if (fieldIndex >= instance->def->field_count) {
+            ObjInstance *instance = static_cast<ObjInstance *>(instanceVal.as.object);
+            if (fieldIndex >= instance->struct_definition->field_count) {
                 runtime_error("Field index out of bounds.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
@@ -892,10 +907,10 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
-            ObjFunction *fuction = asFunction(callee);
+            ObjFunction *callee_function = asFunction(callee);
 
-            if (argc != fuction->arity) {
-                runtime_error("Expected %d .", fuction->arity, argc);
+            if (argc != callee_function->arity) {
+                runtime_error("Expected %d .", callee_function->arity, argc);
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
@@ -913,8 +928,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             // 工业级做法通常是将 Caller 的 outReg 保存在 CallFrame 结构中。
             // 这里我们临时借用一个机制：在 CallFrame 里增加 out_register 字段。
 
-            frames.push_back(CallFrame{.function = fuction,
-                                       .ip = const_cast<uint8_t *>(fuction->chunk.code.data()),
+            frames.push_back(CallFrame{.function = callee_function,
+                                       .ip = const_cast<uint8_t *>(callee_function->chunk.code.data()),
                                        .base_register = new_base,
                                        .out_register = outReg});
             currentFrame = &frames.back();
@@ -925,37 +940,37 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             Value val = currentRegisters()[targetReg];
             if (val.type == ValueType::Object && val.as.object != nullptr) {
                 // 根据具体的对象类型，执行彻底的物理销毁
-                Object* obj = static_cast<Object*>(val.as.object);
-                switch (obj->type) {
-                    case ObjType::Function:
-                        // Function 对象在全局池中，不应被局部 FREE，但如果是闭包分配的，未来需要在这里释放 chunk
-                        // 目前安全起见，什么也不做。
-                        break;
-                    case ObjType::String:
-                        std::free(val.as.object); // 柔性数组，直接 free 头指针即可
-                        break;
-                    case ObjType::Array: {
-                        ObjArray* arr = asArray(val);
-                        if (arr->elements != nullptr) {
-                            std::free(arr->elements); // 释放分离的数据块
-                        }
-                        std::free(arr); // 释放头
-                        break;
+                Object *object = static_cast<Object *>(val.as.object);
+                switch (object->type) {
+                case ObjType::Function:
+                    // Function 对象在全局池中，不应被局部 FREE，但如果是闭包分配的，未来需要在这里释放 chunk
+                    // 目前安全起见，什么也不做。
+                    break;
+                case ObjType::String:
+                    std::free(val.as.object); // 柔性数组，直接 free 头指针即可
+                    break;
+                case ObjType::Array: {
+                    ObjArray *array_object = asArray(val);
+                    if (array_object->elements != nullptr) {
+                        std::free(array_object->elements); // 释放分离的数据块
                     }
-                    case ObjType::Map: {
-                        ObjMap* map = asMap(val);
-                        if (map->entries != nullptr) {
-                            std::free(map->entries);
-                        }
-                        std::free(map);
-                        break;
+                    std::free(array_object); // 释放头
+                    break;
+                }
+                case ObjType::Map: {
+                    ObjMap *map = asMap(val);
+                    if (map->entries != nullptr) {
+                        std::free(map->entries);
                     }
-                    case ObjType::Instance:
-                        std::free(val.as.object); // 柔性数组，直接 free 头指针
-                        break;
-                    case ObjType::StructDef:
-                        // 蓝图存活在全局区，通常在虚拟机销毁时统一释放，不应被局部变量 FREE
-                        break;
+                    std::free(map);
+                    break;
+                }
+                case ObjType::Instance:
+                    std::free(val.as.object); // 柔性数组，直接 free 头指针
+                    break;
+                case ObjType::StructDef:
+                    // 蓝图存活在全局区，通常在虚拟机销毁时统一释放，不应被局部变量 FREE
+                    break;
                 }
             }
             // 释放后，将寄存器清空（置为 NIL），防止重复释放或幽灵访问
