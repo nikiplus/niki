@@ -81,6 +81,11 @@ class Compiler {
     可以看到，我们返回了两个结构体，前者包含了我们实际要发射的信息，而后者则包含了一个错误信息。
     注意，我们在传入参数是，提前传入了一个空的chunk结构体，这是为了防止每次我们调用compile方法时，编译器都会在实际执行时申请一个空间以初始化chunk，这会导致昂贵的内存再分配。
     */
+    // 编译总入口：
+    // 1) 绑定 AST/type table 上下文
+    // 2) 建立顶层 ObjFunction 作为脚本容器
+    // 3) 深度遍历 AST 发射字节码
+    // 4) 汇总并返回最终 Chunk 或错误池
     std::expected<niki::Chunk, CompileResultError> compile(const ASTPool &pool,                            // 旁侧表等
                                                            ASTNodeIndex root,                              // 解析根节点
                                                            const std::vector<semantic::NKType> &typeTable, // 类型表
@@ -132,6 +137,7 @@ class Compiler {
     那我们返回那个用8bit寄存器储存constant的设计？但这样的话又会很快导致那个上限过少的老问题……能不能结合两个方案？让constant小的时候使用8bit存储，大的时候使用16bit存储……？
     没错！这正式现代绝大多数寄存器都在使用的指令设计方案——变长指令。*/
     //---辅助函数---
+    // 这组函数负责“类型驱动发射”“临时寄存器回收”“常量池写入”等基础能力。
     void emitBinaryOp(vm::OPCODE int_op, vm::OPCODE float_op, uint8_t resultReg, uint8_t leftReg, uint8_t rightReg,
                       semantic::NKType leftType, semantic::NKType rightType, uint32_t line, uint32_t column,
                       const std::string &opName);
@@ -153,6 +159,7 @@ class Compiler {
     void addBreakPatch(size_t patch_pos, uint32_t line, uint32_t column);
     void endLoop(size_t loop_end_pos);
     //---编译上下文管理---
+    // 嵌套函数编译时保存/恢复寄存器状态、局部变量表和循环补丁信息。
     // 用于保存/恢复编译状态，以支持嵌套函数编译。
     struct CompilerContext {
         niki::vm::ObjFunction *function;
@@ -167,6 +174,7 @@ class Compiler {
     void pushContext(niki::vm::ObjFunction *func);
     CompilerContext popContext();
     //---字节码发射器---
+    // 所有 opcode 输出都经由 emitOp/emitByte，确保 line/column 元数据一致写入。
     void emitByte(uint8_t byte, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t a, uint32_t line, uint32_t column);

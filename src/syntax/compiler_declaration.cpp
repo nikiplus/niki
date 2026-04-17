@@ -10,6 +10,7 @@
 namespace niki::syntax {
 
 //---顶层声明编译---
+// 入口：按 NodeType 路由到 compileXXXDecl，并配合 preCompile 实现两遍流程。
 void Compiler::compileDeclaration(ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid()) {
         return;
@@ -75,6 +76,7 @@ void Compiler::compileDeclaration(ASTNodeIndex nodeIdx) {
 
 // 基础声明
 void Compiler::compileFunctionDecl(ASTNodeIndex nodeIdx) {
+    // 流程：创建 ObjFunction -> 参数入寄存器窗口 -> 编译函数体 -> 注册全局符号。
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
     uint32_t func_index = node.payload.func_decl.function_index;
@@ -140,6 +142,7 @@ void Compiler::compileInterfaceMethod(ASTNodeIndex nodeIdx) {
     reportError(line, column, "Interface method compilation is not implemented yet.");
 }
 void Compiler::compileStructDecl(ASTNodeIndex nodeIdx) {
+    // 流程：创建 ObjStructDef -> 写入常量池 -> OP_DEFINE_GLOBAL 注册全局。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     
     uint32_t struct_idx = node.payload.struct_decl.struct_index;
@@ -181,6 +184,7 @@ void Compiler::compileImplDecl(ASTNodeIndex nodeIdx) {
 
 // NIKI特有
 void Compiler::compileModuleDecl(ASTNodeIndex nodeIdx) {
+    // Two-Pass：先预编译顶层符号，再编译其余声明/语句；末尾表达式支持 REPL 回显。
     const auto &node = getNodeCtx(nodeIdx).node;
     const auto &bodyNode = getNodeCtx(node.payload.module_decl.body).node;
     std::span<const ASTNodeIndex> declarations = currentPool->get_list(bodyNode.payload.list.elements);

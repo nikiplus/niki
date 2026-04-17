@@ -13,6 +13,7 @@
 namespace niki::syntax {
 
 //---表达式编译---
+// 入口：按节点类型分发到 compileXXXExpr，并返回 ExprResult{reg, is_temp}。
 ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
     if (!exprIdx.isvalid()) {
         return {};
@@ -65,6 +66,7 @@ ExprResult Compiler::compileExpression(ASTNodeIndex exprIdx) {
 // 移除过度抽象的 emitBinaryOp
 // 基础计算
 ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
+    // 流程：编译左右值 -> 依据 type table 选 opcode -> 释放临时寄存器。
     if (!nodeIdx.isvalid()) {
         return {};
     }
@@ -443,6 +445,7 @@ ExprResult Compiler::compileIndexExpr(ASTNodeIndex nodeIdx) {
 
 这不是网络意义上的“远程调用”，只是运行时内部的一次可调用实体执行。*/
 ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
+    // 流程：编译 callee/args -> 参数搬运到连续窗口 -> 发射 OP_CALL/OP_NEW_INSTANCE。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     // 先编译被调用目标（可能是函数，也可能是结构体名）
     ExprResult calleeRes = compileExpression(node.payload.call.callee);
@@ -506,6 +509,7 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
 - 语义上它是“取引用/取值”，不一定执行调用。
 */
 ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
+    // 策略：静态 struct 走 OP_GET_FIELD；动态属性访问仍为未实现路径。
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
     // 1. 编译对象本身 (比如 p.hp 中的 p)

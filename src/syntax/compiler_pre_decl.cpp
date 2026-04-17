@@ -10,6 +10,7 @@
 namespace niki::syntax {
 
 //---顶层声明预编译 (两遍扫描的第一遍) ---
+// 目标：先注册可前向引用的全局符号，再进入第二遍编译其余节点。
 
 void Compiler::preCompileNode(ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid())
@@ -23,6 +24,7 @@ void Compiler::preCompileNode(ASTNodeIndex nodeIdx) {
 }
 
 void Compiler::preCompileFunctionDecl(ASTNodeIndex nodeIdx) {
+    // 策略：复用 compileFunctionDecl，使 OP_DEFINE_GLOBAL 先于调用点落盘。
     // 复用 compileFunctionDecl 的逻辑，因为对于 VM 来说，
     // 把 OP_DEFINE_GLOBAL 提前发射到字节码流的开头，就实现了函数提升。
     compileFunctionDecl(nodeIdx);

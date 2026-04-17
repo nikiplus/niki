@@ -10,6 +10,7 @@
 namespace niki::semantic {
 
 NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
+    // 入口：分发到 checkXXXExpr，并将结果类型回填 node_types。
     auto [node, line, column] = getNodeCtx(exprIdx);
     NKType resultType = NKType::makeUnknown();
 
@@ -97,6 +98,7 @@ NKType TypeChecker::checkIdentifierExpr(syntax::ASTNodeIndex nodeIdx) {
 }
 
 NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
+    // 二元检查：先求左右类型，再按运算符做约束校验与错误恢复。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     NKType leftType = checkExpression(node.payload.binary.left);
     NKType rightType = checkExpression(node.payload.binary.right);
@@ -290,6 +292,7 @@ NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) {
     }
 }
 NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
+    // 调用检查：区分 Function/Object 两条路径，校验参数个数与类型匹配。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     // 检查被调用的对象。
     NKType calleeType = checkExpression(node.payload.call.callee);
@@ -352,6 +355,7 @@ NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
 }
 
 NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) {
+    // 成员检查：对象必须是 struct/object，并按字段名回查字段类型。
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
     NKType objType = checkExpression(node.payload.member.object);

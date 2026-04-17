@@ -5,6 +5,7 @@
 namespace niki::semantic {
 
 void TypeChecker::checkStatement(syntax::ASTNodeIndex stmtIdx) {
+    // 语句检查入口：路由到对应 checkXXXStmt。
     const auto &node = getNodeCtx(stmtIdx).node;
     switch (node.type) {
     case syntax::NodeType::ExpressionStmt:
@@ -66,6 +67,7 @@ void TypeChecker::checkExpressionStmt(syntax::ASTNodeIndex nodeIdx) {
 }
 
 void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
+    // 赋值检查：左右类型均已知且不相等时报错。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     NKType targetType = checkExpression(node.payload.assign_stmt.target);
     NKType valueType = checkExpression(node.payload.assign_stmt.value);
@@ -77,6 +79,7 @@ void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
 }
 
 void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
+    // 变量声明：解析标注/初始化类型，校验一致性并注册最终符号类型。
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
     NKType declType = NKType::makeUnknown();
@@ -102,6 +105,7 @@ void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
 }
 
 void TypeChecker::checkBlockStmt(syntax::ASTNodeIndex nodeIdx) {
+    // 块作用域：beginScope -> statements -> endScope。
     const auto &node = getNodeCtx(nodeIdx).node;
     beginScope(); // 进门加锁
     auto stmts = currentPool->get_list(node.payload.list.elements);

@@ -123,6 +123,10 @@ using namespace niki::syntax;
 【装配完毕】
 */
 
+// Pratt 主调度器：
+// 1) 先消费一个前缀 token 产出 left
+// 2) 再按“当前优先级 < 下一个运算符优先级”循环拼接中缀节点
+// 3) 循环停止时，left 就是当前子表达式的完整 AST
 ASTNodeIndex Parser::parseExpression(Precedence precedence) {
     advance();
     ASTNodeIndex left = parsePrefix(previous.type);
@@ -133,6 +137,9 @@ ASTNodeIndex Parser::parseExpression(Precedence precedence) {
     return left;
 };
 
+// 前缀处理器：
+// 负责字面量、标识符、类型字面量、一元运算、括号与容器字面量。
+// 设计约束：只构造“当前 token 可独立决定”的节点，不处理中缀绑定。
 ASTNodeIndex Parser::parsePrefix(TokenType type) {
     ASTNodePayload payload{};
     Token startToken = previous;
@@ -226,7 +233,7 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
     }
 
     //---括号---
-    // 因为只有解析值时程序才会走这条路径，因此这里的括号和语句解析中的括号并不构成冲突。
+    // 这里是“表达式上下文”里的括号，不与语句级分支冲突。
     case TokenType::SYM_PAREN_L: {
         ASTNodeIndex expr = parseExpression(Precedence::None);
         consume(TokenType::SYM_PAREN_R, "Expected')'after expression.");
@@ -247,8 +254,7 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
         payload.list.elements = astPool.allocateList(elements);
         return emitNode(NodeType::ArrayExpr, payload, startToken);
     }
-    // 在parse期，我们不对传入map的数据类型进行检测。
-    // 但在语义分析器，我们必须要遍历mapexpr的所有key，检查它们的类型，如果它们的类型没有实现hashalbe接口(比如包含了可变数组和闭包)，立刻抛出编译错误。
+    // parse 阶段仅构形，不做 map key/value 类型合法性校验（交由 semantic 阶段处理）。
     case TokenType::SYM_BRACE_L: {
         Token startToken = previous;
         std::vector<ASTNodeIndex> Interleaved;
@@ -274,6 +280,9 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
     }
 };
 
+// 中缀/后缀处理器：
+// 入参 left 是已解析完成的左侧表达式，本函数负责补齐右侧并拼装新节点。
+// 包含算术、逻辑、调用、索引、成员访问等所有需要“绑定 left”的语法形态。
 ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     ASTNodePayload payload{};
     Token startToken = previous;
@@ -346,7 +355,10 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     }
 };
 
+// 优先级查询表：
+// 统一维护 token -> precedence 映射，避免在 parseInfix/parseExpression 中散落硬编码。
 Precedence Parser::getPrecedence(TokenType type) const {
+    // 统一维护 token -> precedence 映射，Pratt 循环只依赖这张表决策是否继续绑定。
     switch (type) {
     case TokenType::SYM_OR:
         return Precedence::Or;

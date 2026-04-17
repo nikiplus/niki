@@ -24,6 +24,11 @@ namespace niki::syntax {
 std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &pool, ASTNodeIndex root,
                                                                  const std::vector<semantic::NKType> &typeTable,
                                                                  niki::Chunk initial_chunk) {
+    // 编译主流程（顶层脚本上下文）：
+    // A. 初始化编译状态与统计器
+    // B. 建立 <script> 顶层函数并切换上下文
+    // C. 遍历根节点发射字节码，最后补 OP_RETURN
+    // D. 若无错误则导出 chunk + string_pool
     if (!root.isvalid()) {
         return std::unexpected(CompileResultError{{{0, 0, "Invalid AST root node."}}});
     }
@@ -76,6 +81,8 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
 }
 
 void Compiler::pushContext(niki::vm::ObjFunction *func) {
+    // 进入新的函数编译上下文：
+    // 保存上层状态，然后为新函数重置寄存器/locals/scope/loop 栈。
     // 保存当前状态（若有）
     if (compilingFunction != nullptr) {
         contextStack.push_back({compilingFunction, compilingChunk, regAlloc, locals, scopeDepth, loop_stack});
@@ -92,6 +99,8 @@ void Compiler::pushContext(niki::vm::ObjFunction *func) {
 }
 
 Compiler::CompilerContext Compiler::popContext() {
+    // 退出函数编译上下文：
+    // 返回当前函数状态，并在存在父上下文时完整恢复父级编译现场。
     CompilerContext current{compilingFunction, compilingChunk, regAlloc, locals, scopeDepth, loop_stack};
     if (!contextStack.empty()) {
         // 恢复上层状�?
@@ -139,6 +148,8 @@ uint16_t Compiler::makeConstant(vm::Value value, uint32_t line, uint32_t column)
 }
 
 void Compiler::endScope() {
+    // 作用域收束：
+    // 对当前深度声明的局部变量逐个退栈，必要时发射 OP_FREE 并回收寄存器。
     scopeDepth--;
     while (locals.size() > 0 && locals.back().depth > scopeDepth) {
         Local &local = locals.back();
@@ -289,6 +300,10 @@ void Compiler::emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, u
 
 //---AST遍历核心(Visitor)---
 void Compiler::compileNode(ASTNodeIndex nodeIdx) {
+    // AST 节点分发器：
+    // 表达式 -> compileExpression
+    // 语句   -> compileStatement
+    // 其余   -> compileDeclaration（顶层声明兜底）
     if (!nodeIdx.isvalid()) {
         return;
     }

@@ -11,7 +11,7 @@
 
 using namespace niki::syntax;
 
-// 语句解析的分发入口，类似于 parseDeclaration 的逻辑
+// 语句解析入口：按关键字分发；未命中时回退表达式语句。
 ASTNodeIndex Parser::parseStatement() {
     if (match(TokenType::SYM_BRACE_L)) {
         return parseBlockStmt();
@@ -36,6 +36,7 @@ ASTNodeIndex Parser::parseStatement() {
     return parseExpressionStmt();
 }
 
+// 表达式语句（含赋值拦截）：先解析表达式，再在 `=` 族命中时改写为 AssignmentStmt。
 ASTNodeIndex Parser::parseExpressionStmt() {
     Token startToken = current;
 
@@ -79,6 +80,7 @@ ASTNodeIndex Parser::parseExpressionStmt() {
 // parseAssignmentStmt无需存在，因为我们已在parseExpressionStmt中完成了对赋值语句的拦截。
 // 事实上，由于赋值语句没有专门的开头关键字，因此我们实际上也是无法仅通过开头关键字判断一段字符是否是赋值语句，只有当左值token被解析完毕后，来到第二个toke，我们看到其为任意赋值语句时
 // 才能将其作为赋值语句返回。
+// 变量声明：支持 `var name [:Type] [= init];`。
 ASTNodeIndex Parser::parseVarDeclStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -121,6 +123,7 @@ ASTNodeIndex Parser::parseConstDeclStmt() {
     return emitNode(NodeType::ConstDeclStmt, payload, startToken);
 };
 
+// 代码块：循环消费 declaration，直到 `}` 或 EOF。
 ASTNodeIndex Parser::parseBlockStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -184,6 +187,8 @@ ASTNodeIndex Parser::parseLoopStmt() {
     return emitNode(NodeType::LoopStmt, payload, startToken);
 }
 
+// match case 解析器：
+// 支持 `case p1, p2 => stmt`，其中 `_` 会被编码为 WildcardExpr。
 ASTNodeIndex Parser::parseMatchCaseStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -205,6 +210,8 @@ ASTNodeIndex Parser::parseMatchCaseStmt() {
     return emitNode(NodeType::MatchCaseStmt, payload, startToken);
 }
 
+// match 主体解析器：
+// 负责目标表达式、case 列表与边界 token 的完整闭合校验。
 ASTNodeIndex Parser::parseMatchStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};

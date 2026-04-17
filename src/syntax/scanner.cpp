@@ -26,6 +26,7 @@ Scanner::Scanner(std::string_view source) : source(source) {
  *通过Scanner的构造函数，将源代码传入Scanner中。
  */
 Token Scanner::scanToken() {
+    // 扫描主流程：跳过空白 -> 锁定起点 -> 识别 token -> 回传位置信息。
     // 1.跳过无意义字符
     skipWhitespace();
     // 2.记录当前token的起始位置。
@@ -197,6 +198,7 @@ bool Scanner::match(char expected) {
 bool Scanner::isAlpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_'); }
 bool Scanner::isDigit(char c) { return c >= '0' && c <= '9'; }
 void Scanner::skipWhitespace() {
+    // 空白与注释清洗器：持续吞掉无关字符，直到遇到有效 token 起点。
     while (true) {
         char c = peek();
         switch (c) {

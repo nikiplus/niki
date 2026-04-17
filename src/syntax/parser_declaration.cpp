@@ -7,8 +7,7 @@
 #include <vector>
 using namespace niki::syntax;
 
-// 专门用于解析“绝对顶层”的声明（如全局文件、module内部）
-// 严格禁止普通语句（Statement）或表达式（Expression）在此出现！
+// 顶层声明入口：优先匹配声明关键字；未命中时回退 statement（兼容 REPL/脚本）。
 ASTNodeIndex Parser::parseTopLevelDeclaration() {
     if (match(TokenType::KW_FUNC)) {
         return parseFunctionDecl();
@@ -43,8 +42,7 @@ ASTNodeIndex Parser::parseTopLevelDeclaration() {
     return parseStatement();
 }
 
-// 普通代码块（BlockStmt）内部的声明解析入口
-// 允许回退到普通语句（Statement）
+// 块内声明入口：优先局部声明（var/const），其余回退语句解析。
 ASTNodeIndex Parser::parseDeclaration() {
     if (match(TokenType::KW_VAR)) {
         return parseVarDeclStmt();
@@ -83,6 +81,7 @@ ASTNodeIndex Parser::parseDeclaration() {
 }
 
 //---基础声明---
+// 函数声明：读取签名与函数体，参数以 VarDeclStmt 形式写入 FunctionData。
 ASTNodeIndex Parser::parseFunctionDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -130,6 +129,7 @@ ASTNodeIndex Parser::parseFunctionDecl() {
     return emitNode(NodeType::FunctionDecl, payload, startToken);
 }
 ASTNodeIndex Parser::parseStructDecl() {
+    // 结构体声明：解析 `name : type` 字段并将 names/types 分离写入 StructData。
     Token startToken = previous;
     ASTNodePayload payload{};
 

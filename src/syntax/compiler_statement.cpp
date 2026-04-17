@@ -10,6 +10,7 @@
 namespace niki::syntax {
 
 //---语句编译---
+// 入口：分发语句节点到对应 compileXXXStmt。
 void Compiler::compileStatement(ASTNodeIndex stmtIdx) {
     if (!stmtIdx.isvalid()) {
         return;
@@ -62,6 +63,7 @@ void Compiler::compileExpressionStmt(ASTNodeIndex nodeIdx) {
 }
 
 void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
+    // 左值分流：标识符 / 索引 / 成员；复合赋值发射对应算术或位运算指令。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     ASTNodeIndex targetIdx = node.payload.assign_stmt.target;
     if (!targetIdx.isvalid()) {
@@ -176,6 +178,7 @@ void Compiler::compileAssignmentStmt(ASTNodeIndex nodeIdx) {
 }
 
 void Compiler::compileVarDeclStmt(ASTNodeIndex nodeIdx) {
+    // 作用域内查重后分配寄存器；有初始化则 MOVE，否则写 NIL。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     uint32_t name_id = node.payload.var_decl.name_id;
     // 只在当前作用域深度查找是否重复声明！
@@ -210,6 +213,7 @@ void Compiler::compileConstDeclStmt(ASTNodeIndex nodeIdx) {
 }
 
 void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
+    // 生命周期：beginScope -> statements -> endScope。
     auto [node, line, column] = getNodeCtx(stmtIdx);
     niki::debug::trace("compiler", "{}|-> enter BlockStmt at {}:{}", makeTracePrefix(), line, column);
     traceIndent++;
@@ -228,6 +232,7 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
 
 // 控制流
 void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
+    // 模板：condition -> JZ 占位 -> then -> 可选 else -> patchJump。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     niki::debug::trace("compiler", "{}|-> if at {}:{}", makeTracePrefix(), line, column);
 
@@ -262,6 +267,7 @@ void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
 }
 
 void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {
+    // 模板：记录 loopStart，编译可选条件与循环体，回跳并回填 break 补丁。
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
     size_t loopStart = currentCodePos();

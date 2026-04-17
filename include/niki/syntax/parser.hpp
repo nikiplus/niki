@@ -14,6 +14,10 @@ class Parser {
   public:
     // 严禁 Parser 自行分配内存，必须由调用方 (Compiler) 注入内存池
     Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool);
+    // 解析总入口：
+    // 1) 驱动 token 游标向前消费
+    // 2) 组织顶层声明或语句为 ProgramRoot
+    // 3) 在 ASTPool 中落盘节点并返回根索引
     ASTNodeIndex parse();
 
     bool hasError() const { return hadError; }
@@ -33,19 +37,25 @@ class Parser {
     // 这是为了防止连环报错，因为当我们在该行第一次扫描到不和法token时，其后续token极大概率也是不合法的，这时我们已无必要再向控制台打印无用信息了，只需跳过当前句段即可。
     bool panicMode = false;
 
-    //---Token游标控制---
+    //---Token 游标控制---
+    // 这组函数构成 Parser 的“输入门面”，所有语法分支都依赖它们推进 token 流。
+    // 约束：只有这组方法可以修改 tokenIndex/current/previous，避免状态失真。
     void advance();
     void consume(TokenType type, const char *message);
     bool check(TokenType type) const;
     bool match(TokenType type);
     bool isAtEnd(TokenType type);
 
-    //---AST节点生成器---
+    //---AST 节点生成器---
+    // 所有 parser 子流程最终都通过 emitNode 写入 ASTPool，
+    // 以保证位置信息、payload 与节点类型的写入路径统一。
     // 这里我们传入一个空token，用来进行长函数定位
     ASTNodeIndex emitNode(NodeType type, const ASTNodePayload &payload,
                           Token startToken = Token(0, 0, 0, 0, TokenType::TOKEN_EOF));
 
     //---错误处理---
+    // errorAtCurrent: 记录当前 token 的语法错误并拉起 panic 模式。
+    // synchronize:    扫描到下一个同步点（如分号/块边界）后恢复解析。
     void errorAtCurrent(const char *message); // 处理parse阶段遇到的错误信息
     void synchronize();
 
@@ -53,6 +63,8 @@ class Parser {
     // 为了防止单个文件内有过多代码行数，我们将实现以“主实现”，”顶层声明”，“语句”和“表达式”进行分类↓
     // 分别对应parser.cpp|parser_declaration.cpp|parser_statement.cpp|parser_expression.cpp四个实现文件。
     //---Pratt 表达式解析引擎---
+    // parseExpression 负责“驱动循环”，parsePrefix/parseInfix 负责“构造节点”。
+    // 三者合起来提供运算符优先级解析能力，并支持调用/索引/成员访问等后缀结构。
     ASTNodeIndex parseExpression(Precedence precedence);
     ASTNodeIndex parsePrefix(TokenType type);
     ASTNodeIndex parseInfix(TokenType type, ASTNodeIndex left);

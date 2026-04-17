@@ -27,7 +27,13 @@ enum class InterpretResult {
 class VM {
   public:
     VM() = default;
-    std::expected<Value, InterpretResult> interpret(const Chunk &chunk, bool is_repl = false);
+
+    // ---- 纯执行接口：不做策略判断 ----
+    std::expected<Value, InterpretResult> executeChunk(const Chunk &chunk, bool should_print);
+    std::expected<Value, InterpretResult> executeFunction(ObjFunction *function, bool should_print);
+    //---查询接口，提供launcher决议入口---
+    ObjFunction *lookupGlobalFunctionByName(const std::string &name);
+    ObjFunction *lookupGlobalFunctionById(uint32_t id);
 
   private:
     std::array<Value, 8192> stack{}; // 全局物理大栈

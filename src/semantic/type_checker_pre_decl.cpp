@@ -9,6 +9,7 @@
 namespace niki::semantic {
 
 // --- 顶层声明预声明 (两遍扫描的第一遍) ---
+// 目标：先注册顶层可见符号，使第二遍检查支持前向引用。
 
 void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
     if (!declIdx.isvalid())
@@ -23,6 +24,7 @@ void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
 }
 
 void TypeChecker::preDeclareStruct(syntax::ASTNodeIndex nodeIdx) {
+    // 预声明结构体：将 `struct name` 注册为 Object(struct_idx) 符号。
     const auto [node, line, column] = getNodeCtx(nodeIdx);
     uint32_t struct_idx = node.payload.struct_decl.struct_index;
     const syntax::StructData &struct_data = currentPool->struct_data[struct_idx];
@@ -32,6 +34,7 @@ void TypeChecker::preDeclareStruct(syntax::ASTNodeIndex nodeIdx) {
 }
 
 void TypeChecker::preDeclareFunction(syntax::ASTNodeIndex nodeIdx) {
+    // 预声明函数：提取签名并将函数名绑定为 Function(sig_id)。
     const auto [node, line, column] = getNodeCtx(nodeIdx);
     const syntax::FunctionData &func_data = currentPool->function_data[node.payload.func_decl.function_index];
 

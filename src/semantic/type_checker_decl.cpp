@@ -9,6 +9,8 @@
 namespace niki::semantic {
 
 void TypeChecker::checkDeclaration(syntax::ASTNodeIndex declIdx) {
+    // 声明分发器：
+    // 统一把“非表达式/非语句”的节点路由到各类声明检查函数。
     const auto &node = currentPool->getNode(declIdx);
     switch (node.type) {
     case syntax::NodeType::FunctionDecl:
@@ -62,6 +64,9 @@ void TypeChecker::checkDeclaration(syntax::ASTNodeIndex declIdx) {
 }
 
 void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
+    // Two-Pass 入口：
+    // Pass 1: 预声明顶层符号（函数/结构体等），解决前向引用。
+    // Pass 2: 基于已注册符号做声明细节与函数体检查。
     const auto &node = currentPool->getNode(nodeIdx);
     const auto &bodyNode = currentPool->getNode(node.payload.module_decl.body);
     auto declarations = currentPool->get_list(bodyNode.payload.list.elements);
@@ -79,6 +84,11 @@ void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
 
 void TypeChecker::checkProgramRoot(syntax::ASTNodeIndex nodeIdx) { checkModuleDecl(nodeIdx); }
 void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
+    // 函数检查流程：
+    // 1) 提取参数/返回类型
+    // 2) 建立函数局部作用域并注册参数
+    // 3) 设置 currentReturnType/inFunction 后检查函数体
+    // 4) 恢复外层上下文并退出作用域
     const auto [node, line, column] = getNodeCtx(nodeIdx);
     const syntax::FunctionData &func_data = currentPool->function_data[node.payload.func_decl.function_index];
 
@@ -124,6 +134,8 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
 }
 void TypeChecker::checkInterfaceMethod(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkStructDecl(syntax::ASTNodeIndex nodeIdx) {
+    // 结构体声明检查：
+    // 当前阶段仅校验字段类型标注能被解析（不存在类型会在 resolveTypeAnnotation 报错）。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     uint32_t struct_idx = node.payload.struct_decl.struct_index;
     const syntax::StructData &struct_data = currentPool->struct_data[struct_idx];
