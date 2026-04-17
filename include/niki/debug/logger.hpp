@@ -26,4 +26,12 @@ template <typename... Args> inline void debug(std::string_view module, fmt::form
 template <typename... Args> inline void info(std::string_view module, fmt::format_string<Args...> f, Args &&...args) {
     spdlog::info("[{}] {}", module, fmt::format(f, std::forward<Args>(args)...));
 }
+
+template <typename... Args> inline void warn(std::string_view module, fmt::format_string<Args...> f, Args &&...args) {
+    spdlog::warn("[{}] {}", module, fmt::format(f, std::forward<Args>(args)...));
+}
+
+template <typename... Args> inline void error(std::string_view module, fmt::format_string<Args...> f, Args &&...args) {
+    spdlog::error("[{}] {}", module, fmt::format(f, std::forward<Args>(args)...));
+}
 } // namespace niki::debug

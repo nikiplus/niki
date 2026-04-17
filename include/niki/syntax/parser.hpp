@@ -1,5 +1,6 @@
 #pragma once
 
+#include "niki/diagnostic/diagnostic.hpp"
 #include "ast.hpp"
 #include "parser_precedence.hpp"
 #include "token.hpp"
@@ -10,6 +11,12 @@
 //  第二部分为语句解析器，该部分我们使用递归下降算法。
 // 在此之前，我们需要定义一个parser类，来链接表达式解析器和语句解析器。
 namespace niki::syntax {
+
+struct ParseResult {
+    ASTNodeIndex root = ASTNodeIndex::invalid();
+    niki::diagnostic::DiagnosticBag diagnostics;
+};
+
 class Parser {
   public:
     // 严禁 Parser 自行分配内存，必须由调用方 (Compiler) 注入内存池
@@ -18,9 +25,7 @@ class Parser {
     // 1) 驱动 token 游标向前消费
     // 2) 组织顶层声明或语句为 ProgramRoot
     // 3) 在 ASTPool 中落盘节点并返回根索引
-    ASTNodeIndex parse();
-
-    bool hasError() const { return hadError; }
+    ParseResult parse();
 
   private:
     std::string_view source; // 获取字节源
@@ -36,6 +41,7 @@ class Parser {
     // panicMode:可控的局部状态开关，当解析器遇到一个语法错误时，panicMode=ture，直到解析器通过synchronize()函数找到下一个同步点（如分号），才将之设定为false。
     // 这是为了防止连环报错，因为当我们在该行第一次扫描到不和法token时，其后续token极大概率也是不合法的，这时我们已无必要再向控制台打印无用信息了，只需跳过当前句段即可。
     bool panicMode = false;
+    niki::diagnostic::DiagnosticBag diagnostics;
 
     //---Token 游标控制---
     // 这组函数构成 Parser 的“输入门面”，所有语法分支都依赖它们推进 token 流。

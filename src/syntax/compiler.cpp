@@ -17,22 +17,25 @@
 
 namespace niki::syntax {
 
-std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &pool, ASTNodeIndex root,
-                                                                 const std::vector<semantic::NKType> &typeTable,
-                                                                 niki::Chunk initial_chunk) {
+std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag>
+Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<semantic::NKType> &typeTable,
+                  niki::Chunk initial_chunk) {
     // 编译主流程（顶层脚本上下文）：
     // A. 初始化编译状态与统计器
     // B. 建立 <script> 顶层函数并切换上下文
     // C. 遍历根节点发射字节码，最后补 OP_RETURN
     // D. 若无错误则导出 chunk + string_pool
     if (!root.isvalid()) {
-        return std::unexpected(CompileResultError{{{0, 0, "Invalid AST root node."}}});
+        niki::diagnostic::DiagnosticBag bag;
+        bag.addError(niki::diagnostic::DiagnosticStage::Compiler, "COMPILER_INVALID_ROOT", "Invalid AST root node.",
+                     {.line = 0, .column = 0});
+        return std::unexpected(std::move(bag));
     }
 
     currentPool = &pool;
     currentTypeTable = &typeTable;
     hadError = false;
-    errorPool.clear();
+    diagnostics = niki::diagnostic::DiagnosticBag{};
     warningCount = 0;
     traceIndent = 0;
     opcodeEmitCount.fill(0);
@@ -52,9 +55,9 @@ std::expected<niki::Chunk, CompileResultError> Compiler::compile(const ASTPool &
     currentTypeTable = nullptr;
 
     if (hadError) {
-        niki::debug::debug("compiler", "compile failed, errors={}, warnings={}", errorPool.size(), warningCount);
+        niki::debug::debug("compiler", "compile failed, errors={}, warnings={}", diagnostics.size(), warningCount);
         delete topContext.function;
-        return std::unexpected(CompileResultError{std::move(errorPool)});
+        return std::unexpected(std::move(diagnostics));
     }
 
     // 编译成功！再次通过 Move 语义，把填满数据�?Chunk 移交出去�?
@@ -357,10 +360,13 @@ void Compiler::compileNode(ASTNodeIndex nodeIdx) {
 }
 
 //---错误与警告处�?--
-void Compiler::reportError(const Token &token, std::string_view message) {}
+void Compiler::reportError(const Token &token, std::string_view message) {
+    reportError(token.line, token.column, message);
+}
 
 void Compiler::reportError(uint32_t line, uint32_t column, std::string_view message) {
-    errorPool.push_back({line, column, std::string(message)});
+    diagnostics.addError(niki::diagnostic::DiagnosticStage::Compiler, "COMPILER_ERROR", std::string(message),
+                         {.line = line, .column = column});
     hadError = true;
 }
 

@@ -1,9 +1,6 @@
 #include "niki/syntax/scanner.hpp"
 #include "niki/syntax/token.hpp"
-#include <cmath>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
@@ -13,7 +10,7 @@
 
 namespace niki::syntax {
 
-Scanner::Scanner(std::string_view source) : source(source) {
+Scanner::Scanner(std::string_view source, std::string_view source_path) : source(source), sourcePath(source_path) {
     start = 0;
     current = 0;
     line = 1;
@@ -522,6 +519,15 @@ Token Scanner::errorToken() {
     token.length = static_cast<uint16_t>(current - start);
     token.line = line;
     token.column = static_cast<uint16_t>(start - lineStart + 1);
+    niki::diagnostic::SourceSpan span{};
+    span.file = std::string(sourcePath);
+    span.line = token.line;
+    span.column = token.column;
+    span.length = token.length;
+    diagnostics.addError(niki::diagnostic::DiagnosticStage::Scanner, "SCANNER_INVALID_TOKEN",
+                         "Invalid or unsupported token.", std::move(span));
     return token;
 };
+
+niki::diagnostic::DiagnosticBag Scanner::takeDiagnostics() { return std::move(diagnostics); }
 } // namespace niki::syntax

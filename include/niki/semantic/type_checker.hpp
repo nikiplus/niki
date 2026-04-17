@@ -1,8 +1,8 @@
 #pragma once
+#include "niki/diagnostic/diagnostic.hpp"
 #include "niki/semantic/nktype.hpp"
 #include "niki/syntax/ast.hpp"
 #include "nktype.hpp"
-#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <string>
@@ -10,19 +10,9 @@
 
 namespace niki::semantic {
 
-// 类型检查错误记录
-struct TypeError {
-    uint32_t line;
-    uint32_t column;
-    std::string message;
-};
 // 检查结果：成功则返回空，失败则返回错误列表
 struct TypeCheckResult {
     // 现已统一使用 ASTPool::node_types 存储类型，因此这里无需返回 type_table
-};
-
-struct TypeCheckErrorResult {
-    std::vector<TypeError> errors;
 };
 
 class TypeChecker {
@@ -32,11 +22,12 @@ class TypeChecker {
     // 1) 绑定 ASTPool 与内部状态
     // 2) 深度遍历并对表达式/语句/声明做静态检查
     // 3) 将表达式结果类型写回 pool.node_types
-    std::expected<TypeCheckResult, TypeCheckErrorResult> check(syntax::ASTPool &pool, syntax::ASTNodeIndex root);
+    std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> check(syntax::ASTPool &pool,
+                                                                           syntax::ASTNodeIndex root);
 
   private:
     syntax::ASTPool *currentPool = nullptr;
-    std::vector<TypeError> errors;
+    niki::diagnostic::DiagnosticBag diagnostics;
     NKType currentReturnType = NKType::makeUnknown();
     bool inFunction = false;
 

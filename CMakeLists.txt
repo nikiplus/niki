@@ -10,6 +10,8 @@ find_package(EnTT CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 
 add_library(niki_core STATIC
+    src/diagnostic/diagnostic.cpp
+    src/diagnostic/renderer.cpp
     src/syntax/global_interner.cpp
     src/syntax/scanner.cpp
     src/syntax/parse.cpp
@@ -32,6 +34,7 @@ add_library(niki_core STATIC
     src/runtime/launcher.cpp
     src/vm/vm.cpp
     src/debug/logger.cpp
+    src/debug/diagnostic_logger.cpp
 )
 
 target_include_directories(niki_core
@@ -56,8 +59,11 @@ enable_testing()
 
 # 注意这里的路径是 test/，不是 tests/
 add_executable(niki_tests 
+    test/syntax/scanner_test.cpp
     test/syntax/parser_test.cpp
     test/syntax/compiler_test.cpp
+    test/linker/linker_test.cpp
+    test/runtime/launcher_test.cpp
 )
 
 # 注意 GTest::gtest_main 的大小写

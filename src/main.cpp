@@ -1,4 +1,5 @@
 #include "niki/driver/driver.hpp"
+#include "niki/diagnostic/renderer.hpp"
 #include <iostream>
 
 int main(int argc, char *argv[]) {
@@ -16,13 +17,7 @@ int main(int argc, char *argv[]) {
     auto run_result = driver.runProject(argv[1], options);
 
     if (!run_result.has_value()) {
-        for (const auto &driver_error : run_result.error()) {
-            std::cerr << "[错误]" << driver_error.message;
-            if (!driver_error.file.empty()) {
-                std::cerr << " @ " << driver_error.file;
-                std::cerr << "\n";
-            }
-        }
+        std::cerr << niki::diagnostic::renderDiagnosticBagText(run_result.error()) << "\n";
         return 65;
     }
     return 0;

@@ -1,4 +1,5 @@
 #include "ast_printer.hpp"
+#include "niki/diagnostic/renderer.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/parser.hpp"
 #include "niki/syntax/scanner.hpp"
@@ -21,27 +22,25 @@ class ParserTest : public ::testing::Test {
         Scanner scanner(source);
         std::vector<Token> tokens;
 
-        bool scannerHadError = false;
         for (;;) {
             Token token = scanner.scanToken();
             tokens.push_back(token);
-            if (token.type == TokenType::TOKEN_ERROR) {
-                scannerHadError = true;
-            }
             if (token.type == TokenType::TOKEN_EOF) {
                 break;
             }
         }
+        auto scannerDiagnostics = scanner.takeDiagnostics();
 
-        // 确保词法分析没有发生硬错误
-        EXPECT_FALSE(scannerHadError) << "Scanner failed on input: " << source;
+        EXPECT_TRUE(scannerDiagnostics.empty())
+            << "Scanner failed on input: " << source << "\n"
+            << niki::diagnostic::renderDiagnosticBagText(scannerDiagnostics);
 
         Parser parser(source, tokens, pool);
-        ASTNodeIndex root = parser.parse();
-
-        // 我们期望在这些正面测试用例中，Parser 也不能报错
-        EXPECT_FALSE(parser.hasError()) << "Parser failed on input: " << source;
-        return root;
+        ParseResult result = parser.parse();
+        EXPECT_TRUE(result.diagnostics.empty())
+            << "Parser failed on input: " << source << "\n"
+            << niki::diagnostic::renderDiagnosticBagText(result.diagnostics);
+        return result.root;
     }
 
     void SetUp() override {

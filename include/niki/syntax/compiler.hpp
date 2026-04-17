@@ -1,6 +1,7 @@
 #pragma once
 #include "ast.hpp"
 
+#include "niki/diagnostic/diagnostic.hpp"
 #include "niki/semantic/nktype.hpp"
 #include "niki/vm/chunk.hpp"
 #include "niki/vm/object.hpp"
@@ -66,15 +67,6 @@ class RegisterAllocator {
     }
 };
 
-struct CompileError {
-    uint32_t line;
-    uint32_t column;
-    std::string message;
-};
-struct CompileResultError {
-    std::vector<CompileError> errors;
-};
-
 class Compiler {
   public:
     /*哼哼，std::expected,新时代的好东西(C++23方法)。
@@ -86,10 +78,11 @@ class Compiler {
     // 2) 建立顶层 ObjFunction 作为脚本容器
     // 3) 深度遍历 AST 发射字节码
     // 4) 汇总并返回最终 Chunk 或错误池
-    std::expected<niki::Chunk, CompileResultError> compile(const ASTPool &pool,                            // 旁侧表等
-                                                           ASTNodeIndex root,                              // 解析根节点
-                                                           const std::vector<semantic::NKType> &typeTable, // 类型表
-                                                           niki::Chunk initial_chunk = niki::Chunk{}       // 实际代码块
+    std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag>
+    compile(const ASTPool &pool,                            // 旁侧表等
+            ASTNodeIndex root,                              // 解析根节点
+            const std::vector<semantic::NKType> &typeTable, // 类型表
+            niki::Chunk initial_chunk = niki::Chunk{}       // 实际代码块
     );
 
   private:
@@ -106,7 +99,7 @@ class Compiler {
     int scopeDepth = 0;
 
     bool hadError = false;
-    std::vector<CompileError> errorPool;
+    niki::diagnostic::DiagnosticBag diagnostics;
     std::array<uint32_t, static_cast<size_t>(vm::OPCODE::OP_COUNT)> opcodeEmitCount{};
     uint32_t warningCount = 0;
     uint32_t traceIndent = 0;

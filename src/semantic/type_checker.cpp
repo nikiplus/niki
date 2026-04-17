@@ -7,10 +7,10 @@
 
 namespace niki::semantic {
 
-std::expected<TypeCheckResult, TypeCheckErrorResult> TypeChecker::check(syntax::ASTPool &pool,
-                                                                        syntax::ASTNodeIndex root) {
+std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(syntax::ASTPool &pool,
+                                                                                    syntax::ASTNodeIndex root) {
     currentPool = &pool;
-    errors.clear();
+    diagnostics = niki::diagnostic::DiagnosticBag{};
     symbols.clear();
     currentDepth = 0;
     inFunction = false;
@@ -23,8 +23,8 @@ std::expected<TypeCheckResult, TypeCheckErrorResult> TypeChecker::check(syntax::
 
     currentPool = nullptr;
 
-    if (!errors.empty()) {
-        return std::unexpected(TypeCheckErrorResult{std::move(errors)});
+    if (!diagnostics.empty()) {
+        return std::unexpected(std::move(diagnostics));
     }
 
     return TypeCheckResult{};
@@ -133,7 +133,10 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
 };
 
 void TypeChecker::reportError(uint32_t line, uint32_t column, const std::string &message) {
-    errors.push_back({line, column, message});
+    niki::diagnostic::SourceSpan span{};
+    span.line = line;
+    span.column = column;
+    diagnostics.addError(niki::diagnostic::DiagnosticStage::Semantic, "SEMANTIC_ERROR", message, std::move(span));
 }
 
 NKType TypeChecker::checkNode(syntax::ASTNodeIndex nodeIdx) {

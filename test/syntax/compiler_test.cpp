@@ -1,4 +1,6 @@
 #include "niki/semantic/type_checker.hpp"
+#include "niki/diagnostic/diagnostic.hpp"
+#include "niki/diagnostic/renderer.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
 #include "niki/syntax/parser.hpp"
@@ -21,42 +23,38 @@ class CompilerTest : public ::testing::Test {
     ASTPool pool{interner};
 
     // 辅助函数：直接将源码编译为 Chunk
-    std::expected<niki::Chunk, CompileResultError> compileSource(std::string_view source) {
+    std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> compileSource(std::string_view source) {
         Scanner scanner(source);
         std::vector<Token> tokens;
 
-        bool scannerHadError = false;
         for (;;) {
             Token token = scanner.scanToken();
             tokens.push_back(token);
-            if (token.type == TokenType::TOKEN_ERROR) {
-                scannerHadError = true;
-            }
             if (token.type == TokenType::TOKEN_EOF) {
                 break;
             }
         }
+        auto scanner_diagnostics = scanner.takeDiagnostics();
 
-        EXPECT_FALSE(scannerHadError) << "Scanner failed on input: " << source;
+        EXPECT_TRUE(scanner_diagnostics.empty())
+            << "Scanner failed on input: " << source << "\n"
+            << niki::diagnostic::renderDiagnosticBagText(scanner_diagnostics);
 
         Parser parser(source, tokens, pool);
-        ASTNodeIndex root = parser.parse();
-        EXPECT_FALSE(parser.hasError()) << "Parser failed on input: " << source;
+        ParseResult parse_result = parser.parse();
+        EXPECT_TRUE(parse_result.diagnostics.empty())
+            << "Parser failed on input: " << source << "\n"
+            << niki::diagnostic::renderDiagnosticBagText(parse_result.diagnostics);
 
         niki::semantic::TypeChecker checker;
-        auto checkResult = checker.check(pool, root);
+        auto checkResult = checker.check(pool, parse_result.root);
         if (!checkResult.has_value()) {
-            CompileResultError compile_errors;
-            for (const auto &err : checkResult.error().errors) {
-                compile_errors.errors.push_back(
-                    CompileError{.line = err.line, .column = err.column, .message = err.message});
-            }
-            return std::unexpected(compile_errors);
+            return std::unexpected(std::move(checkResult.error()));
         }
 
         Compiler compiler;
         auto type_table = pool.node_types;
-        return compiler.compile(pool, root, type_table);
+        return compiler.compile(pool, parse_result.root, type_table);
     }
 
     void SetUp() override { pool.clear(); }
@@ -160,9 +158,10 @@ TEST_F(CompilerTest, CompileFullScript_TestNK) {
 
     // 验证编译是否成功
     if (!result.has_value()) {
-        const auto &errors = result.error().errors;
+        const auto &errors = result.error().all();
         for (const auto &err : errors) {
-            std::cerr << "Compile Error at line " << err.line << ":" << err.column << " - " << err.message << std::endl;
+            std::cerr << "Compile Error at line " << err.span.line << ":" << err.span.column << " - " << err.message
+                      << std::endl;
         }
         FAIL() << "Compilation failed for test.nk. See console for error details.";
     }
@@ -207,10 +206,10 @@ TEST_F(CompilerTest, CompileInvalidAssignmentTargetReportsLocation) {
     auto result = compileSource("func test() { (1 + 2) = 3; }");
     ASSERT_FALSE(result.has_value());
 
-    const auto &errors = result.error().errors;
+    const auto &errors = result.error().all();
     ASSERT_FALSE(errors.empty());
-    EXPECT_EQ(errors[0].line, 1u);
-    EXPECT_EQ(errors[0].column, 15u);
+    EXPECT_EQ(errors[0].span.line, 1u);
+    EXPECT_EQ(errors[0].span.column, 15u);
     EXPECT_EQ(errors[0].message, "Invalid assignment target. Only simple variables are supported currently.");
 }
 
@@ -258,10 +257,10 @@ func test() {
 }
 )");
     ASSERT_FALSE(result.has_value());
-    const auto &errors = result.error().errors;
+    const auto &errors = result.error().all();
     ASSERT_FALSE(errors.empty());
-    EXPECT_EQ(errors[0].line, 5u);
-    EXPECT_EQ(errors[0].column, 5u);
+    EXPECT_EQ(errors[0].span.line, 5u);
+    EXPECT_EQ(errors[0].span.column, 5u);
     EXPECT_EQ(errors[0].message, "Variable already declared in this scope.");
 }
 
@@ -289,10 +288,10 @@ var y = x;
 }
 )");
     ASSERT_FALSE(result.has_value());
-    const auto &errors = result.error().errors;
+    const auto &errors = result.error().all();
     ASSERT_FALSE(errors.empty());
-    EXPECT_EQ(errors[0].line, 6u);
-    EXPECT_EQ(errors[0].column, 9u);
+    EXPECT_EQ(errors[0].span.line, 6u);
+    EXPECT_EQ(errors[0].span.column, 9u);
     EXPECT_EQ(errors[0].message, "Undeclared variable.");
 }
 
@@ -330,44 +329,38 @@ TEST_F(CompilerTest, SharedInterner_SameNameGetsSameIdAcrossPools) {
 }
 
 TEST_F(CompilerTest, SharedInterner_ChunkStringPoolStableAcrossCompiles) {
-    auto compile_with_pool = [](ASTPool &pool, std::string_view source) -> std::expected<niki::Chunk, CompileResultError> {
+    auto compile_with_pool =
+        [](ASTPool &pool, std::string_view source) -> std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> {
         Scanner scanner(source);
         std::vector<Token> tokens;
 
-        bool scanner_had_error = false;
         for (;;) {
             Token token = scanner.scanToken();
             tokens.push_back(token);
-            if (token.type == TokenType::TOKEN_ERROR) {
-                scanner_had_error = true;
-            }
             if (token.type == TokenType::TOKEN_EOF) {
                 break;
             }
         }
-        if (scanner_had_error) {
-            return std::unexpected(CompileResultError{{CompileError{0, 0, "Scanner failed."}}});
+        auto scanner_diagnostics = scanner.takeDiagnostics();
+        if (!scanner_diagnostics.empty()) {
+            return std::unexpected(std::move(scanner_diagnostics));
         }
 
         Parser parser(source, tokens, pool);
-        ASTNodeIndex root = parser.parse();
-        if (parser.hasError()) {
-            return std::unexpected(CompileResultError{{CompileError{0, 0, "Parser failed."}}});
+        ParseResult parse_result = parser.parse();
+        if (!parse_result.diagnostics.empty()) {
+            return std::unexpected(std::move(parse_result.diagnostics));
         }
 
         niki::semantic::TypeChecker checker;
-        auto check_result = checker.check(pool, root);
+        auto check_result = checker.check(pool, parse_result.root);
         if (!check_result.has_value()) {
-            CompileResultError compile_errors;
-            for (const auto &err : check_result.error().errors) {
-                compile_errors.errors.push_back(CompileError{err.line, err.column, err.message});
-            }
-            return std::unexpected(compile_errors);
+            return std::unexpected(std::move(check_result.error()));
         }
 
         Compiler compiler;
         auto type_table = pool.node_types;
-        return compiler.compile(pool, root, type_table);
+        return compiler.compile(pool, parse_result.root, type_table);
     };
 
     ASTPool pool_a{interner};

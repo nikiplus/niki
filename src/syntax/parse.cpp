@@ -1,15 +1,10 @@
 #include "niki/debug/logger.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/parser.hpp"
-#include "niki/syntax/parser_precedence.hpp"
 #include "niki/syntax/token.hpp"
-#include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <cstdio>
-#include <iostream>
 #include <span>
-#include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -34,7 +29,7 @@ Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &
     advance();
 };
 
-ASTNodeIndex Parser::parse() {
+ParseResult Parser::parse() {
     niki::debug::debug("parser", "start parse, token_count={}", tokens.size());
     // 创建一个临时数组以收集所有顶层声明
     std::vector<ASTNodeIndex> declarations;
@@ -52,7 +47,10 @@ ASTNodeIndex Parser::parse() {
 
     ASTNodePayload payload{};
     payload.module_decl.body = body;
-    return emitNode(NodeType::ModuleDecl, payload);
+    ParseResult result;
+    result.root = emitNode(NodeType::ModuleDecl, payload);
+    result.diagnostics = std::move(diagnostics);
+    return result;
 };
 
 //---游标控制---
@@ -138,12 +136,19 @@ void Parser::errorAtCurrent(const char *message) {
     if (panicMode)
         return;
     panicMode = true;
+    niki::diagnostic::SourceSpan span{};
+    span.line = current.line;
+    span.column = current.column;
+    if (current.type != TokenType::TOKEN_EOF) {
+        span.length = current.length;
+    }
+    diagnostics.addError(niki::diagnostic::DiagnosticStage::Parser, "PARSER_ERROR", message, std::move(span));
     if (current.type == TokenType::TOKEN_EOF) {
-        spdlog::error("[parser] at {}:{} - {}", current.line, current.column, message);
+        niki::debug::error("parser", "at {}:{} - {}", current.line, current.column, message);
     } else {
         std::string_view lexeme = source.substr(current.start_offset, current.length);
-        spdlog::error("[parser] at {}:{} token={} lexeme='{}' - {}", current.line, current.column,
-                      toString(current.type), lexeme, message);
+        niki::debug::error("parser", "at {}:{} token={} lexeme='{}' - {}", current.line, current.column,
+                           toString(current.type), lexeme, message);
     }
     hadError = true;
 };

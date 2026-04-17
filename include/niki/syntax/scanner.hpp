@@ -1,4 +1,5 @@
 #pragma once
+#include "niki/diagnostic/diagnostic.hpp"
 #include "token.hpp"
 #include <cstdint>
 #include <string_view>
@@ -41,8 +42,10 @@ class Scanner {
      *当然，!只读!本身也有其缺点，即，当“被只读”对象被删除时，其指向的内存空间也会被释放，而如果scanner还在使用这个内存空间，就会导致程序崩溃。
      *不过在我们当前使用情境下，由于scanner只是对源字符串进行扫描，而不会对其进行修改，因此我们可以放心的使用string_view，而不用担心内存泄漏的问题。
      */
-    Scanner(std::string_view source); // 返回一个Scanner对象
+    Scanner(std::string_view source, std::string_view source_path = ""); // 返回一个Scanner对象
     Token scanToken();                // 核心API，每次调用产出一个token，也是我们的主扫描函数。
+    bool hasDiagnostics() const { return diagnostics.hasErrors(); }
+    niki::diagnostic::DiagnosticBag takeDiagnostics();
 
     // 在这补充一点知识，什么是有限状态机？
     // 用简单的话来讲，有限状态机就是一个“一次只能做一件事，且知道什么时候换一件事做”的逻辑模型。
@@ -51,6 +54,7 @@ class Scanner {
     // 从这个角度而言，简单点理解的话整个scanner事实上就是一个巨大的if else
   private:
     std::string_view source; // 定义来源
+    std::string_view sourcePath;
     /*我有必要抨击C++这个名为string的玩意儿，它根本不像它看起来那么简单
     *大致的讲，string里存的根本不是“一连串字符”的一个整体，而是“多个字符切片”。
     *也就是说，假设我存了一个名为“cnmdC++”的字符串，它在string里事实上是这样的。
@@ -137,6 +141,7 @@ class Scanner {
     /*具体的TOKEN构造函数*/
     Token makeToken(TokenType type); // 构造token
     Token errorToken();              // 构造错误token->无需返回错误信息，错误信息在parse阶段抛出
+    niki::diagnostic::DiagnosticBag diagnostics;
 
     // 具体的扫描逻辑
 };
