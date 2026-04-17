@@ -255,33 +255,35 @@ void Compiler::emitOp(vm::OPCODE op, uint32_t line, uint32_t column) {
     emitByte(static_cast<uint8_t>(op), line, column);
 }
 
-void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint32_t line, uint32_t column) {
+void Compiler::emitOp(vm::OPCODE op, uint8_t operand_a, uint32_t line, uint32_t column) {
     opcodeEmitCount[static_cast<size_t>(op)]++;
     emitByte(static_cast<uint8_t>(op), line, column);
-    emitByte(a, line, column);
+    emitByte(operand_a, line, column);
 }
 
-void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint32_t line, uint32_t column) {
+void Compiler::emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint32_t line, uint32_t column) {
     opcodeEmitCount[static_cast<size_t>(op)]++;
     emitByte(static_cast<uint8_t>(op), line, column);
-    emitByte(a, line, column);
-    emitByte(b, line, column);
+    emitByte(operand_a, line, column);
+    emitByte(operand_b, line, column);
 }
 
-void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint32_t line, uint32_t column) {
+void Compiler::emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint8_t operand_c, uint32_t line,
+                      uint32_t column) {
     opcodeEmitCount[static_cast<size_t>(op)]++;
     emitByte(static_cast<uint8_t>(op), line, column);
-    emitByte(a, line, column);
-    emitByte(b, line, column);
-    emitByte(c, line, column);
+    emitByte(operand_a, line, column);
+    emitByte(operand_b, line, column);
+    emitByte(operand_c, line, column);
 }
-void Compiler::emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint32_t line, uint32_t column) {
+void Compiler::emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint8_t operand_c, uint8_t operand_d,
+                      uint32_t line, uint32_t column) {
     opcodeEmitCount[static_cast<size_t>(op)]++;
     emitByte(static_cast<uint8_t>(op), line, column);
-    emitByte(a, line, column);
-    emitByte(b, line, column);
-    emitByte(c, line, column);
-    emitByte(d, line, column);
+    emitByte(operand_a, line, column);
+    emitByte(operand_b, line, column);
+    emitByte(operand_c, line, column);
+    emitByte(operand_d, line, column);
 }
 
 void Compiler::emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column) {

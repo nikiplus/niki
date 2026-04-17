@@ -177,10 +177,12 @@ class Compiler {
     // 所有 opcode 输出都经由 emitOp/emitByte，确保 line/column 元数据一致写入。
     void emitByte(uint8_t byte, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint32_t line, uint32_t column);
-    void emitOp(vm::OPCODE op, uint8_t a, uint32_t line, uint32_t column);
-    void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint32_t line, uint32_t column);
-    void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint32_t line, uint32_t column);
-    void emitOp(vm::OPCODE op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint32_t line, uint32_t column);
+    void emitOp(vm::OPCODE op, uint8_t operand_a, uint32_t line, uint32_t column);
+    void emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint32_t line, uint32_t column);
+    void emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint8_t operand_c, uint32_t line,
+                uint32_t column);
+    void emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint8_t operand_c, uint8_t operand_d,
+                uint32_t line, uint32_t column);
     void emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column);
     struct NodeContext {
         const syntax::ASTNode &node;
