@@ -17,7 +17,8 @@ using namespace niki::vm;
 // 基础的编译器测试夹具
 class CompilerTest : public ::testing::Test {
   protected:
-    ASTPool pool;
+    GlobalInterner interner;
+    ASTPool pool{interner};
 
     // 辅助函数：直接将源码编译为 Chunk
     std::expected<niki::Chunk, CompileResultError> compileSource(std::string_view source) {
@@ -45,11 +46,12 @@ class CompilerTest : public ::testing::Test {
         niki::semantic::TypeChecker checker;
         auto checkResult = checker.check(pool, root);
         if (!checkResult.has_value()) {
-            CompileResultError cre;
+            CompileResultError compile_errors;
             for (const auto &err : checkResult.error().errors) {
-                cre.errors.push_back(CompileError{.line = err.line, .column = err.column, .message = err.message});
+                compile_errors.errors.push_back(
+                    CompileError{.line = err.line, .column = err.column, .message = err.message});
             }
-            return std::unexpected(cre);
+            return std::unexpected(compile_errors);
         }
 
         Compiler compiler;
@@ -313,4 +315,76 @@ TEST_F(CompilerTest, CompileAssignmentOperator_BitXorEqualEmitsBitXor) {
     ASSERT_TRUE(result.has_value());
     const niki::Chunk &chunk = result.value();
     EXPECT_TRUE(hasOpcode(chunk, OPCODE::OP_BIT_XOR));
+}
+
+TEST_F(CompilerTest, SharedInterner_SameNameGetsSameIdAcrossPools) {
+    ASTPool pool_a{interner};
+    ASTPool pool_b{interner};
+
+    uint32_t main_id_a = pool_a.internString("main");
+    uint32_t main_id_b = pool_b.internString("main");
+    uint32_t helper_id = pool_b.internString("helper");
+
+    EXPECT_EQ(main_id_a, main_id_b);
+    EXPECT_NE(main_id_a, helper_id);
+}
+
+TEST_F(CompilerTest, SharedInterner_ChunkStringPoolStableAcrossCompiles) {
+    auto compile_with_pool = [](ASTPool &pool, std::string_view source) -> std::expected<niki::Chunk, CompileResultError> {
+        Scanner scanner(source);
+        std::vector<Token> tokens;
+
+        bool scanner_had_error = false;
+        for (;;) {
+            Token token = scanner.scanToken();
+            tokens.push_back(token);
+            if (token.type == TokenType::TOKEN_ERROR) {
+                scanner_had_error = true;
+            }
+            if (token.type == TokenType::TOKEN_EOF) {
+                break;
+            }
+        }
+        if (scanner_had_error) {
+            return std::unexpected(CompileResultError{{CompileError{0, 0, "Scanner failed."}}});
+        }
+
+        Parser parser(source, tokens, pool);
+        ASTNodeIndex root = parser.parse();
+        if (parser.hasError()) {
+            return std::unexpected(CompileResultError{{CompileError{0, 0, "Parser failed."}}});
+        }
+
+        niki::semantic::TypeChecker checker;
+        auto check_result = checker.check(pool, root);
+        if (!check_result.has_value()) {
+            CompileResultError compile_errors;
+            for (const auto &err : check_result.error().errors) {
+                compile_errors.errors.push_back(CompileError{err.line, err.column, err.message});
+            }
+            return std::unexpected(compile_errors);
+        }
+
+        Compiler compiler;
+        auto type_table = pool.node_types;
+        return compiler.compile(pool, root, type_table);
+    };
+
+    ASTPool pool_a{interner};
+    ASTPool pool_b{interner};
+
+    auto chunk_a = compile_with_pool(pool_a, "func main() -> int { return 1; }");
+    auto chunk_b = compile_with_pool(pool_b, "func helper() -> int { return 2; } func main() -> int { return helper(); }");
+
+    ASSERT_TRUE(chunk_a.has_value());
+    ASSERT_TRUE(chunk_b.has_value());
+
+    auto main_id_opt = interner.find("main");
+    ASSERT_TRUE(main_id_opt.has_value());
+    uint32_t main_id = main_id_opt.value();
+
+    ASSERT_LT(main_id, chunk_a->string_pool.size());
+    ASSERT_LT(main_id, chunk_b->string_pool.size());
+    EXPECT_EQ(chunk_a->string_pool[main_id], "main");
+    EXPECT_EQ(chunk_b->string_pool[main_id], "main");
 }
