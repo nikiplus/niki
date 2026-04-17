@@ -8,13 +8,9 @@
 #include "niki/vm/object.hpp"
 #include "niki/vm/opcode.hpp"
 #include "niki/vm/value.hpp"
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <iostream>
-#include <span>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <utility>
