@@ -1,3 +1,4 @@
+#include "niki/diagnostic/codes.hpp"
 #include "niki/semantic/type_checker.hpp"
 #include "niki/semantic/nktype.hpp"
 #include "niki/syntax/ast.hpp"
@@ -133,10 +134,10 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
 };
 
 void TypeChecker::reportError(uint32_t line, uint32_t column, const std::string &message) {
-    niki::diagnostic::SourceSpan span{};
-    span.line = line;
-    span.column = column;
-    diagnostics.addError(niki::diagnostic::DiagnosticStage::Semantic, "SEMANTIC_ERROR", message, std::move(span));
+    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError,
+                            message,
+                            niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "",
+                                                             line, column));
 }
 
 NKType TypeChecker::checkNode(syntax::ASTNodeIndex nodeIdx) {

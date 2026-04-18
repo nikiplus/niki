@@ -73,6 +73,7 @@ uint32_t ASTPool::addConstant(vm::Value value) {
     return index;
 };
 void ASTPool::clear() {
+    source_path.clear();
     nodes.clear();
     locations.clear();
     node_types.clear();

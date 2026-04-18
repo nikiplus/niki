@@ -1,4 +1,5 @@
 #include "niki/driver/driver.hpp"
+#include "niki/diagnostic/codes.hpp"
 #include "niki/linker/linker.hpp"
 #include "niki/runtime/launcher.hpp"
 #include "niki/semantic/type_checker.hpp"
@@ -24,7 +25,8 @@ namespace niki::driver {
 
 static niki::diagnostic::DiagnosticBag makeDriverError(std::string code, std::string message, std::string file = "") {
     niki::diagnostic::DiagnosticBag bag;
-    bag.addError(niki::diagnostic::DiagnosticStage::Driver, std::move(code), std::move(message), {.file = file});
+    bag.reportError(niki::diagnostic::DiagnosticStage::Driver, std::move(code), std::move(message),
+                    niki::diagnostic::makeSourceSpan(std::move(file)));
     return bag;
 }
 
@@ -79,7 +81,8 @@ Driver::compileOneModule(const std::string &source_path, syntax::GlobalInterner 
     std::ifstream in(source_path, std::ios::binary);
 
     if (!in.is_open()) {
-        return std::unexpected(makeDriverError("DRIVER_IO_ERROR", "无法打开源文件", source_path));
+        return std::unexpected(
+            makeDriverError(niki::diagnostic::codes::driver::IoError, "无法打开源文件", source_path));
     }
 
     std::stringstream buffer;
@@ -106,7 +109,8 @@ Driver::compileOneModule(const std::string &source_path, syntax::GlobalInterner 
 
     // 2) 语法解析：构建 AST（ASTPool 使用共享 interner，跨模块 name_id 一致）。
     syntax::ASTPool pool(interner);
-    syntax::Parser parser(source, tokens, pool);
+    pool.source_path = source_path;
+    syntax::Parser parser(source, tokens, pool, source_path);
     auto parse_result = parser.parse();
 
     if (!parse_result.diagnostics.empty()) {
@@ -186,7 +190,7 @@ std::expected<vm::Value, niki::diagnostic::DiagnosticBag> Driver::runProject(con
     // D. 交给 launcher 在 VM 中启动
     auto files = collectNkFiles(root_dir, options);
     if (files.empty()) {
-        return std::unexpected(makeDriverError("DRIVER_NO_INPUT", "未找到 .nk 文件", root_dir));
+        return std::unexpected(makeDriverError(niki::diagnostic::codes::driver::NoInput, "未找到 .nk 文件", root_dir));
     }
     auto compiled = compileAll(files);
 

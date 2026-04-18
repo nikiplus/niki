@@ -1,4 +1,5 @@
 #include "niki/debug/logger.hpp"
+#include "niki/diagnostic/codes.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/parser.hpp"
 #include "niki/syntax/token.hpp"
@@ -11,8 +12,8 @@
 
 using namespace niki::syntax;
 
-Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool)
-    : source(source), tokens(tokens), astPool(pool), tokenIndex(0) {
+Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool, std::string_view source_path)
+    : source(source), sourcePath(source_path), tokens(tokens), astPool(pool), tokenIndex(0) {
     // 在这里，我们进行了一次估算，平均每2~3个token产生一个ast节点。
     // 借由此，我们可一次性向操作系统申请一块足够长的连续内存块，但同时保持有效长度为0
     // 这可以彻底消灭我们后续解析过程中push_back()可能引发的数据搬运。
@@ -136,20 +137,10 @@ void Parser::errorAtCurrent(const char *message) {
     if (panicMode)
         return;
     panicMode = true;
-    niki::diagnostic::SourceSpan span{};
-    span.line = current.line;
-    span.column = current.column;
-    if (current.type != TokenType::TOKEN_EOF) {
-        span.length = current.length;
-    }
-    diagnostics.addError(niki::diagnostic::DiagnosticStage::Parser, "PARSER_ERROR", message, std::move(span));
-    if (current.type == TokenType::TOKEN_EOF) {
-        niki::debug::error("parser", "at {}:{} - {}", current.line, current.column, message);
-    } else {
-        std::string_view lexeme = source.substr(current.start_offset, current.length);
-        niki::debug::error("parser", "at {}:{} token={} lexeme='{}' - {}", current.line, current.column,
-                           toString(current.type), lexeme, message);
-    }
+    diagnostics.reportError(
+        niki::diagnostic::DiagnosticStage::Parser, niki::diagnostic::codes::parser::GenericError, message,
+        niki::diagnostic::makeSourceSpan(std::string(sourcePath), current.line, current.column,
+                                         current.type != TokenType::TOKEN_EOF ? current.length : 0));
     hadError = true;
 };
 void Parser::synchronize() {

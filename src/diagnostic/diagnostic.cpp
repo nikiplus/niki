@@ -5,19 +5,42 @@
 
 namespace niki::diagnostic {
 
+SourceSpan makeSourceSpan(std::string file, uint32_t line, uint32_t column, uint32_t length) {
+    return SourceSpan{std::move(file), line, column, length};
+}
+
 void DiagnosticBag::add(Diagnostic diagnostic) { diagnostics_.push_back(std::move(diagnostic)); }
 
+void DiagnosticBag::report(DiagnosticStage stage, DiagnosticSeverity severity, std::string code, std::string message,
+                           SourceSpan span) {
+    if ((span.line > 0 || span.column > 0) && span.file.empty()) {
+        span.file = "<unknown>";
+    }
+    diagnostics_.push_back({stage, severity, std::move(code), std::move(message), std::move(span), {}});
+}
+
+void DiagnosticBag::reportError(DiagnosticStage stage, std::string code, std::string message, SourceSpan span) {
+    report(stage, DiagnosticSeverity::Error, std::move(code), std::move(message), std::move(span));
+}
+
+void DiagnosticBag::reportWarning(DiagnosticStage stage, std::string code, std::string message, SourceSpan span) {
+    report(stage, DiagnosticSeverity::Warning, std::move(code), std::move(message), std::move(span));
+}
+
+void DiagnosticBag::reportInfo(DiagnosticStage stage, std::string code, std::string message, SourceSpan span) {
+    report(stage, DiagnosticSeverity::Info, std::move(code), std::move(message), std::move(span));
+}
+
 void DiagnosticBag::addError(DiagnosticStage stage, std::string code, std::string message, SourceSpan span) {
-    diagnostics_.push_back({stage, DiagnosticSeverity::Error, std::move(code), std::move(message), std::move(span), {}});
+    reportError(stage, std::move(code), std::move(message), std::move(span));
 }
 
 void DiagnosticBag::addWarning(DiagnosticStage stage, std::string code, std::string message, SourceSpan span) {
-    diagnostics_.push_back(
-        {stage, DiagnosticSeverity::Warning, std::move(code), std::move(message), std::move(span), {}});
+    reportWarning(stage, std::move(code), std::move(message), std::move(span));
 }
 
 void DiagnosticBag::addInfo(DiagnosticStage stage, std::string code, std::string message, SourceSpan span) {
-    diagnostics_.push_back({stage, DiagnosticSeverity::Info, std::move(code), std::move(message), std::move(span), {}});
+    reportInfo(stage, std::move(code), std::move(message), std::move(span));
 }
 
 void DiagnosticBag::merge(const DiagnosticBag &other) {

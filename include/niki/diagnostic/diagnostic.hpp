@@ -31,6 +31,8 @@ struct SourceSpan {
     uint32_t length = 0;
 };
 
+SourceSpan makeSourceSpan(std::string file = "", uint32_t line = 0, uint32_t column = 0, uint32_t length = 0);
+
 struct Diagnostic {
     DiagnosticStage stage = DiagnosticStage::Unknown;
     DiagnosticSeverity severity = DiagnosticSeverity::Error;
@@ -43,6 +45,12 @@ struct Diagnostic {
 class DiagnosticBag {
   public:
     void add(Diagnostic diagnostic);
+    void report(DiagnosticStage stage, DiagnosticSeverity severity, std::string code, std::string message,
+                SourceSpan span = {});
+    void reportError(DiagnosticStage stage, std::string code, std::string message, SourceSpan span = {});
+    void reportWarning(DiagnosticStage stage, std::string code, std::string message, SourceSpan span = {});
+    void reportInfo(DiagnosticStage stage, std::string code, std::string message, SourceSpan span = {});
+
     void addError(DiagnosticStage stage, std::string code, std::string message, SourceSpan span = {});
     void addWarning(DiagnosticStage stage, std::string code, std::string message, SourceSpan span = {});
     void addInfo(DiagnosticStage stage, std::string code, std::string message, SourceSpan span = {});

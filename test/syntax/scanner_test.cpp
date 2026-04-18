@@ -1,3 +1,4 @@
+#include "niki/diagnostic/codes.hpp"
 #include "niki/syntax/scanner.hpp"
 #include "niki/syntax/token.hpp"
 #include <chrono>
@@ -97,7 +98,7 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         EXPECT_EQ(token.type, TokenType::TOKEN_ERROR);
         auto diagnostics = scanner.takeDiagnostics();
         ASSERT_FALSE(diagnostics.empty());
-        EXPECT_EQ(diagnostics.all()[0].code, "SCANNER_INVALID_TOKEN");
+        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codes::scanner::InvalidToken);
     }
     {
         std::string source = "\"未闭合的字符串";
@@ -106,7 +107,7 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         EXPECT_EQ(token.type, TokenType::TOKEN_ERROR);
         auto diagnostics = scanner.takeDiagnostics();
         ASSERT_FALSE(diagnostics.empty());
-        EXPECT_EQ(diagnostics.all()[0].code, "SCANNER_INVALID_TOKEN");
+        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codes::scanner::InvalidToken);
     }
     {
         std::string source = "\'";
@@ -115,7 +116,7 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         EXPECT_EQ(token.type, TokenType::TOKEN_ERROR);
         auto diagnostics = scanner.takeDiagnostics();
         ASSERT_FALSE(diagnostics.empty());
-        EXPECT_EQ(diagnostics.all()[0].code, "SCANNER_INVALID_TOKEN");
+        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codes::scanner::InvalidToken);
     }
     {
         std::string source = "\'ab\'";
@@ -124,7 +125,7 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         EXPECT_EQ(token.type, TokenType::TOKEN_ERROR);
         auto diagnostics = scanner.takeDiagnostics();
         ASSERT_FALSE(diagnostics.empty());
-        EXPECT_EQ(diagnostics.all()[0].code, "SCANNER_INVALID_TOKEN");
+        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codes::scanner::InvalidToken);
     }
 }
 

@@ -1,3 +1,4 @@
+#include "niki/diagnostic/codes.hpp"
 #include "niki/linker/linker.hpp"
 #include "niki/vm/object.hpp"
 #include "niki/vm/value.hpp"
@@ -79,7 +80,8 @@ std::expected<LinkedProgram, niki::diagnostic::DiagnosticBag> Linker::link(const
             empty.entry_name_id = UINT32_MAX;
             return empty;
         }
-        diagnostics.addError(niki::diagnostic::DiagnosticStage::Linker, "LINKER_ENTRY_NOT_FOUND", "无可链接模块");
+        diagnostics.reportError(niki::diagnostic::DiagnosticStage::Linker, niki::diagnostic::codes::linker::EntryNotFound,
+                                "无可链接模块");
         return std::unexpected(std::move(diagnostics));
     }
 
@@ -111,10 +113,10 @@ std::expected<LinkedProgram, niki::diagnostic::DiagnosticBag> Linker::link(const
             if (existing_owner == name_to_owner.end()) {
                 name_to_owner.emplace(symbol_def.name, symbol_def.module_path);
             } else {
-                diagnostics.addError(
-                    niki::diagnostic::DiagnosticStage::Linker, "LINKER_DUPLICATE_SYMBOL",
+                diagnostics.reportError(
+                    niki::diagnostic::DiagnosticStage::Linker, niki::diagnostic::codes::linker::DuplicateSymbol,
                     "重复定义符号：\"" + symbol_def.name + "\"",
-                    {.file = symbol_def.module_path});
+                    niki::diagnostic::makeSourceSpan(symbol_def.module_path));
             }
             if (symbol_def.name == options.entry_name) {
                 entry_id = symbol_def.id;
@@ -124,11 +126,11 @@ std::expected<LinkedProgram, niki::diagnostic::DiagnosticBag> Linker::link(const
     }
 
     if (entry_count > 1) {
-        diagnostics.addError(niki::diagnostic::DiagnosticStage::Linker, "LINKER_MULTIPLE_ENTRY",
-                             "检测到多个入口函数\"" + options.entry_name + "\"");
+        diagnostics.reportError(niki::diagnostic::DiagnosticStage::Linker, niki::diagnostic::codes::linker::MultipleEntry,
+                                "检测到多个入口函数\"" + options.entry_name + "\"");
     } else if (entry_count == 0 && !options.allow_no_entry) {
-        diagnostics.addError(niki::diagnostic::DiagnosticStage::Linker, "LINKER_ENTRY_NOT_FOUND",
-                             "未找到入口函数\"" + options.entry_name + "\"");
+        diagnostics.reportError(niki::diagnostic::DiagnosticStage::Linker, niki::diagnostic::codes::linker::EntryNotFound,
+                                "未找到入口函数\"" + options.entry_name + "\"");
     }
 
     if (!diagnostics.empty()) {

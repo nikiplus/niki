@@ -92,6 +92,7 @@ struct TokenLocation {
 // [syntax + semantic + vm] 整棵 AST 与旁侧数据的唯一持有者（解析 / 语义 / 编译共用）。
 // 字段按「所属阶段」分组；旁侧表与索引对齐原理见 ast.cpp 顶部说明。
 struct ASTPool {
+    std::string source_path;
     // --- [syntax.intern] 内置类型名在 string_pool 中的固定 ID（构造期注入）---
     uint32_t ID_INT = 0;
     uint32_t ID_FLOAT = 1;

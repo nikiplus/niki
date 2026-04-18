@@ -1,4 +1,5 @@
 #include "niki/syntax/scanner.hpp"
+#include "niki/diagnostic/codes.hpp"
 #include "niki/syntax/token.hpp"
 #include <cstdint>
 #include <string>
@@ -519,13 +520,10 @@ Token Scanner::errorToken() {
     token.length = static_cast<uint16_t>(current - start);
     token.line = line;
     token.column = static_cast<uint16_t>(start - lineStart + 1);
-    niki::diagnostic::SourceSpan span{};
-    span.file = std::string(sourcePath);
-    span.line = token.line;
-    span.column = token.column;
-    span.length = token.length;
-    diagnostics.addError(niki::diagnostic::DiagnosticStage::Scanner, "SCANNER_INVALID_TOKEN",
-                         "Invalid or unsupported token.", std::move(span));
+    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Scanner, niki::diagnostic::codes::scanner::InvalidToken,
+                            "Invalid or unsupported token.",
+                            niki::diagnostic::makeSourceSpan(std::string(sourcePath), token.line, token.column,
+                                                             token.length));
     return token;
 };
 

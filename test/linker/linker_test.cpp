@@ -1,3 +1,4 @@
+#include "niki/diagnostic/codes.hpp"
 #include "niki/linker/linker.hpp"
 #include "niki/vm/object.hpp"
 #include "niki/vm/value.hpp"
@@ -37,7 +38,7 @@ TEST(LinkerDiagnosticsTest, DuplicateSymbolProducesDiagnostic) {
     ASSERT_FALSE(result.has_value());
     const auto &diagnostics = result.error().all();
     ASSERT_FALSE(diagnostics.empty());
-    EXPECT_EQ(diagnostics[0].code, "LINKER_DUPLICATE_SYMBOL");
+    EXPECT_EQ(diagnostics[0].code, niki::diagnostic::codes::linker::DuplicateSymbol);
 }
 
 TEST(LinkerDiagnosticsTest, MissingEntryProducesDiagnostic) {
@@ -53,5 +54,5 @@ TEST(LinkerDiagnosticsTest, MissingEntryProducesDiagnostic) {
     ASSERT_FALSE(result.has_value());
     const auto &diagnostics = result.error().all();
     ASSERT_FALSE(diagnostics.empty());
-    EXPECT_EQ(diagnostics[0].code, "LINKER_ENTRY_NOT_FOUND");
+    EXPECT_EQ(diagnostics[0].code, niki::diagnostic::codes::linker::EntryNotFound);
 }

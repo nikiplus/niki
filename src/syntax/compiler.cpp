@@ -1,5 +1,6 @@
 #include "niki/syntax/compiler.hpp"
 
+#include "niki/diagnostic/codes.hpp"
 #include "niki/debug/logger.hpp"
 #include "niki/semantic/nktype.hpp"
 #include "niki/syntax/ast.hpp"
@@ -27,8 +28,8 @@ Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<sema
     // D. 若无错误则导出 chunk + string_pool
     if (!root.isvalid()) {
         niki::diagnostic::DiagnosticBag bag;
-        bag.addError(niki::diagnostic::DiagnosticStage::Compiler, "COMPILER_INVALID_ROOT", "Invalid AST root node.",
-                     {.line = 0, .column = 0});
+        bag.reportError(niki::diagnostic::DiagnosticStage::Compiler, niki::diagnostic::codes::compiler::InvalidRoot,
+                        "Invalid AST root node.");
         return std::unexpected(std::move(bag));
     }
 
@@ -365,8 +366,10 @@ void Compiler::reportError(const Token &token, std::string_view message) {
 }
 
 void Compiler::reportError(uint32_t line, uint32_t column, std::string_view message) {
-    diagnostics.addError(niki::diagnostic::DiagnosticStage::Compiler, "COMPILER_ERROR", std::string(message),
-                         {.line = line, .column = column});
+    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Compiler, niki::diagnostic::codes::compiler::GenericError,
+                            std::string(message),
+                            niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "",
+                                                             line, column));
     hadError = true;
 }
 

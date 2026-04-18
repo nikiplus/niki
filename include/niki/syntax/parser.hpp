@@ -20,7 +20,7 @@ struct ParseResult {
 class Parser {
   public:
     // 严禁 Parser 自行分配内存，必须由调用方 (Compiler) 注入内存池
-    Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool);
+    Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool, std::string_view source_path = "");
     // 解析总入口：
     // 1) 驱动 token 游标向前消费
     // 2) 组织顶层声明或语句为 ProgramRoot
@@ -29,6 +29,7 @@ class Parser {
 
   private:
     std::string_view source; // 获取字节源
+    std::string_view sourcePath;
     std::span<const Token> tokens;
     size_t tokenIndex = 0;
     ASTPool &astPool;

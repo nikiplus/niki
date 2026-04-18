@@ -1,3 +1,4 @@
+#include "niki/diagnostic/codes.hpp"
 #include "niki/runtime/launcher.hpp"
 #include "niki/vm/object.hpp"
 #include "niki/vm/value.hpp"
@@ -19,8 +20,8 @@ std::expected<vm::Value, niki::diagnostic::DiagnosticBag> Launcher::launchProgra
         auto init_ret = vm.executeChunk(chunk, options.print_init_result);
         if (!init_ret.has_value()) {
             niki::diagnostic::DiagnosticBag diagnostics;
-            diagnostics.addError(niki::diagnostic::DiagnosticStage::Launcher, "LAUNCHER_INIT_RUNTIME_ERROR",
-                                 "初始化阶段运行失败");
+            diagnostics.reportError(niki::diagnostic::DiagnosticStage::Launcher,
+                                    niki::diagnostic::codes::launcher::InitRuntimeError, "初始化阶段运行失败");
             return std::unexpected(std::move(diagnostics));
         }
         last_init = init_ret.value();
@@ -35,8 +36,8 @@ std::expected<vm::Value, niki::diagnostic::DiagnosticBag> Launcher::launchProgra
     vm::ObjFunction *entry = vm.lookupGlobalFunctionById(program.entry_name_id);
     if (entry == nullptr) {
         niki::diagnostic::DiagnosticBag diagnostics;
-        diagnostics.addError(niki::diagnostic::DiagnosticStage::Launcher, "LAUNCHER_ENTRY_LOOKUP_FAILED",
-                             "未找到入口函数main");
+        diagnostics.reportError(niki::diagnostic::DiagnosticStage::Launcher,
+                                niki::diagnostic::codes::launcher::EntryLookupFailed, "未找到入口函数main");
         return std::unexpected(std::move(diagnostics));
     }
 
@@ -44,8 +45,8 @@ std::expected<vm::Value, niki::diagnostic::DiagnosticBag> Launcher::launchProgra
     auto entry_ret = vm.executeFunction(entry, options.print_entry_result);
     if (!entry_ret.has_value()) {
         niki::diagnostic::DiagnosticBag diagnostics;
-        diagnostics.addError(niki::diagnostic::DiagnosticStage::Launcher, "LAUNCHER_ENTRY_RUNTIME_ERROR",
-                             "入口函数运行失败");
+        diagnostics.reportError(niki::diagnostic::DiagnosticStage::Launcher,
+                                niki::diagnostic::codes::launcher::EntryRuntimeError, "入口函数运行失败");
         return std::unexpected(std::move(diagnostics));
     }
 
