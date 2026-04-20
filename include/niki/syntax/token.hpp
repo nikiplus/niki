@@ -3,7 +3,8 @@
 #include <string_view>
 /*一定要注意，虽然token和Opcode中很多枚举非常类似，但实际上二者在职责和维度上完全不在一个层面。
 不要直接在脑海中构建，sym_plus=op_Add的映射关系，前者是符号，后者是实际执行的命令。
-我们一定要明确，符号只有被parser翻译为表达式之后，才真切的成为了compiler能解析的opcode
+我们一定要明确，符号只有被parser翻译为表达式之后，才真切的成为了compiler能解析的node，
+而经过compiler的再次转译，我们的node才真正变成了可被执行的opcode
 */
 namespace niki::syntax {
 enum class TokenType : uint8_t {
@@ -95,7 +96,7 @@ enum class TokenType : uint8_t {
     KW_STRING,    // string
     KW_BOOL,      // bool
     KW_VOID,      // void
-    KW_ANY,       // any (逃生舱)
+    KW_ANY,       // any (类型逃生舱)
     KW_TYPE,      // type (类型别名)
     KW_INTERFACE, // interface (接口)
     KW_IMPL,      // impl (实现)
@@ -142,6 +143,7 @@ struct Token {
     TokenType type;
 };
 
+// 为方便打印调试信息，我们将上方的token枚举与其语义对应
 inline std::string_view toString(TokenType type) {
     switch (type) {
     case TokenType::SYM_PAREN_L:

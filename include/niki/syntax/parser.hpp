@@ -1,15 +1,15 @@
 #pragma once
 
-#include "niki/diagnostic/diagnostic.hpp"
 #include "ast.hpp"
+#include "niki/diagnostic/diagnostic.hpp"
 #include "parser_precedence.hpp"
 #include "token.hpp"
 #include <span>
 #include <string_view>
 
 // 我们将解析器分为两部分实现，第一部分为表达式解析器，该部分我们使用普拉特解析算法，
-//  第二部分为语句解析器，该部分我们使用递归下降算法。
-// 在此之前，我们需要定义一个parser类，来链接表达式解析器和语句解析器。
+//  第二部分为语句解析器&顶层声明，该部分我们手写递归下降来保证性能。
+// 在此之前，我们需要定义一个parser类，来链接表达式解析器和语句/顶层声明解析器。
 namespace niki::syntax {
 
 struct ParseResult {
@@ -19,7 +19,7 @@ struct ParseResult {
 
 class Parser {
   public:
-    // 严禁 Parser 自行分配内存，必须由调用方 (Compiler) 注入内存池
+    // 严禁 Parser 自行分配内存，必须由数据池（astpool） 注入内存池
     Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool, std::string_view source_path = "");
     // 解析总入口：
     // 1) 驱动 token 游标向前消费
@@ -28,9 +28,9 @@ class Parser {
     ParseResult parse();
 
   private:
-    std::string_view source; // 获取字节源
-    std::string_view sourcePath;
-    std::span<const Token> tokens;
+    std::string_view source;       // 获取字节源
+    std::string_view sourcePath;   // 获取字节源路径
+    std::span<const Token> tokens; // token窗口
     size_t tokenIndex = 0;
     ASTPool &astPool;
 
@@ -42,7 +42,7 @@ class Parser {
     // panicMode:可控的局部状态开关，当解析器遇到一个语法错误时，panicMode=ture，直到解析器通过synchronize()函数找到下一个同步点（如分号），才将之设定为false。
     // 这是为了防止连环报错，因为当我们在该行第一次扫描到不和法token时，其后续token极大概率也是不合法的，这时我们已无必要再向控制台打印无用信息了，只需跳过当前句段即可。
     bool panicMode = false;
-    niki::diagnostic::DiagnosticBag diagnostics;
+    niki::diagnostic::DiagnosticBag diagnostics; // 错误信息返回包
 
     //---Token 游标控制---
     // 这组函数构成 Parser 的“输入门面”，所有语法分支都依赖它们推进 token 流。

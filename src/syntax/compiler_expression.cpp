@@ -449,7 +449,7 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
     // 先编译被调用目标（可能是函数，也可能是结构体名）
     ExprResult calleeRes = compileExpression(node.payload.call.callee);
-    
+
     // 查询被调用目标的类型，判断它是函数调用还是结构体实例化！
     semantic::NKType calleeType = currentPool->node_types[node.payload.call.callee.index];
 
@@ -467,7 +467,7 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
     std::vector<ExprResult> argTemps;
     argTemps.reserve(argNodes.size());
 
-    // --- 核心修复：强制分配连续的物理寄存器作为参数窗口 ---
+    // --- 强制分配连续的物理寄存器作为参数窗口 ---
     // 为了保证传递给被调用者的参数寄存器是绝对连续的（base+0, base+1, base+2...），
     // 我们必须预先分配这些连续的槽位，然后将表达式的计算结果 MOVE 进去，
     // 而不是让表达式随意返回散落各处的旧局部变量寄存器。
@@ -490,9 +490,11 @@ ExprResult Compiler::compileCallExpr(ASTNodeIndex nodeIdx) {
     // 如果 callee 的类型是 Object（即它是一个结构体蓝图），我们发射 OP_NEW_INSTANCE！
     // 否则（如 Function 或 Unknown 兜底），我们发射普通的 OP_CALL。
     if (calleeType.getBase() == semantic::NKBaseType::Object) {
-        emitOp(vm::OPCODE::OP_NEW_INSTANCE, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()), line, column);
+        emitOp(vm::OPCODE::OP_NEW_INSTANCE, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()),
+               line, column);
     } else {
-        emitOp(vm::OPCODE::OP_CALL, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()), line, column);
+        emitOp(vm::OPCODE::OP_CALL, outReg, calleeRes.reg, argStartReg, static_cast<uint8_t>(argNodes.size()), line,
+               column);
     }
 
     freeIfTemp(calleeRes);

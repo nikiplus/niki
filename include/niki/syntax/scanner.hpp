@@ -43,7 +43,7 @@ class Scanner {
      *不过在我们当前使用情境下，由于scanner只是对源字符串进行扫描，而不会对其进行修改，因此我们可以放心的使用string_view，而不用担心内存泄漏的问题。
      */
     Scanner(std::string_view source, std::string_view source_path = ""); // 返回一个Scanner对象
-    Token scanToken();                // 核心API，每次调用产出一个token，也是我们的主扫描函数。
+    Token scanToken(); // 核心API，每次调用产出一个token，也是我们的主扫描函数。
     bool hasDiagnostics() const { return diagnostics.hasErrors(); }
     niki::diagnostic::DiagnosticBag takeDiagnostics();
 
@@ -55,12 +55,12 @@ class Scanner {
   private:
     std::string_view source; // 定义来源
     std::string_view sourcePath;
-    /*我有必要抨击C++这个名为string的玩意儿，它根本不像它看起来那么简单
+    /*我忏悔，我对string的认知还是太浅薄了
     *大致的讲，string里存的根本不是“一连串字符”的一个整体，而是“多个字符切片”。
-    *也就是说，假设我存了一个名为“cnmdC++”的字符串，它在string里事实上是这样的。
-    +-+-+-+-+-+-+-+-+
-    |w|c|n|m|d|C|+|+|
-    +-+-+-+-+-+-+-+-+
+    *也就是说，假设我存了一个名为“damnC++”的字符串，它在string里事实上是这样的。
+    +-+-+-+-+-+-+-+
+    |d|a|m|n|C|+|+|
+    +-+-+-+-+-+-+-+
     看到吗，事实上是多个char拼成了一个string,也就是说，string本身就是一个数组！
     当然，一些乱七八糟的什么长度信息啊之类的我们先不谈。
     那再看我们下面的两个索引↓*/

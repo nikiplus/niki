@@ -78,11 +78,11 @@ class Compiler {
     // 2) 建立顶层 ObjFunction 作为脚本容器
     // 3) 深度遍历 AST 发射字节码
     // 4) 汇总并返回最终 Chunk 或错误池
-    std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag>
-    compile(const ASTPool &pool,                            // 旁侧表等
-            ASTNodeIndex root,                              // 解析根节点
-            const std::vector<semantic::NKType> &typeTable, // 类型表
-            niki::Chunk initial_chunk = niki::Chunk{}       // 实际代码块
+    std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> compile(
+        const ASTPool &pool,                            // 旁侧表等
+        ASTNodeIndex root,                              // 解析根节点
+        const std::vector<semantic::NKType> &typeTable, // 类型表
+        niki::Chunk initial_chunk = niki::Chunk{}       // 实际代码块
     );
 
   private:
@@ -126,7 +126,7 @@ class Compiler {
     这也就导致，我们想要导向高效率，就必须在这个狭小的最靠近cpu的地方(l1缓存)存下尽可能多的可执行opcode！
     而我们如果想要让我们的指令都在存在L1=，那么要做的最重要的事就是
     压 缩 指 令 大 小
-    不仅要把opcode的大小牢牢限定在8bit=1byte的大小，还要尽可能压缩constants的大小！
+    不仅要把opcode的大小牢牢限定在8bit=1byte的大小，还要尽可能压缩constants索引的大小！
     那我们返回那个用8bit寄存器储存constant的设计？但这样的话又会很快导致那个上限过少的老问题……能不能结合两个方案？让constant小的时候使用8bit存储，大的时候使用16bit存储……？
     没错！这正式现代绝大多数寄存器都在使用的指令设计方案——变长指令。*/
     //---辅助函数---
@@ -172,8 +172,7 @@ class Compiler {
     void emitOp(vm::OPCODE op, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t operand_a, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint32_t line, uint32_t column);
-    void emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint8_t operand_c, uint32_t line,
-                uint32_t column);
+    void emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint8_t operand_c, uint32_t line, uint32_t column);
     void emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint8_t operand_c, uint8_t operand_d,
                 uint32_t line, uint32_t column);
     void emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column);
