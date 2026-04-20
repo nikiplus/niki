@@ -2,6 +2,8 @@
 #include "ast.hpp"
 
 #include "niki/diagnostic/diagnostic.hpp"
+#include "niki/semantic/global_symbol_table.hpp"
+#include "niki/semantic/global_type_arena.hpp"
 #include "niki/semantic/nktype.hpp"
 #include "niki/vm/chunk.hpp"
 #include "niki/vm/object.hpp"
@@ -82,12 +84,16 @@ class Compiler {
         const ASTPool &pool,                            // 旁侧表等
         ASTNodeIndex root,                              // 解析根节点
         const std::vector<semantic::NKType> &typeTable, // 类型表
-        niki::Chunk initial_chunk = niki::Chunk{}       // 实际代码块
+        niki::Chunk initial_chunk = niki::Chunk{},      // 实际代码块
+        const niki::GlobalTypeArena *globalArena = nullptr,
+        const niki::GlobalSymbolTable *globalSymbols = nullptr
     );
 
   private:
     const ASTPool *currentPool = nullptr;
     const std::vector<semantic::NKType> *currentTypeTable = nullptr; // 类型表
+    const niki::GlobalTypeArena *currentGlobalArena = nullptr;
+    const niki::GlobalSymbolTable *currentGlobalSymbols = nullptr;
     // 当前正在编译的函数对象和对应的Chunk。
     // 在 MVP 中我们用指针，方便嵌套编译时随时切换上下文
     niki::vm::ObjFunction *compilingFunction = nullptr; // 当前正在编译的函数对象
@@ -176,6 +182,7 @@ class Compiler {
     void emitOp(vm::OPCODE op, uint8_t operand_a, uint8_t operand_b, uint8_t operand_c, uint8_t operand_d,
                 uint32_t line, uint32_t column);
     void emitConstant(vm::Value value, uint8_t targetReg, uint32_t line, uint32_t column);
+
     struct NodeContext {
         const syntax::ASTNode &node;
         uint32_t line;

@@ -333,25 +333,35 @@ NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
     }
 
     // 提取签名进行比对 (Function)
-    uint32_t sig_id = calleeType.handle & 0x00FFFFFF; // 提取低24位
-    const FunctionSignature &sig = const_cast<syntax::ASTPool *>(currentPool)->func_sigs[sig_id];
+    uint32_t sig_id = static_cast<uint32_t>(calleeType.getTypeId());
+    if (globalArena == nullptr) {
+        reportError(line, column, "Global type arena is not available.");
+        return NKType::makeUnknown();
+    }
 
-    if (argNodes.size() != sig.param_types.size()) {
+    const FunctionSignature *sig = globalArena->findFuncSig(sig_id);
+
+    if (sig == nullptr) {
+        reportError(line, column, "Invalid function signature id.");
+        return NKType::makeUnknown();
+    }
+
+    if (argNodes.size() != sig->param_types.size()) {
         reportError(line, column, "Argument count mismatch.");
     }
 
     // 参数类型校验
     for (size_t i = 0; i < argNodes.size(); ++i) {
         NKType argType = checkExpression(argNodes[i]);
-        if (i < sig.param_types.size()) {
-            NKType expectedType = sig.param_types[i];
+        if (i < sig->param_types.size()) {
+            NKType expectedType = sig->param_types[i];
             if (argType.getBase() != NKBaseType::Unknown && expectedType.getBase() != NKBaseType::Unknown &&
                 argType != expectedType) {
                 reportError(line, column, "Type mismatch in function argument.");
             }
         }
     }
-    return sig.return_type;
+    return sig->return_type;
 }
 
 NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) {
@@ -368,22 +378,23 @@ NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) {
         return NKType::makeUnknown();
     }
 
-    uint32_t struct_id = objType.getTypeId();
-    if (struct_id >= currentPool->struct_data.size()) {
-        reportError(line, column, "Invalid struct type.");
+    uint32_t struct_id = static_cast<uint32_t>(objType.getTypeId());
+    if (globalArena == nullptr) {
+        reportError(line, column, "Global type arena is not available.");
+        return NKType::makeUnknown();
+    }
+    const auto *struct_info = globalArena->findStruct(struct_id);
+    if (struct_info == nullptr) {
+        reportError(line, column, "Invalid global struct type.");
         return NKType::makeUnknown();
     }
 
-    const syntax::StructData &struct_data = currentPool->struct_data[struct_id];
-    std::span<const syntax::ASTNodeIndex> fieldNames = currentPool->get_list(struct_data.names);
-    std::span<const syntax::ASTNodeIndex> fieldTypes = currentPool->get_list(struct_data.types);
     uint32_t target_name_id = node.payload.member.property_id;
 
-    for (size_t i = 0; i < fieldNames.size(); ++i) {
-        uint32_t name_id = currentPool->getNode(fieldNames[i]).payload.identifier.name_id;
-        if (name_id == target_name_id) {
-            if (i < fieldTypes.size()) {
-                return resolveTypeAnnotation(fieldTypes[i]);
+    for (size_t i = 0; i < struct_info->field_name_ids.size(); ++i) {
+        if (struct_info->field_name_ids[i] == target_name_id) {
+            if (i < struct_info->field_types.size()) {
+                return struct_info->field_types[i];
             }
             break;
         }

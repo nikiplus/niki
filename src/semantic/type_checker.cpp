@@ -1,5 +1,5 @@
-#include "niki/diagnostic/codes.hpp"
 #include "niki/semantic/type_checker.hpp"
+#include "niki/diagnostic/codes.hpp"
 #include "niki/semantic/nktype.hpp"
 #include "niki/syntax/ast.hpp"
 #include <cstdint>
@@ -10,19 +10,34 @@ namespace niki::semantic {
 
 std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(syntax::ASTPool &pool,
                                                                                     syntax::ASTNodeIndex root) {
+    niki::diagnostic::DiagnosticBag diagnostics;
+    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError,
+                            "Legacy TypeChecker entry is disabled; use global semantic context.");
+    return std::unexpected(std::move(diagnostics));
+}
+
+std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(
+    syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::GlobalSymbolTable *global_symbols,
+    const niki::GlobalTypeArena *global_arena) {
     currentPool = &pool;
     diagnostics = niki::diagnostic::DiagnosticBag{};
     symbols.clear();
     currentDepth = 0;
     inFunction = false;
 
+    // 绑定全局上下文
+    globalSymbols = global_symbols;
+    globalArena = global_arena;
+
     // 1. node_types 已经在 ASTPool 分配时预填充了 Unknown，
     // 我们不需要再做初始化操作，直接开始遍历覆盖它即可。
 
     // 2. 开始遍历
     checkNode(root);
-
+    // 清理上下文，避免悬挂引用
     currentPool = nullptr;
+    globalSymbols = nullptr;
+    globalArena = nullptr;
 
     if (!diagnostics.empty()) {
         return std::unexpected(std::move(diagnostics));
@@ -71,9 +86,13 @@ NKType TypeChecker::resolveSymbol(uint32_t name_id, uint32_t line, uint32_t colu
         }
     }
 
-    // 既然我们已经禁用了全局野变量，且所有的顶层 func 都被注册到了 symbols 的 depth 0，
-    // 那么在这里如果还找不到，就说明它绝对是一个未声明的变量或拼写错误！
-    // 必须立刻报错，绝不妥协！
+    // 再查全局符号表
+    if (globalSymbols != nullptr) {
+        if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
+            return global_sym->type;
+        }
+    }
+
     reportError(line, column, "Undeclared variable.");
     return NKType::makeUnknown();
 }
@@ -116,7 +135,16 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
         if (name_id == currentPool->ID_STRING)
             return NKType(NKBaseType::String, -1);
 
-        // 查找用户自定义结构体类型
+        // 查找全局符号表中的结构体类型（跨文件类型标注优先）
+        if (globalSymbols != nullptr) {
+            if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
+                if (global_sym->kind == niki::Kind::Struct) {
+                    return global_sym->type;
+                }
+            }
+        }
+
+        // 查找当前文件内的用户自定义结构体类型（仅作为同文件声明解析）
         for (size_t i = 0; i < currentPool->struct_data.size(); ++i) {
             if (currentPool->struct_data[i].name_id == name_id) {
                 return NKType(NKBaseType::Object, static_cast<int32_t>(i));
@@ -134,10 +162,9 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
 };
 
 void TypeChecker::reportError(uint32_t line, uint32_t column, const std::string &message) {
-    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError,
-                            message,
-                            niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "",
-                                                             line, column));
+    diagnostics.reportError(
+        niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError, message,
+        niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
 }
 
 NKType TypeChecker::checkNode(syntax::ASTNodeIndex nodeIdx) {

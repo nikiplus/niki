@@ -1,7 +1,10 @@
 #pragma once
 #include "niki/diagnostic/diagnostic.hpp"
+#include "niki/semantic/global_symbol_table.hpp"
+#include "niki/semantic/global_type_arena.hpp"
 #include "niki/semantic/nktype.hpp"
 #include "niki/syntax/ast.hpp"
+#include "niki/syntax/ast_payloads.hpp"
 #include "nktype.hpp"
 #include <cstdint>
 #include <expected>
@@ -17,17 +20,21 @@ struct TypeCheckResult {
 
 class TypeChecker {
   public:
-    // 注意：这里的 pool 不再是 const，因为我们需要写入 pool.node_types
-    // 类型检查总入口：
-    // 1) 绑定 ASTPool 与内部状态
-    // 2) 深度遍历并对表达式/语句/声明做静态检查
-    // 3) 将表达式结果类型写回 pool.node_types
     std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> check(syntax::ASTPool &pool,
-                                                                           syntax::ASTNodeIndex root);
+                                                                          syntax::ASTNodeIndex root);
+
+    std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> check(syntax::ASTPool &pool,
+                                                                          syntax::ASTNodeIndex root,
+                                                                          const GlobalSymbolTable *global_symbols,
+                                                                          const GlobalTypeArena *global_arena);
 
   private:
     syntax::ASTPool *currentPool = nullptr;
     niki::diagnostic::DiagnosticBag diagnostics;
+
+    const GlobalSymbolTable *globalSymbols = nullptr;
+    const GlobalTypeArena *globalArena = nullptr;
+
     NKType currentReturnType = NKType::makeUnknown();
     bool inFunction = false;
 

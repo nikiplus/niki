@@ -674,8 +674,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                         std::cout << "\"" << asString(result)->chars << "\"";
                     } else if (isArray(result)) {
                         ObjArray *array_object = asArray(result);
-                        std::cout << "[Array: size=" << array_object->count << " cap=" << array_object->capacity
-                                  << "]";
+                        std::cout << "[Array: size=" << array_object->count << " cap=" << array_object->capacity << "]";
                     } else {
                         std::cout << "[Object]";
                     }
@@ -977,10 +976,70 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             currentRegisters()[targetReg] = Value::makeNil();
             break;
         }
-        case OPCODE::OP_SEQ:
-        case OPCODE::OP_SNE:
-        case OPCODE::OP_OEQ:
-        case OPCODE::OP_ONE:
+        case OPCODE::OP_SEQ: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+
+            Value left = currentRegisters()[leftReg];
+            Value right = currentRegisters()[rightReg];
+
+            // SEQ只处理sring == string
+            if (!isString(left) || !isString(right)) {
+                runtime_error("OP_SEQ expects string operands.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
+            // 字符串按内容比较
+            currentRegisters()[targetReg] = Value::makeBool(valueKeyEquals(left, right));
+            break;
+        }
+        case OPCODE::OP_SNE: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+
+            Value left = currentRegisters()[leftReg];
+            Value right = currentRegisters()[rightReg];
+
+            if (!isString(left) || !isString(right)) {
+                runtime_error("OP_SNE expects string operands.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            currentRegisters()[targetReg] = Value::makeBool(!valueKeyEquals(left, right));
+            break;
+        }
+
+        case OPCODE::OP_OEQ: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+
+            Value left = currentRegisters()[leftReg];
+            Value right = currentRegisters()[rightReg];
+
+            if (left.type != ValueType::Object || right.type != ValueType::Object) {
+                runtime_error("OP_ONQ expects string operands.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            currentRegisters()[targetReg] = Value::makeBool(!valueKeyEquals(left, right));
+            break;
+        }
+        case OPCODE::OP_ONE: {
+            uint8_t targetReg = readByte();
+            uint8_t leftReg = readByte();
+            uint8_t rightReg = readByte();
+
+            Value left = currentRegisters()[leftReg];
+            Value right = currentRegisters()[rightReg];
+
+            if (left.type != ValueType::Object || right.type != ValueType::Object) {
+                runtime_error("OP_ONE expects string operands.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            currentRegisters()[targetReg] = Value::makeBool(!valueKeyEquals(left, right));
+            break;
+        }
         case OPCODE::OP_INVOKE:
         case OPCODE::OP_GET_PROPERTY:
         case OPCODE::OP_SET_PROPERTY:

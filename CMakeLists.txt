@@ -29,6 +29,8 @@ add_library(niki_core STATIC
     src/semantic/type_checker_stmt.cpp
     src/semantic/type_checker_decl.cpp
     src/semantic/type_checker_pre_decl.cpp
+    src/semantic/global_symbol_table.cpp
+    src/semantic/global_type_arena.cpp
     src/driver/driver.cpp
     src/linker/linker.cpp
     src/runtime/launcher.cpp

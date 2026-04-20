@@ -524,16 +524,13 @@ ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
     uint8_t outReg = regAlloc.allocate();
 
     if (objType.getBase() == semantic::NKBaseType::Object) {
-        uint32_t struct_id = objType.getTypeId(); // StructData 的索引
-        if (struct_id < currentPool->struct_data.size()) {
-            const StructData &struct_data = currentPool->struct_data[struct_id];
-            std::span<const ASTNodeIndex> field_names = currentPool->get_list(struct_data.names);
-
+        uint32_t struct_id = static_cast<uint32_t>(objType.getTypeId()); // GlobalTypeArena::StructInfo 索引
+        if (currentGlobalArena == nullptr) {
+            reportError(line, column, "Global type arena is not available in compiler.");
+        } else if (const auto *struct_info = currentGlobalArena->findStruct(struct_id); struct_info != nullptr) {
             uint8_t field_index = 255;
-            for (size_t i = 0; i < field_names.size(); ++i) {
-                // StructDecl 中 names 列表存的是 IdentifierExpr
-                uint32_t name_id = currentPool->getNode(field_names[i]).payload.identifier.name_id;
-                if (name_id == propNameId) {
+            for (size_t i = 0; i < struct_info->field_name_ids.size(); ++i) {
+                if (struct_info->field_name_ids[i] == propNameId) {
                     if (i > 254) {
                         reportError(line, column, "Struct has too many fields (max 254 supported).");
                         freeIfTemp(objRes);
@@ -565,7 +562,7 @@ ExprResult Compiler::compileMemberExpr(ASTNodeIndex nodeIdx) {
 }
 /*- dispatch 解决的是“ 在接收者上下文中调用方法 ”： obj.method(args...) 。
 - 这里不仅是 call，还涉及接收者绑定（类似 this/self）和方法查找规则。
-- 没有 dispatch，你只能先 member 再“裸 call”，那会丢掉动态分发和接收者语义边界。
+- 没有 dispatch，只能先 member 再“裸 call”，那会丢掉动态分发和接收者语义边界。
 */
 ExprResult Compiler::compileDispatchExpr(ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);

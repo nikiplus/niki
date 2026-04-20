@@ -20,7 +20,8 @@ namespace niki::syntax {
 
 std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag>
 Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<semantic::NKType> &typeTable,
-                  niki::Chunk initial_chunk) {
+                  niki::Chunk initial_chunk, const niki::GlobalTypeArena *globalArena,
+                  const niki::GlobalSymbolTable *globalSymbols) {
     // 编译主流程（顶层脚本上下文）：
     // A. 初始化编译状态与统计器
     // B. 建立 <script> 顶层函数并切换上下文
@@ -35,6 +36,8 @@ Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<sema
 
     currentPool = &pool;
     currentTypeTable = &typeTable;
+    currentGlobalArena = globalArena;
+    currentGlobalSymbols = globalSymbols;
     hadError = false;
     diagnostics = niki::diagnostic::DiagnosticBag{};
     warningCount = 0;
@@ -54,6 +57,8 @@ Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<sema
     CompilerContext topContext = popContext();
     currentPool = nullptr;
     currentTypeTable = nullptr;
+    currentGlobalArena = nullptr;
+    currentGlobalSymbols = nullptr;
 
     if (hadError) {
         niki::debug::debug("compiler", "compile failed, errors={}, warnings={}", diagnostics.size(), warningCount);
