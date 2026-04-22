@@ -170,6 +170,19 @@ NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
             reportError(line, column, "Operands must be Int for bitwise operations.");
             return NKType::makeInt(); // 错误恢复：位运算必定产生 Int
         }
+
+    case syntax::TokenType::SYM_DICE: {
+        if (node.payload.binary.left.invalid() || node.payload.binary.right.isvalid()) {
+            reportError(line, column, "Dice Operations isvalid.");
+        }
+
+        if (leftType.getBase() == NKBaseType::Integer && rightType.getBase() == NKBaseType::Integer) {
+            return NKType::makeInt();
+        } else {
+            reportError(line, column, "Operands must be Int for Dice operations.");
+            return NKType::makeInt(); // 错误恢复：位运算必定产生 Int
+        }
+    }
     default:
         reportError(line, column, "Unknown binary operator.");
         return NKType::makeUnknown();

@@ -13,6 +13,15 @@
 #include <vector>
 
 namespace niki::driver {
+
+// 与 Driver::parseOneUnit 中扫描+解析阶段一致：要求 unit.source、unit.source_path 已设置。
+std::expected<void, diagnostic::DiagnosticBag> parseIntoCompilationUnit(GlobalCompilationUnit &unit);
+
+// 对单个模块执行 Pass-2 预声明（结构体/函数签入 GlobalTypeArena 与 GlobalSymbolTable）。
+std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const GlobalCompilationUnit &unit,
+                                                                    GlobalTypeArena &global_arena,
+                                                                    GlobalSymbolTable &global_symbols);
+
 // Driver 是项目级编排器：目录扫描 -> 单文件编译 -> 多模块链接 -> 启动运行。
 // 错误统一使用 DiagnosticBag 上抛，Driver 不再维护独立错误结构体。
 struct DriverOptions {

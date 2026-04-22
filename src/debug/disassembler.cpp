@@ -176,12 +176,6 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
     case OPCODE::OP_MOVE:
         return unaryInstruction("OP_MOVE", chunk, offset);
 
-    // === [SysExpr] 系统相关 ===
-    case OPCODE::OP_THROW:
-        return simpleInstruction("OP_THROW", offset);
-    case OPCODE::OP_CATCH:
-        return simpleInstruction("OP_CATCH", offset);
-
     // === 辅助标记忽略 ===
     case OPCODE::_CALC_START:
     case OPCODE::__BINARY_START:
@@ -223,8 +217,6 @@ size_t Disassembler::disassembleInstruction(const Chunk &chunk, size_t offset) {
     case OPCODE::__DATA_CTRL_START:
     case OPCODE::__DATA_CTRL_END:
     case OPCODE::_DATA_END:
-    case OPCODE::_SYS_START:
-    case OPCODE::_SYS_END:
     case OPCODE::OP_COUNT:
         std::cout << "Invalid pseudo-opcode encountered.\n";
         return offset + 1;

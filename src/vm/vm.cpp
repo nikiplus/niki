@@ -201,6 +201,33 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 Value::makeInt(currentRegisters()[leftReg].as.integer % currentRegisters()[rightReg].as.integer);
             break;
         }
+        case OPCODE::OP_DICE: {
+            uint8_t targetReg = readByte();
+            uint8_t countReg = readByte();
+            uint8_t sidesReg = readByte();
+
+            Value count_value = currentRegisters()[countReg];
+            Value sides_value = currentRegisters()[sidesReg];
+            if (count_value.type != ValueType::Integer || sides_value.type != ValueType::Integer) {
+                runtime_error("DIce operands must be integers.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
+            int64_t count = count_value.as.integer;
+            int64_t sides = sides_value.as.integer;
+            if (count < 0 || sides < 0) {
+                runtime_error("Dice operands must be >=0.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
+            int64_t total = 0;
+            for (int i; i < count; ++i) {
+                total += static_cast<int64_t>(std::rand() & sides) + 1;
+            }
+
+            currentRegisters()[targetReg] = Value::makeInt(total);
+            break;
+        }
         case OPCODE::OP_FADD: {
             uint8_t targetReg = readByte();
             uint8_t leftReg = readByte();
@@ -374,6 +401,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 Value::makeInt(currentRegisters()[leftReg].as.integer >> currentRegisters()[rightReg].as.integer);
             break;
         }
+
         case OPCODE::OP_TRUE: {
             uint8_t targetReg = readByte();
             currentRegisters()[targetReg] = Value::makeBool(true);
@@ -942,8 +970,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 Object *object = static_cast<Object *>(val.as.object);
                 switch (object->type) {
                 case ObjType::Function:
-                    // Function 对象在全局池中，不应被局部 FREE，但如果是闭包分配的，未来需要在这里释放 chunk
-                    // 目前安全起见，什么也不做。
+                    // Function 对象在全局池中，不应被局部 FREE；目前安全起见，什么也不做。
                     break;
                 case ObjType::String:
                     std::free(val.as.object); // 柔性数组，直接 free 头指针即可
@@ -1044,8 +1071,6 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         case OPCODE::OP_GET_PROPERTY:
         case OPCODE::OP_SET_PROPERTY:
         case OPCODE::OP_METHOD:
-        case OPCODE::OP_THROW:
-        case OPCODE::OP_CATCH:
             runtime_error("Opcode not implemented yet.");
             return std::unexpected(InterpretResult::RUNTIME_ERROR);
         default:

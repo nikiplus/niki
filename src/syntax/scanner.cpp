@@ -46,6 +46,10 @@ Token Scanner::scanToken() {
     }
 
     // 5.进行数字和字面量判断
+    // 骰子运算符 `d`：在 `1d10` 这类片段中，`d` 紧跟在数字字面量之后，不作为标识符首字符。
+    if (c == 'd' && start > 0 && isDigit(static_cast<unsigned char>(source[start - 1]))) {
+        return makeToken(TokenType::SYM_DICE);
+    }
     if (isAlpha(c))
         return makeIdentifierToken();
     if (isDigit(c))

@@ -19,6 +19,7 @@ enum class Precedence : uint8_t {
     Concat,     // ..
     Term,       // + -
     Factor,     // * / %
+    DICE,       // d
     Unary,      // - !
     Call,       // () [] .
     Primary     // 标识符、数字、字符串、括号等

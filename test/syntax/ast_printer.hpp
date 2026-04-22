@@ -104,6 +104,8 @@ class ASTPrinter {
             return "/";
         case TokenType::SYM_MOD:
             return "%";
+        case TokenType::SYM_DICE:
+            return "d";
         case TokenType::SYM_CONCAT:
             return "..";
         case TokenType::SYM_GREATER:

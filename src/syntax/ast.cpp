@@ -36,6 +36,9 @@
 
 #include "niki/semantic/nktype.hpp"
 
+#include <cstdio>
+#include <cstdlib>
+
 using namespace niki::syntax;
 
 ASTPool::ASTPool(GlobalInterner &shared_interner) : interner(&shared_interner) {
@@ -87,34 +90,39 @@ void ASTPool::clear() {
 };
 ASTNode &ASTPool::getNode(ASTNodeIndex index) {
     if (!index.isvalid() || index >= nodes.size()) {
-        throw std::out_of_range("ASTNodeIndex is invalid or out of bounds.");
+        std::fprintf(stderr, "ASTNodeIndex is invalid or out of bounds.\n");
+        std::abort();
     }
     return nodes[index.index];
 }
 const ASTNode &ASTPool::getNode(ASTNodeIndex index) const {
     if (!index.isvalid() || index >= nodes.size()) {
-        throw std::out_of_range("ASTNodeIndex is invalid or out of bounds.");
+        std::fprintf(stderr, "ASTNodeIndex is invalid or out of bounds.\n");
+        std::abort();
     }
     return nodes[index.index];
 }
 
 uint32_t ASTPool::internString(std::string_view str) {
     if (interner == nullptr) {
-        throw std::runtime_error("ASTPool interner is not initialized.");
+        std::fprintf(stderr, "ASTPool interner is not initialized.\n");
+        std::abort();
     }
     return interner->intern(str);
 };
 
 const std::string &ASTPool::getStringId(uint32_t id) const {
     if (interner == nullptr) {
-        throw std::runtime_error("ASTPool interner is not initialized.");
+        std::fprintf(stderr, "ASTPool interner is not initialized.\n");
+        std::abort();
     }
     return interner->get(id);
 }
 
 std::vector<std::string> ASTPool::snapshotStringPool() const {
     if (interner == nullptr) {
-        throw std::runtime_error("ASTPool interner is not initialized.");
+        std::fprintf(stderr, "ASTPool interner is not initialized.\n");
+        std::abort();
     }
     return interner->snapshot();
 }

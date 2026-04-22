@@ -33,6 +33,7 @@ enum class TokenType : uint8_t {
     SYM_BIT_XOR, // ^ 异或运算
     SYM_BIT_NOT, // ~ 位取反
     // 其它
+    SYM_DICE,      // d 随机数
     SYM_COMMA,     // , 逗号
     SYM_DOT,       // . 点号
     SYM_CONCAT,    // .. 字符串拼接
@@ -184,6 +185,8 @@ inline std::string_view toString(TokenType type) {
         return "SYM_BIT_XOR";
     case TokenType::SYM_BIT_NOT:
         return "SYM_BIT_NOT";
+    case TokenType::SYM_DICE:
+        return "SYM_DICE";
     case TokenType::SYM_COMMA:
         return "SYM_COMMA";
     case TokenType::SYM_DOT:

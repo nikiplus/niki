@@ -1,10 +1,11 @@
+#include "niki/driver/driver.hpp"
+#include "niki/semantic/global_compilation.hpp"
+#include "niki/semantic/global_symbol_table.hpp"
+#include "niki/semantic/global_type_arena.hpp"
 #include "niki/semantic/type_checker.hpp"
 #include "niki/diagnostic/diagnostic.hpp"
-#include "niki/diagnostic/renderer.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/compiler.hpp"
-#include "niki/syntax/parser.hpp"
-#include "niki/syntax/scanner.hpp"
 #include "niki/vm/chunk.hpp"
 #include "niki/vm/opcode.hpp"
 #include <cstdint>
@@ -20,44 +21,40 @@ using namespace niki::vm;
 class CompilerTest : public ::testing::Test {
   protected:
     GlobalInterner interner;
-    ASTPool pool{interner};
+    niki::GlobalSymbolTable global_symbols;
+    niki::GlobalTypeArena global_arena;
 
-    // 辅助函数：直接将源码编译为 Chunk
+    // 辅助函数：直接将源码编译为 Chunk（与 Driver 单模块管线一致：解析 -> 预声明 -> 类型检查 -> 编译）
     std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> compileSource(std::string_view source) {
-        Scanner scanner(source);
-        std::vector<Token> tokens;
+        niki::GlobalCompilationUnit unit(interner);
+        unit.source_path = "<compiler_test>";
+        unit.source = std::string(source);
 
-        for (;;) {
-            Token token = scanner.scanToken();
-            tokens.push_back(token);
-            if (token.type == TokenType::TOKEN_EOF) {
-                break;
-            }
+        auto parsed = niki::driver::parseIntoCompilationUnit(unit);
+        if (!parsed.has_value()) {
+            return std::unexpected(std::move(parsed.error()));
         }
-        auto scanner_diagnostics = scanner.takeDiagnostics();
 
-        EXPECT_TRUE(scanner_diagnostics.empty())
-            << "Scanner failed on input: " << source << "\n"
-            << niki::diagnostic::renderDiagnosticBagText(scanner_diagnostics);
-
-        Parser parser(source, tokens, pool);
-        ParseResult parse_result = parser.parse();
-        EXPECT_TRUE(parse_result.diagnostics.empty())
-            << "Parser failed on input: " << source << "\n"
-            << niki::diagnostic::renderDiagnosticBagText(parse_result.diagnostics);
+        auto pre = niki::driver::predeclareSingleUnit(unit, global_arena, global_symbols);
+        if (!pre.has_value()) {
+            return std::unexpected(std::move(pre.error()));
+        }
 
         niki::semantic::TypeChecker checker;
-        auto checkResult = checker.check(pool, parse_result.root);
+        auto checkResult = checker.check(unit.pool, unit.root, &global_symbols, &global_arena);
         if (!checkResult.has_value()) {
             return std::unexpected(std::move(checkResult.error()));
         }
 
         Compiler compiler;
-        auto type_table = pool.node_types;
-        return compiler.compile(pool, parse_result.root, type_table);
+        auto type_table = unit.pool.node_types;
+        return compiler.compile(unit.pool, unit.root, type_table, niki::Chunk{}, &global_arena, &global_symbols);
     }
 
-    void SetUp() override { pool.clear(); }
+    void SetUp() override {
+        global_symbols = niki::GlobalSymbolTable{};
+        global_arena = niki::GlobalTypeArena{};
+    }
 
     bool hasOpcode(const niki::Chunk &chunk, OPCODE opcode) {
         uint8_t op = static_cast<uint8_t>(opcode);
@@ -329,45 +326,37 @@ TEST_F(CompilerTest, SharedInterner_SameNameGetsSameIdAcrossPools) {
 }
 
 TEST_F(CompilerTest, SharedInterner_ChunkStringPoolStableAcrossCompiles) {
-    auto compile_with_pool =
-        [](ASTPool &pool, std::string_view source) -> std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> {
-        Scanner scanner(source);
-        std::vector<Token> tokens;
+    auto compile_with_interner = [this](std::string_view source) -> std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> {
+        niki::GlobalCompilationUnit unit(interner);
+        unit.source_path = "<shared_interner_test>";
+        unit.source = std::string(source);
 
-        for (;;) {
-            Token token = scanner.scanToken();
-            tokens.push_back(token);
-            if (token.type == TokenType::TOKEN_EOF) {
-                break;
-            }
-        }
-        auto scanner_diagnostics = scanner.takeDiagnostics();
-        if (!scanner_diagnostics.empty()) {
-            return std::unexpected(std::move(scanner_diagnostics));
+        auto parsed = niki::driver::parseIntoCompilationUnit(unit);
+        if (!parsed.has_value()) {
+            return std::unexpected(std::move(parsed.error()));
         }
 
-        Parser parser(source, tokens, pool);
-        ParseResult parse_result = parser.parse();
-        if (!parse_result.diagnostics.empty()) {
-            return std::unexpected(std::move(parse_result.diagnostics));
+        niki::GlobalSymbolTable local_symbols;
+        niki::GlobalTypeArena local_arena;
+        auto pre = niki::driver::predeclareSingleUnit(unit, local_arena, local_symbols);
+        if (!pre.has_value()) {
+            return std::unexpected(std::move(pre.error()));
         }
 
         niki::semantic::TypeChecker checker;
-        auto check_result = checker.check(pool, parse_result.root);
+        auto check_result = checker.check(unit.pool, unit.root, &local_symbols, &local_arena);
         if (!check_result.has_value()) {
             return std::unexpected(std::move(check_result.error()));
         }
 
         Compiler compiler;
-        auto type_table = pool.node_types;
-        return compiler.compile(pool, parse_result.root, type_table);
+        auto type_table = unit.pool.node_types;
+        return compiler.compile(unit.pool, unit.root, type_table, niki::Chunk{}, &local_arena, &local_symbols);
     };
 
-    ASTPool pool_a{interner};
-    ASTPool pool_b{interner};
-
-    auto chunk_a = compile_with_pool(pool_a, "func main() -> int { return 1; }");
-    auto chunk_b = compile_with_pool(pool_b, "func helper() -> int { return 2; } func main() -> int { return helper(); }");
+    auto chunk_a = compile_with_interner("func main() -> int { return 1; }");
+    auto chunk_b = compile_with_interner(
+        "func helper() -> int { return 2; } func main() -> int { return helper(); }");
 
     ASSERT_TRUE(chunk_a.has_value());
     ASSERT_TRUE(chunk_b.has_value());

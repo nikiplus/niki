@@ -142,25 +142,10 @@ std::vector<std::string> Driver::collectNkFiles(const std::string &root_dir, con
     std::sort(files.begin(), files.end());
     return files;
 };
-// 1)读取并解析单格文件
-std::expected<GlobalCompilationUnit, niki::diagnostic::DiagnosticBag> Driver::parseOneUnit(
-    const std::string &source_path,
-    syntax::GlobalInterner &interner) { // 单模块流水线：读文件 -> 扫描 -> 解析 -> 类型检查 -> 编译。
-    GlobalCompilationUnit unit(interner);
-    unit.source_path = source_path;
 
-    std::ifstream in(source_path, std::ios::binary);
-    if (!in.is_open()) {
-        return std::unexpected(
-            makeDriverError(niki::diagnostic::codes::driver::IoError, "无法打开源文件", source_path));
-    }
-
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-    std::string source = buffer.str();
-
-    // 1) 词法扫描：把源码切成 token 序列。
-    syntax::Scanner scanner(source, source_path);
+std::expected<void, niki::diagnostic::DiagnosticBag> parseIntoCompilationUnit(GlobalCompilationUnit &unit) {
+    unit.tokens.clear();
+    syntax::Scanner scanner(unit.source, unit.source_path);
 
     while (true) {
         auto token = scanner.scanToken();
@@ -175,10 +160,8 @@ std::expected<GlobalCompilationUnit, niki::diagnostic::DiagnosticBag> Driver::pa
         return std::unexpected(std::move(scannerDiagnostics));
     }
 
-    // 2) 语法解析：构建 AST（ASTPool 使用共享 interner，跨模块 name_id 一致）。
-    unit.pool.source_path = source_path;
-    unit.source = source;
-    syntax::Parser parser(unit.source, unit.tokens, unit.pool, source_path);
+    unit.pool.source_path = unit.source_path;
+    syntax::Parser parser(unit.source, unit.tokens, unit.pool, unit.source_path);
     auto parse_result = parser.parse();
 
     if (!parse_result.diagnostics.empty()) {
@@ -186,6 +169,30 @@ std::expected<GlobalCompilationUnit, niki::diagnostic::DiagnosticBag> Driver::pa
     }
 
     unit.root = parse_result.root;
+    return {};
+}
+
+// 1)读取并解析单格文件
+std::expected<GlobalCompilationUnit, niki::diagnostic::DiagnosticBag> Driver::parseOneUnit(
+    const std::string &source_path,
+    syntax::GlobalInterner &interner) { // 单模块流水线：读文件 -> 扫描 -> 解析 -> 类型检查 -> 编译。
+    GlobalCompilationUnit unit(interner);
+    unit.source_path = source_path;
+
+    std::ifstream in(source_path, std::ios::binary);
+    if (!in.is_open()) {
+        return std::unexpected(
+            makeDriverError(niki::diagnostic::codes::driver::IoError, "Failed to open source file.", source_path));
+    }
+
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    unit.source = buffer.str();
+
+    auto parsed = parseIntoCompilationUnit(unit);
+    if (!parsed.has_value()) {
+        return std::unexpected(std::move(parsed.error()));
+    }
     return unit;
 };
 
@@ -316,110 +323,125 @@ std::expected<std::vector<linker::CompileModule>, niki::diagnostic::DiagnosticBa
     return modules;
 };
 
+std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const GlobalCompilationUnit &unit,
+                                                                    GlobalTypeArena &global_arena,
+                                                                    GlobalSymbolTable &global_symbols) {
+    diagnostic::DiagnosticBag diagnostics;
+
+    if (!unit.root.isvalid()) {
+        diagnostics.reportError(
+            niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError,
+            "Invalid module root in predeclare.", niki::diagnostic::makeSourceSpan(unit.source_path));
+        return std::unexpected(std::move(diagnostics));
+    }
+
+    const auto &root = unit.pool.getNode(unit.root);
+    if (root.type != syntax::NodeType::ModuleDecl) {
+        diagnostics.reportError(
+            niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError,
+            "Root node must be ModuleDecl in predeclare.", niki::diagnostic::makeSourceSpan(unit.source_path));
+        return std::unexpected(std::move(diagnostics));
+    }
+
+    const auto &body_node = unit.pool.getNode(root.payload.module_decl.body);
+    auto decls = unit.pool.get_list(body_node.payload.list.elements);
+
+    for (auto decl_idx : decls) {
+        if (!decl_idx.isvalid()) {
+            continue;
+        }
+        const auto &decl = unit.pool.getNode(decl_idx);
+        uint32_t line = unit.pool.locations[decl_idx.index].line;
+        uint32_t column = unit.pool.locations[decl_idx.index].column;
+
+        if (decl.type == syntax::NodeType::StructDecl) {
+            uint32_t struct_index = decl.payload.struct_decl.struct_index;
+            const auto &struct_data = unit.pool.struct_data[struct_index];
+            std::vector<uint32_t> field_name_ids;
+            std::vector<semantic::NKType> field_types;
+            auto field_name_nodes = unit.pool.get_list(struct_data.names);
+            auto field_type_nodes = unit.pool.get_list(struct_data.types);
+            field_name_ids.reserve(field_name_nodes.size());
+            field_types.reserve(field_type_nodes.size());
+            for (auto field_name_idx : field_name_nodes) {
+                if (!field_name_idx.isvalid()) {
+                    continue;
+                }
+                field_name_ids.push_back(unit.pool.getNode(field_name_idx).payload.identifier.name_id);
+            }
+            for (auto field_type_idx : field_type_nodes) {
+                field_types.push_back(
+                    resolvePredeclareType(unit, field_type_idx, global_symbols, diagnostics, line, column));
+            }
+
+            uint32_t global_struct_id = global_arena.internStruct(struct_data.name_id, unit.source_path,
+                                                                  std::move(field_name_ids), std::move(field_types));
+
+            GlobalSymbol sym{.name_id = struct_data.name_id,
+                             .kind = Kind::Struct,
+                             .type = semantic::NKType::makeObject(static_cast<int32_t>(global_struct_id)),
+                             .owner_module = unit.source_path};
+
+            if (!global_symbols.insert(std::move(sym))) {
+                diagnostics.reportError(niki::diagnostic::DiagnosticStage::Semantic,
+                                        niki::diagnostic::codes::semantic::GenericError,
+                                        "Duplicate top-level symbol (struct).",
+                                        niki::diagnostic::makeSourceSpan(unit.source_path, line, column));
+            }
+            continue;
+        }
+        if (decl.type == syntax::NodeType::FunctionDecl) {
+            const auto &func_data = unit.pool.function_data[decl.payload.func_decl.function_index];
+
+            std::vector<semantic::NKType> param_types;
+            auto params = unit.pool.get_list(func_data.params);
+            param_types.reserve(params.size());
+
+            for (auto param_idx : params) {
+                const auto &param_node = unit.pool.getNode(param_idx);
+                auto type_expr_idx = param_node.payload.var_decl.type_expr;
+                param_types.push_back(
+                    resolvePredeclareType(unit, type_expr_idx, global_symbols, diagnostics, line, column));
+            }
+            semantic::NKType ret_type = semantic::NKType::makeUnknown();
+            if (func_data.return_type.isvalid()) {
+                ret_type =
+                    resolvePredeclareType(unit, func_data.return_type, global_symbols, diagnostics, line, column);
+            }
+            semantic::FunctionSignature sig{param_types, ret_type};
+            uint32_t global_sig_id = global_arena.internFuncSig(sig);
+
+            GlobalSymbol sym{
+                .name_id = func_data.name_id,
+                .kind = Kind::Function,
+                .type = semantic::NKType(semantic::NKBaseType::Function, static_cast<int32_t>(global_sig_id)),
+                .owner_module = unit.source_path,
+
+            };
+
+            if (!global_symbols.insert(std::move(sym))) {
+                diagnostics.reportError(niki::diagnostic::DiagnosticStage::Semantic,
+                                        niki::diagnostic::codes::semantic::GenericError,
+                                        "Duplicate top-level symbol (function).",
+                                        niki::diagnostic::makeSourceSpan(unit.source_path, line, column));
+            }
+            continue;
+        }
+    }
+    if (!diagnostics.empty()) {
+        return std::unexpected(std::move(diagnostics));
+    }
+    return {};
+}
+
 std::expected<void, diagnostic::DiagnosticBag> Driver::predeclareAllUnits(
     const std::vector<GlobalCompilationUnit> &units, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols) {
     diagnostic::DiagnosticBag diagnostics;
 
     for (const auto &unit : units) {
-        if (!unit.root.isvalid()) {
-            diagnostics.reportError(
-                niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError,
-                "Invalid module root in predeclare.", niki::diagnostic::makeSourceSpan(unit.source_path));
-            continue;
-        }
-
-        const auto &root = unit.pool.getNode(unit.root);
-        if (root.type != syntax::NodeType::ModuleDecl) {
-            diagnostics.reportError(
-                niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError,
-                "Root node must be ModuleDecl in predeclare.", niki::diagnostic::makeSourceSpan(unit.source_path));
-            continue;
-        }
-
-        const auto &body_node = unit.pool.getNode(root.payload.module_decl.body);
-        auto decls = unit.pool.get_list(body_node.payload.list.elements);
-
-        for (auto decl_idx : decls) {
-            if (!decl_idx.isvalid()) {
-                continue;
-            }
-            const auto &decl = unit.pool.getNode(decl_idx);
-            uint32_t line = unit.pool.locations[decl_idx.index].line;
-            uint32_t column = unit.pool.locations[decl_idx.index].column;
-
-            if (decl.type == syntax::NodeType::StructDecl) {
-                uint32_t struct_index = decl.payload.struct_decl.struct_index;
-                const auto &struct_data = unit.pool.struct_data[struct_index];
-                std::vector<uint32_t> field_name_ids;
-                std::vector<semantic::NKType> field_types;
-                auto field_name_nodes = unit.pool.get_list(struct_data.names);
-                auto field_type_nodes = unit.pool.get_list(struct_data.types);
-                field_name_ids.reserve(field_name_nodes.size());
-                field_types.reserve(field_type_nodes.size());
-                for (auto field_name_idx : field_name_nodes) {
-                    if (!field_name_idx.isvalid()) {
-                        continue;
-                    }
-                    field_name_ids.push_back(unit.pool.getNode(field_name_idx).payload.identifier.name_id);
-                }
-                for (auto field_type_idx : field_type_nodes) {
-                    field_types.push_back(
-                        resolvePredeclareType(unit, field_type_idx, global_symbols, diagnostics, line, column));
-                }
-
-                uint32_t global_struct_id = global_arena.internStruct(struct_data.name_id, unit.source_path,
-                                                                      std::move(field_name_ids), std::move(field_types));
-
-                GlobalSymbol sym{.name_id = struct_data.name_id,
-                                 .kind = Kind::Struct,
-                                 .type = semantic::NKType::makeObject(static_cast<int32_t>(global_struct_id)),
-                                 .owner_module = unit.source_path};
-
-                if (!global_symbols.insert(std::move(sym))) {
-                    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Semantic,
-                                            niki::diagnostic::codes::semantic::GenericError,
-                                            "Duplicate top-level symbol (struct).",
-                                            niki::diagnostic::makeSourceSpan(unit.source_path, line, column));
-                }
-                continue;
-            }
-            if (decl.type == syntax::NodeType::FunctionDecl) {
-                const auto &func_data = unit.pool.function_data[decl.payload.func_decl.function_index];
-
-                std::vector<semantic::NKType> param_types;
-                auto params = unit.pool.get_list(func_data.params);
-                param_types.reserve(params.size());
-
-                for (auto param_idx : params) {
-                    const auto &param_node = unit.pool.getNode(param_idx);
-                    auto type_expr_idx = param_node.payload.var_decl.type_expr;
-                    param_types.push_back(
-                        resolvePredeclareType(unit, type_expr_idx, global_symbols, diagnostics, line, column));
-                }
-                semantic::NKType ret_type = semantic::NKType::makeUnknown();
-                if (func_data.return_type.isvalid()) {
-                    ret_type =
-                        resolvePredeclareType(unit, func_data.return_type, global_symbols, diagnostics, line, column);
-                }
-                semantic::FunctionSignature sig{param_types, ret_type};
-                uint32_t global_sig_id = global_arena.internFuncSig(sig);
-
-                GlobalSymbol sym{
-                    .name_id = func_data.name_id,
-                    .kind = Kind::Function,
-                    .type = semantic::NKType(semantic::NKBaseType::Function, static_cast<int32_t>(global_sig_id)),
-                    .owner_module = unit.source_path,
-
-                };
-
-                if (!global_symbols.insert(std::move(sym))) {
-                    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Semantic,
-                                            niki::diagnostic::codes::semantic::GenericError,
-                                            "Duplicate top-level symbol (function).",
-                                            niki::diagnostic::makeSourceSpan(unit.source_path, line, column));
-                }
-                continue;
-            }
+        auto one = predeclareSingleUnit(unit, global_arena, global_symbols);
+        if (!one.has_value()) {
+            diagnostics.merge(std::move(one.error()));
         }
     }
     if (!diagnostics.empty()) {
@@ -436,7 +458,8 @@ std::expected<vm::Value, niki::diagnostic::DiagnosticBag> Driver::runProject(con
     // D. 交给 launcher 在 VM 中启动
     auto files = collectNkFiles(root_dir, options);
     if (files.empty()) {
-        return std::unexpected(makeDriverError(niki::diagnostic::codes::driver::NoInput, "未找到 .nk 文件", root_dir));
+        return std::unexpected(makeDriverError(niki::diagnostic::codes::driver::NoInput, "No .nk source files found.",
+                                               root_dir));
     }
     auto compiled = compileAll(files);
 

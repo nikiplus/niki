@@ -8,7 +8,6 @@
 #include "niki/vm/value.hpp"
 #include <cstdint>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -34,7 +33,6 @@ union ASTNodePayload {
     CallExprPayload call;
     MemberExprPayload member;
     DispatchExprPayload dispatch;
-    ClosureExprPayload closure;
     AwaitExprPayload await_expr;
     BorrowExprPayload borrow;
     ImplicitCastExprPayload implicit_cast;

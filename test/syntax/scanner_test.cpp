@@ -11,54 +11,33 @@ using namespace niki::syntax;
 
 TEST(ScannerTest, AllSymbolsCoverage) {
     std::string source =
-        "( ) [ ] { } + - * / % ! = > < & | ^ ~ , . : ; ? @ :: && || != == >= <= << >> &= |= ^= += -= *= /= %= -> =>";
+        "( ) [ ] { } + - * / % ! = > < & | ^ ~ , . : ; ? @0d:: && || != == >= <= << >> &= |= ^= += -= *= /= %= -> =>";
     Scanner scanner(source);
 
-    std::vector<TokenType> expectedTokens = {TokenType::SYM_PAREN_L,
-                                             TokenType::SYM_PAREN_R,
-                                             TokenType::SYM_BRACKET_L,
-                                             TokenType::SYM_BRACKET_R,
-                                             TokenType::SYM_BRACE_L,
-                                             TokenType::SYM_BRACE_R,
-                                             TokenType::SYM_PLUS,
-                                             TokenType::SYM_MINUS,
-                                             TokenType::SYM_STAR,
-                                             TokenType::SYM_SLASH,
-                                             TokenType::SYM_MOD,
-                                             TokenType::SYM_BANG,
-                                             TokenType::SYM_EQUAL,
-                                             TokenType::SYM_GREATER,
-                                             TokenType::SYM_LESS,
-                                             TokenType::SYM_BIT_AND,
-                                             TokenType::SYM_BIT_OR,
-                                             TokenType::SYM_BIT_XOR,
-                                             TokenType::SYM_BIT_NOT,
-                                             TokenType::SYM_COMMA,
-                                             TokenType::SYM_DOT,
-                                             TokenType::SYM_COLON,
-                                             TokenType::SYM_SEMICOLON,
-                                             TokenType::SYM_QUESTION,
-                                             TokenType::SYM_AT,
-                                             TokenType::SYM_SCOPE,
+    std::vector<TokenType> expectedTokens = {TokenType::SYM_PAREN_L,      TokenType::SYM_PAREN_R,
+                                             TokenType::SYM_BRACKET_L,    TokenType::SYM_BRACKET_R,
+                                             TokenType::SYM_BRACE_L,      TokenType::SYM_BRACE_R,
+                                             TokenType::SYM_PLUS,         TokenType::SYM_MINUS,
+                                             TokenType::SYM_STAR,         TokenType::SYM_SLASH,
+                                             TokenType::SYM_MOD,          TokenType::SYM_BANG,
+                                             TokenType::SYM_EQUAL,        TokenType::SYM_GREATER,
+                                             TokenType::SYM_LESS,         TokenType::SYM_BIT_AND,
+                                             TokenType::SYM_BIT_OR,       TokenType::SYM_BIT_XOR,
+                                             TokenType::SYM_BIT_NOT,      TokenType::SYM_COMMA,
+                                             TokenType::SYM_DOT,          TokenType::SYM_COLON,
+                                             TokenType::SYM_SEMICOLON,    TokenType::SYM_QUESTION,
+                                             TokenType::SYM_AT,           TokenType::LITERAL_INT,
+                                             TokenType::SYM_DICE,         TokenType::SYM_SCOPE,
                                              TokenType::SYM_AND,
-                                             TokenType::SYM_OR,
-                                             TokenType::SYM_BANG_EQUAL,
-                                             TokenType::SYM_EQUAL_EQUAL,
-                                             TokenType::SYM_GREATER_EQUAL,
-                                             TokenType::SYM_LESS_EQUAL,
-                                             TokenType::SYM_BIT_SHL,
-                                             TokenType::SYM_BIT_SHR,
-                                             TokenType::SYM_BIT_AND_EQUAL,
-                                             TokenType::SYM_BIT_OR_EQUAL,
-                                             TokenType::SYM_BIT_XOR_EQUAL,
-                                             TokenType::SYM_PLUS_EQUAL,
-                                             TokenType::SYM_MINUS_EQUAL,
-                                             TokenType::SYM_STAR_EQUAL,
-                                             TokenType::SYM_SLASH_EQUAL,
-                                             TokenType::SYM_MOD_EQUAL,
-                                             TokenType::SYM_ARROW,
-                                             TokenType::SYM_FAT_ARROW,
-                                             TokenType::TOKEN_EOF};
+                                             TokenType::SYM_OR,           TokenType::SYM_BANG_EQUAL,
+                                             TokenType::SYM_EQUAL_EQUAL,  TokenType::SYM_GREATER_EQUAL,
+                                             TokenType::SYM_LESS_EQUAL,   TokenType::SYM_BIT_SHL,
+                                             TokenType::SYM_BIT_SHR,      TokenType::SYM_BIT_AND_EQUAL,
+                                             TokenType::SYM_BIT_OR_EQUAL, TokenType::SYM_BIT_XOR_EQUAL,
+                                             TokenType::SYM_PLUS_EQUAL,   TokenType::SYM_MINUS_EQUAL,
+                                             TokenType::SYM_STAR_EQUAL,   TokenType::SYM_SLASH_EQUAL,
+                                             TokenType::SYM_MOD_EQUAL,    TokenType::SYM_ARROW,
+                                             TokenType::SYM_FAT_ARROW,    TokenType::TOKEN_EOF};
 
     for (auto expected : expectedTokens) {
         Token token = scanner.scanToken();
@@ -181,4 +160,27 @@ TEST(ScannerTest, PerformanceTest) {
 
     EXPECT_GT(tokenCount, 100000);
     std::cout << "[ PERFORMANCE ] Scanned " << tokenCount << " tokens, time cost " << duration.count() << " ms\n";
+}
+
+TEST(ScannerTest, DiceTokenization) {
+    {
+        std::string source = "1d10";
+        Scanner scanner(source);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::LITERAL_INT);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::SYM_DICE);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::LITERAL_INT);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::TOKEN_EOF);
+    }
+    {
+        std::string source = "1d(1+3)";
+        Scanner scanner(source);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::LITERAL_INT);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::SYM_DICE);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::SYM_PAREN_L);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::LITERAL_INT);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::SYM_PLUS);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::LITERAL_INT);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::SYM_PAREN_R);
+        EXPECT_EQ(scanner.scanToken().type, TokenType::TOKEN_EOF);
+    }
 }

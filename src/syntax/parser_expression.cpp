@@ -303,7 +303,8 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     case TokenType::SYM_BIT_OR:
     case TokenType::SYM_BIT_XOR:
     case TokenType::SYM_BIT_SHL:
-    case TokenType::SYM_BIT_SHR: {
+    case TokenType::SYM_BIT_SHR:
+    case TokenType::SYM_DICE: {
         payload.binary.op = type;
         payload.binary.left = left;
         Precedence precedence = getPrecedence(type);
@@ -397,6 +398,9 @@ Precedence Parser::getPrecedence(TokenType type) const {
     case TokenType::SYM_SLASH:
     case TokenType::SYM_MOD:
         return Precedence::Factor;
+
+    case TokenType::SYM_DICE:
+        return Precedence::DICE;
 
     case TokenType::SYM_DOT:
     case TokenType::SYM_PAREN_L:   // 函数调用 foo()

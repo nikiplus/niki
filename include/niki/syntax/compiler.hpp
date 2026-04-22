@@ -13,8 +13,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <expected>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -60,7 +61,8 @@ class RegisterAllocator {
                 return i;
             }
         }
-        throw std::runtime_error("Register overflow! Expression too complex.");
+        std::fprintf(stderr, "Register overflow! Expression too complex.\n");
+        std::abort();
     }
     void free(uint8_t reg) { registers[reg] = false; }
     void reset() {
@@ -80,24 +82,22 @@ class Compiler {
     // 2) 建立顶层 ObjFunction 作为脚本容器
     // 3) 深度遍历 AST 发射字节码
     // 4) 汇总并返回最终 Chunk 或错误池
-    std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> compile(
-        const ASTPool &pool,                            // 旁侧表等
-        ASTNodeIndex root,                              // 解析根节点
-        const std::vector<semantic::NKType> &typeTable, // 类型表
-        niki::Chunk initial_chunk = niki::Chunk{},      // 实际代码块
-        const niki::GlobalTypeArena *globalArena = nullptr,
-        const niki::GlobalSymbolTable *globalSymbols = nullptr
-    );
+    std::expected<Chunk, diagnostic::DiagnosticBag> compile(const ASTPool &pool, // 旁侧表等
+                                                            ASTNodeIndex root,   // 解析根节点
+                                                            const std::vector<semantic::NKType> &typeTable, // 类型表
+                                                            Chunk initial_chunk = Chunk{}, // 实际代码块
+                                                            const GlobalTypeArena *globalArena = nullptr,
+                                                            const GlobalSymbolTable *globalSymbols = nullptr);
 
   private:
     const ASTPool *currentPool = nullptr;
     const std::vector<semantic::NKType> *currentTypeTable = nullptr; // 类型表
-    const niki::GlobalTypeArena *currentGlobalArena = nullptr;
-    const niki::GlobalSymbolTable *currentGlobalSymbols = nullptr;
+    const GlobalTypeArena *currentGlobalArena = nullptr;
+    const GlobalSymbolTable *currentGlobalSymbols = nullptr;
     // 当前正在编译的函数对象和对应的Chunk。
     // 在 MVP 中我们用指针，方便嵌套编译时随时切换上下文
-    niki::vm::ObjFunction *compilingFunction = nullptr; // 当前正在编译的函数对象
-    niki::Chunk *compilingChunk = nullptr;              // 当前正在编译的字节码块
+    vm::ObjFunction *compilingFunction = nullptr; // 当前正在编译的函数对象
+    Chunk *compilingChunk = nullptr;              // 当前正在编译的字节码块
 
     // 当前函数的编译状态（通过 pushContext/popContext 自动隔离与切换）
     RegisterAllocator regAlloc;
@@ -105,7 +105,7 @@ class Compiler {
     int scopeDepth = 0;
 
     bool hadError = false;
-    niki::diagnostic::DiagnosticBag diagnostics;
+    diagnostic::DiagnosticBag diagnostics;
     std::array<uint32_t, static_cast<size_t>(vm::OPCODE::OP_COUNT)> opcodeEmitCount{};
     uint32_t warningCount = 0;
     uint32_t traceIndent = 0;
@@ -161,8 +161,8 @@ class Compiler {
     // 嵌套函数编译时保存/恢复寄存器状态、局部变量表和循环补丁信息。
     // 用于保存/恢复编译状态，以支持嵌套函数编译。
     struct CompilerContext {
-        niki::vm::ObjFunction *function;
-        niki::Chunk *chunk;
+        vm::ObjFunction *function;
+        Chunk *chunk;
         RegisterAllocator regAlloc;
         std::vector<Local> locals;
         int scopeDepth;
@@ -170,7 +170,7 @@ class Compiler {
     };
     std::vector<CompilerContext> contextStack;
 
-    void pushContext(niki::vm::ObjFunction *func);
+    void pushContext(vm::ObjFunction *func);
     CompilerContext popContext();
     //---字节码发射器---
     // 所有 opcode 输出都经由 emitOp/emitByte，确保 line/column 元数据一致写入。
@@ -214,7 +214,7 @@ class Compiler {
     ExprResult compileCallExpr(ASTNodeIndex nodeIdx);
     ExprResult compileMemberExpr(ASTNodeIndex nodeIdx);
     ExprResult compileDispatchExpr(ASTNodeIndex nodeIdx);
-    // 闭包与高级特性
+    // 高级特性
     ExprResult compileAwaitExpr(ASTNodeIndex nodeIdx);
     ExprResult compileBorrowExpr(ASTNodeIndex nodeIdx);
     ExprResult compileWildcardExpr(ASTNodeIndex nodeIdx);
@@ -242,7 +242,6 @@ class Compiler {
     void compileAttachStmt(ASTNodeIndex nodeIdx);
     void compileDetachStmt(ASTNodeIndex nodeIdx);
     void compileTargetStmt(ASTNodeIndex nodeIdx);
-    // 异常处理
 
     //---顶层声明编译---
     void compileDeclaration(ASTNodeIndex nodeIdx);

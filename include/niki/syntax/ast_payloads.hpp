@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <deque>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -36,9 +35,8 @@ enum class NodeType : uint8_t {
     CallExpr,     // 函数调用表达式
     MemberExpr,   // 成员表达式
     DispatchExpr, // 异步派发表达式
-    //---闭包与高级特性--
-    ClosureExpr,  // 闭包表达式
-    AwaitExpr,    // 等待表达式
+    //---高级特性--
+    AwaitExpr, // 等待表达式
     BorrowExpr,   // 借用表达式 (&x 或 &mut x)
     WildcardExpr, // 用于 match 语句中的 _
     TypeExpr,     // 类型标注表达式 (如 Int, String, 或者自定义类型)
@@ -68,7 +66,6 @@ enum class NodeType : uint8_t {
     AttachStmt, // 挂载语句
     DetachStmt, // 取消挂载语句
     TargetStmt, // 目标语句 (ECS副作用修改)
-    //---异常处理---
 
     /*---顶层声明---*/
     // 通常只出现在文件的最外层，用于定义数据结构和执行单元
@@ -119,8 +116,6 @@ inline std::string_view toString(NodeType type) {
         return "MemberExpr";
     case NodeType::DispatchExpr:
         return "DispatchExpr";
-    case NodeType::ClosureExpr:
-        return "ClosureExpr";
     case NodeType::AwaitExpr:
         return "AwaitExpr";
     case NodeType::BorrowExpr:
@@ -346,11 +341,6 @@ struct MemberExprPayload {
 struct DispatchExprPayload {
     ASTNodeIndex callee;
     ASTListIndex arguments;
-};
-
-struct ClosureExprPayload {
-    ASTNodeIndex function_decl;
-    ASTListIndex captures;
 };
 
 struct AwaitExprPayload {

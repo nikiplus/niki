@@ -120,6 +120,10 @@ ExprResult Compiler::compileBinaryExpr(ASTNodeIndex nodeIdx) {
         if (lBase == semantic::NKBaseType::Integer)
             emitOp(vm::OPCODE::OP_IMOD, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
         break;
+    case TokenType::SYM_DICE:
+        if (lBase == semantic::NKBaseType::Integer)
+            emitOp(vm::OPCODE::OP_DICE, resultReg.reg, leftReg.reg, rightReg.reg, line, column);
+        break;
 
     // --- 字符串运算 ---
     case TokenType::SYM_CONCAT:

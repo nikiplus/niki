@@ -76,6 +76,16 @@ TEST_F(ParserTest, ParseExpression_Precedence) {
     EXPECT_EQ(astStr, "(module\n  (func test() (block (var result = (+ 1 (* 2 3))))))");
 }
 
+TEST_F(ParserTest, ParseExpression_DiceMixedWithAdd) {
+    auto root = parseSource("func test() { var x = 1d10 + 1d(1+3); }");
+    ASSERT_TRUE(root.isvalid());
+
+    ASTPrinter printer(pool);
+    std::string astStr = printer.print(root);
+
+    EXPECT_EQ(astStr, "(module\n  (func test() (block (var x = (+ (d 1 10) (d 1 (+ 1 3)))))))");
+}
+
 // 【测试用例 3】解析完整的 test.nk 脚本文件
 TEST_F(ParserTest, ParseFullScript_TestNK) {
     // 尝试两种路径以兼容不同的测试执行环境 (CTest 默认工作目录在 build，IDE 可能在项目根目录)

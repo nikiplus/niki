@@ -5,7 +5,7 @@
 
 int main(int argc, char *argv[]) {
     if (argc < 2 || argc > 3) {
-        std::cerr << "用法:niki <project_root> [--diagnostic-format=text|json]\n";
+        std::cerr << "Usage: niki <project_root> [--diagnostic-format=text|json]\n";
         return 64;
     }
 
@@ -19,8 +19,8 @@ int main(int argc, char *argv[]) {
         } else if (flag == json_flag) {
             diagnostic_format = "json";
         } else {
-            std::cerr << "不支持的参数: " << flag << "\n";
-            std::cerr << "用法:niki <project_root> [--diagnostic-format=text|json]\n";
+            std::cerr << "Unsupported argument: " << flag << "\n";
+            std::cerr << "Usage: niki <project_root> [--diagnostic-format=text|json]\n";
             return 64;
         }
     }

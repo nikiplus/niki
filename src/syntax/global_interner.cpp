@@ -1,6 +1,7 @@
 #include "niki/syntax/global_interner.hpp"
 
-#include <stdexcept>
+#include <cstdio>
+#include <cstdlib>
 
 namespace niki::syntax {
 
@@ -33,7 +34,8 @@ std::optional<uint32_t> GlobalInterner::find(std::string_view str) const {
 
 const std::string &GlobalInterner::get(uint32_t id) const {
     if (id >= pool.size()) {
-        throw std::out_of_range("GlobalInterner id out of range.");
+        std::fprintf(stderr, "GlobalInterner id out of range.\n");
+        std::abort();
     }
     return pool[id];
 }

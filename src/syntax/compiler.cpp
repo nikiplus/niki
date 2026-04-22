@@ -1,7 +1,7 @@
 #include "niki/syntax/compiler.hpp"
 
-#include "niki/diagnostic/codes.hpp"
 #include "niki/debug/logger.hpp"
+#include "niki/diagnostic/codes.hpp"
 #include "niki/semantic/nktype.hpp"
 #include "niki/syntax/ast.hpp"
 #include "niki/syntax/token.hpp"
@@ -16,20 +16,22 @@
 #include <string>
 #include <utility>
 
+
 namespace niki::syntax {
 
-std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag>
-Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<semantic::NKType> &typeTable,
-                  niki::Chunk initial_chunk, const niki::GlobalTypeArena *globalArena,
-                  const niki::GlobalSymbolTable *globalSymbols) {
+std::expected<Chunk, diagnostic::DiagnosticBag> Compiler::compile(const ASTPool &pool, ASTNodeIndex root,
+                                                                  const std::vector<semantic::NKType> &typeTable,
+                                                                  Chunk initial_chunk,
+                                                                  const GlobalTypeArena *globalArena,
+                                                                  const GlobalSymbolTable *globalSymbols) {
     // 编译主流程（顶层脚本上下文）：
     // A. 初始化编译状态与统计器
     // B. 建立 <script> 顶层函数并切换上下文
     // C. 遍历根节点发射字节码，最后补 OP_RETURN
     // D. 若无错误则导出 chunk + string_pool
     if (!root.isvalid()) {
-        niki::diagnostic::DiagnosticBag bag;
-        bag.reportError(niki::diagnostic::DiagnosticStage::Compiler, niki::diagnostic::codes::compiler::InvalidRoot,
+        diagnostic::DiagnosticBag bag;
+        bag.reportError(diagnostic::DiagnosticStage::Compiler, diagnostic::codes::compiler::InvalidRoot,
                         "Invalid AST root node.");
         return std::unexpected(std::move(bag));
     }
@@ -39,13 +41,13 @@ Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<sema
     currentGlobalArena = globalArena;
     currentGlobalSymbols = globalSymbols;
     hadError = false;
-    diagnostics = niki::diagnostic::DiagnosticBag{};
+    diagnostics = diagnostic::DiagnosticBag{};
     warningCount = 0;
     traceIndent = 0;
     opcodeEmitCount.fill(0);
 
     // 移动（move）到编译器内部。我们将其封装在一个顶层objfunction
-    niki::vm::ObjFunction *topLevelFunc = new niki::vm::ObjFunction();
+    vm::ObjFunction *topLevelFunc = new vm::ObjFunction();
     topLevelFunc->name_id = const_cast<ASTPool *>(currentPool)->internString("<script>");
     topLevelFunc->chunk = std::move(initial_chunk);
     topLevelFunc->chunk.code.clear();
@@ -61,13 +63,13 @@ Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<sema
     currentGlobalSymbols = nullptr;
 
     if (hadError) {
-        niki::debug::debug("compiler", "compile failed, errors={}, warnings={}", diagnostics.size(), warningCount);
+        debug::debug("compiler", "compile failed, errors={}, warnings={}", diagnostics.size(), warningCount);
         delete topContext.function;
         return std::unexpected(std::move(diagnostics));
     }
 
-    // 编译成功！再次通过 Move 语义，把填满数据�?Chunk 移交出去�?
-    niki::Chunk final_chunk = std::move(topContext.function->chunk);
+    // 编译成功！再次通过 Move 语义，把填满数据的Chunk 移交出去
+    Chunk final_chunk = std::move(topContext.function->chunk);
 
     // 使用 Driver 级共享 interner 快照，确保多模块 name_id 语义一致。
     final_chunk.string_pool = pool.snapshotStringPool();
@@ -76,13 +78,13 @@ Compiler::compile(const ASTPool &pool, ASTNodeIndex root, const std::vector<sema
     for (uint32_t count : opcodeEmitCount) {
         totalOpCount += count;
     }
-    niki::debug::debug("compiler", "emit summary: ops={}, code_bytes={}, constants={}, warnings={}", totalOpCount,
-                       final_chunk.code.size(), final_chunk.constants.size(), warningCount);
+    debug::debug("compiler", "emit summary: ops={}, code_bytes={}, constants={}, warnings={}", totalOpCount,
+                 final_chunk.code.size(), final_chunk.constants.size(), warningCount);
     delete topContext.function;
     return std::move(final_chunk);
 }
 
-void Compiler::pushContext(niki::vm::ObjFunction *func) {
+void Compiler::pushContext(vm::ObjFunction *func) {
     // 进入新的函数编译上下文：
     // 保存上层状态，然后为新函数重置寄存器/locals/scope/loop 栈。
     // 保存当前状态（若有）
@@ -325,7 +327,6 @@ void Compiler::compileNode(ASTNodeIndex nodeIdx) {
     case NodeType::CallExpr:
     case NodeType::MemberExpr:
     case NodeType::DispatchExpr:
-    case NodeType::ClosureExpr:
     case NodeType::AwaitExpr:
     case NodeType::BorrowExpr:
     case NodeType::WildcardExpr:
@@ -357,7 +358,7 @@ void Compiler::compileNode(ASTNodeIndex nodeIdx) {
     }
 
     // ==== Declarations (其他顶层声明) ====
-    // ... 如果有专门的声明NodeType可在此补�?
+    // ... 如果有专门的声明NodeType可在此补充
     default:
         // 兜底进入声明处理
         compileDeclaration(nodeIdx);
@@ -371,10 +372,9 @@ void Compiler::reportError(const Token &token, std::string_view message) {
 }
 
 void Compiler::reportError(uint32_t line, uint32_t column, std::string_view message) {
-    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Compiler, niki::diagnostic::codes::compiler::GenericError,
-                            std::string(message),
-                            niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "",
-                                                             line, column));
+    diagnostics.reportError(
+        diagnostic::DiagnosticStage::Compiler, diagnostic::codes::compiler::GenericError, std::string(message),
+        diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
     hadError = true;
 }
 

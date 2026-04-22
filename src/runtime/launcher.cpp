@@ -21,7 +21,7 @@ std::expected<vm::Value, niki::diagnostic::DiagnosticBag> Launcher::launchProgra
         if (!init_ret.has_value()) {
             niki::diagnostic::DiagnosticBag diagnostics;
             diagnostics.reportError(niki::diagnostic::DiagnosticStage::Launcher,
-                                    niki::diagnostic::codes::launcher::InitRuntimeError, "初始化阶段运行失败");
+                                    niki::diagnostic::codes::launcher::InitRuntimeError, "Initialization failed.");
             return std::unexpected(std::move(diagnostics));
         }
         last_init = init_ret.value();
@@ -37,7 +37,7 @@ std::expected<vm::Value, niki::diagnostic::DiagnosticBag> Launcher::launchProgra
     if (entry == nullptr) {
         niki::diagnostic::DiagnosticBag diagnostics;
         diagnostics.reportError(niki::diagnostic::DiagnosticStage::Launcher,
-                                niki::diagnostic::codes::launcher::EntryLookupFailed, "未找到入口函数main");
+                                niki::diagnostic::codes::launcher::EntryLookupFailed, "Entry function not found.");
         return std::unexpected(std::move(diagnostics));
     }
 
@@ -46,7 +46,7 @@ std::expected<vm::Value, niki::diagnostic::DiagnosticBag> Launcher::launchProgra
     if (!entry_ret.has_value()) {
         niki::diagnostic::DiagnosticBag diagnostics;
         diagnostics.reportError(niki::diagnostic::DiagnosticStage::Launcher,
-                                niki::diagnostic::codes::launcher::EntryRuntimeError, "入口函数运行失败");
+                                niki::diagnostic::codes::launcher::EntryRuntimeError, "Entry function execution failed.");
         return std::unexpected(std::move(diagnostics));
     }
 

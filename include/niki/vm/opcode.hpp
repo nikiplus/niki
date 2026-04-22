@@ -24,6 +24,7 @@ enum class OPCODE : uint8_t {
     OP_IDIV,             // int / int
     OP_IMOD,             // int % int
     OP_CONCAT,           // string .. string
+    OP_DICE,             // Dice 1d10
     ____INT_ARITH_END,   // 整数四则运算指令结束
     // 浮点运算
     ____FLOAT_ARITH_START, // 浮点四则运算指令开始
@@ -89,7 +90,7 @@ enum class OPCODE : uint8_t {
 
     _CALC_END, // 运算指令结束
 
-    /*---[CtrlExpr]控制流(跳转指令 + 函数调用指令 + 闭包相关指令)---*/
+    /*---[CtrlExpr]控制流(跳转指令 + 函数调用指令)---*/
     _CTRL_START, // 控制流指令开始
     // [JmpExpr]跳转指令（JMP, JNZ, JZ）
     __JMP_START, // 跳转指令开始
@@ -142,12 +143,6 @@ enum class OPCODE : uint8_t {
     OP_FREE,
     __DATA_CTRL_END, // 常用数据操作指令结束
     _DATA_END,       // 数据操作指令结束
-
-    /*---[SysExpr]系统相关指令（THROW, CATCH）---*/
-    _SYS_START, // 系统相关指令开始
-    OP_THROW,   // 抛出异常指令
-    OP_CATCH,   // 捕获异常指令
-    _SYS_END,   // 系统相关指令结束
 
     /*---计数---*/
     OP_COUNT, // 指令总数
@@ -220,8 +215,5 @@ constexpr bool IsDSOP(OPCODE op) noexcept { return op >= OPCODE::__DS_START && o
 constexpr bool IsDataCtrlOP(OPCODE op) noexcept {
     return op >= OPCODE::__DATA_CTRL_START && op <= OPCODE::__DATA_CTRL_END;
 }
-
-/*---是否为系统相关指令---*/
-constexpr bool IsSysOP(OPCODE op) noexcept { return op >= OPCODE::_SYS_START && op <= OPCODE::_SYS_END; }
 
 } // namespace niki::vm
