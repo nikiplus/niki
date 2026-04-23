@@ -1,0 +1,171 @@
+#include "niki/debug/logger.hpp"
+#include "niki/l0_core/diagnostic/codes.hpp"
+#include "niki/l0_core/syntax/ast.hpp"
+#include "niki/l0_core/syntax/parser.hpp"
+#include "niki/l0_core/syntax/token.hpp"
+#include <cstddef>
+#include <cstdio>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+/*===========================================================
+
+*/
+using namespace niki::syntax;
+
+Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool, std::string_view source_path)
+    : source(source), sourcePath(source_path), tokens(tokens), astPool(pool), tokenIndex(0) {
+    // 在这里，我们进行了一次估算，平均每2~3个token产生一个ast节点。
+    // 借由此，我们可一次性向操作系统申请一块足够长的连续内存块，但同时保持有效长度为0
+    // 这可以彻底消灭我们后续解析过程中push_back()可能引发的数据搬运。
+    size_t estimated_nodes = tokens.size() / 2;
+    // 为文件提前预申请一块内存，防止后续反复申请。
+    if (estimated_nodes < 64) {
+        estimated_nodes = 64;
+    }
+    // reserve方法并不改变size。
+    astPool.nodes.reserve(estimated_nodes);
+    astPool.locations.reserve(estimated_nodes);
+    // 边长列表的消耗通常比节点少，我们预估其为1/4
+    astPool.lists_elements.reserve(tokens.size() / 4);
+    advance();
+};
+
+ParseResult Parser::parse() {
+    niki::debug::debug("parser", "start parse, token_count={}", tokens.size());
+    // 创建一个临时数组以收集所有顶层声明（顶层语句已禁用）
+    std::vector<ASTNodeIndex> declarations;
+    while (current.type != TokenType::TOKEN_EOF) {
+        niki::debug::trace("parser", "declaration entry token={} at {}:{}", toString(current.type), current.line,
+                           current.column);
+        ASTNodeIndex decl = parseTopLevelDeclaration(); // 改为调用严格的顶层声明解析
+        declarations.push_back(decl);
+    }
+    niki::debug::debug("parser", "finish parse, decl_count={}", declarations.size());
+
+    ASTNodePayload blockPayload{};
+    blockPayload.list.elements = astPool.allocateList(declarations);
+    ASTNodeIndex body = emitNode(NodeType::BlockStmt, blockPayload);
+
+    ASTNodePayload payload{};
+    payload.module_decl.body = body;
+    ParseResult result;
+    result.root = emitNode(NodeType::ModuleDecl, payload);
+    result.diagnostics = std::move(diagnostics);
+    return result;
+};
+
+//---游标控制---
+// 注意我们这个不断变化的haderror，其控制着恐慌模式的开启和关闭。
+// 在恐慌模式下，游标会将当前正在扫描的token视为错误，并不断将其跳过，直至跳过整个句段并最终返回一个正确的token——否则我们的代码要么不断报错，要么错误的将语句/表达式级联到一起表达。
+void Parser::advance() {
+    previous = current; // 记住上一个token，给parsePrefix和parseInfix用。
+
+    // 下方皆为防御代码——因为实际的生产环境中我们并不能保证人不犯错。
+    // 若写代码的人真的不犯错，那么我们防御代码中的大量内容事实上都可以去掉，只留下这么一行
+    // current = tokens[tokenIndex++];
+    for (;;) {
+        // 仅当token索引位不超出tokens栈长度时才执行，否则会索引到不存在的域
+        if (tokenIndex < tokens.size()) {
+            current = tokens[tokenIndex++];
+        } else {
+            // 如果越界，强制制造一个eof
+            current = Token{0, 0, 0, 0, TokenType::TOKEN_EOF};
+        }
+        // 若token为错误（无法识别或错误字符），指针持续向前推进，直至能够返回一个正确的token
+        if (current.type != TokenType::TOKEN_ERROR) {
+            break;
+        }
+        // 报告词法错误
+        errorAtCurrent("Invalid lexical token.");
+    }
+};
+
+void Parser::consume(TokenType type, const char *message) {
+    if (current.type == type) {
+        advance();
+        return;
+    }
+    errorAtCurrent(message);
+};
+
+// 获取当前token类型
+bool Parser::check(TokenType type) const { return current.type == type; };
+// 获取当前token类型，若匹配，则向前推进指针。
+bool Parser::match(TokenType type) {
+    if (!check(type))
+        return false;
+    advance();
+    return true;
+};
+
+bool Parser::isAtEnd(TokenType type) { return current.type == type; };
+
+//---AST节点生成器---
+ASTNodeIndex Parser::emitNode(NodeType type, const ASTNodePayload &payload, Token startToken) {
+    /*我们首先通过一套类型体操获取将传入的astnode 的位置。
+    在这一步进行时，我们的astpool上还未传入我们要传的astnode，简单图例如下。
+             node coming!↓
+    +----+----+----+----+↓----*---
+    |nod0|nod1|nod2|nod3|HERE!|...
+    +----+----+----+----+-----+---
+    |←std::vector::size→|
+    看到吗？我们新传入的node位置的索引，正是之前所有node位置之尾！
+    */
+    ASTNodeIndex nodeIndex = static_cast<ASTNodeIndex>(astPool.nodes.size());
+    astPool.nodes.push_back(ASTNode{type, payload});
+    TokenLocation location;
+
+    // 记得我们传入了一个startToken吗？这是为了防止报错偏移
+    // 假设我们进入astpool的是一个函数——一个错误函数，其可能包含了数十行数百行甚至数千行代码。已知在恐慌模式下，我们会不断向前推，直到遇到一个新的开始时返回。
+    // 那么在这种情况下，我们返回的错误信息的位置事实是这段函数的函数尾——这样的体验实在是太糟糕了！我们无法对着一个括号判断是哪个函数出了问题。
+    // 因此在处理类似的长函数时，我们需要记录一下长函数第一个token的位置。
+    if (startToken.line == 0) {
+        location.line = previous.line;
+        location.column = previous.column;
+    } else {
+        location.line = startToken.line;
+        location.column = startToken.column;
+    }
+    astPool.locations.push_back(location);
+    astPool.node_types.push_back(semantic::NKType::makeUnknown()); // 同步初始化node_types，防止TypeChecker越界
+
+    return nodeIndex;
+};
+
+//---错误处理---
+void Parser::errorAtCurrent(const char *message) {
+    if (panicMode)
+        return;
+    panicMode = true;
+    diagnostics.reportError(
+        niki::diagnostic::DiagnosticStage::Parser, niki::diagnostic::codes::parser::GenericError, message,
+        niki::diagnostic::makeSourceSpan(std::string(sourcePath), current.line, current.column,
+                                         current.type != TokenType::TOKEN_EOF ? current.length : 0));
+    hadError = true;
+};
+void Parser::synchronize() {
+    // 退出恐慌模式
+    panicMode = false;
+
+    // 不断快进，直到找到下一个能作为开头的同步点。
+    while (current.type != TokenType::TOKEN_EOF) {
+        if (previous.type == TokenType::SYM_SEMICOLON)
+            return;
+        switch (current.type) {
+        case TokenType::KW_VAR:
+        case TokenType::KW_FUNC:
+        case TokenType::KW_IF:
+        case TokenType::KW_RETURN:
+        case TokenType::KW_LOOP:
+        case TokenType::KW_MATCH:
+        case TokenType::KW_SYSTEM:
+        case TokenType::KW_FLOW:
+        case TokenType::KW_COMPONENT:
+            return;
+        default:;
+        }
+        advance();
+    }
+}

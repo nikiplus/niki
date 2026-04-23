@@ -1,0 +1,6 @@
+func main() -> int {
+    // 骰子：左为次数、右为面数。0dN 恒为 0；Nd1 恒为 N。
+    var deterministic: int = 0d100 + 2d1 + 3d1;
+    var roll: int = 1d6;
+    return deterministic + roll;
+}

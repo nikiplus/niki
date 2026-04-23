@@ -1,7 +1,7 @@
-#include "niki/diagnostic/codes.hpp"
-#include "niki/linker/linker.hpp"
-#include "niki/vm/object.hpp"
-#include "niki/vm/value.hpp"
+#include "niki/l0_core/diagnostic/codes.hpp"
+#include "niki/l0_core/linker/linker.hpp"
+#include "niki/l0_core/vm/object.hpp"
+#include "niki/l0_core/vm/value.hpp"
 #include <gtest/gtest.h>
 
 using namespace niki::linker;
@@ -28,7 +28,6 @@ TEST(LinkerDiagnosticsTest, DuplicateSymbolProducesDiagnostic) {
     Linker linker;
     LinkOptions options;
     options.entry_name = "main";
-    options.allow_no_entry = true;
 
     std::vector<CompileModule> modules;
     modules.push_back(makeModuleWithFunction("dup", "a.nk"));
@@ -45,7 +44,6 @@ TEST(LinkerDiagnosticsTest, MissingEntryProducesDiagnostic) {
     Linker linker;
     LinkOptions options;
     options.entry_name = "main";
-    options.allow_no_entry = false;
 
     std::vector<CompileModule> modules;
     modules.push_back(makeModuleWithFunction("helper", "helper.nk"));

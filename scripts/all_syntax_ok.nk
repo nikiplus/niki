@@ -1,0 +1,65 @@
+// all_syntax_ok.nk
+// 语法覆盖（可编译运行）：
+// 变量/常量、算术/比较/逻辑、位运算、字符串拼接、数组、if/loop、函数调用、结构体成员访问。
+
+struct Player {
+    hp: int,
+    mp: int,
+    name: string
+}
+
+func calculate_total(base: int, multiplier: int, offset: int, arr_val: int) -> int {
+    var temp: int = base * multiplier;
+    return temp + offset + arr_val;
+}
+
+func main() -> int {
+    var a: int = 10;
+    const b: int = 20;
+    var c: int = a + b;
+
+    var d: int = (c * 2 - 5) / 5;
+    var e: int = -d;
+
+    var is_greater: bool = c > d;
+    var is_equal: bool = (a == 10);
+    var logic_and: bool = is_greater && is_equal;
+    var logic_or: bool = !is_greater || false;
+
+    var bit_and: int = a & b;
+    var bit_or: int = a | b;
+    var bit_xor: int = a ^ b;
+    var bit_shl: int = a << 1;
+    var bit_shr: int = b >> 1;
+
+    var str1: string = "hello, ";
+    var str2: string = "NIKI";
+    var str3: string = str1 .. str2;
+
+    var arr = [10, 20, 30];
+    arr[1] = 99;
+    var arr_item: int = arr[1];
+
+    var f: int = 0;
+    if (is_greater) {
+        f = 100;
+    } else {
+        f = 200;
+    }
+
+    var counter: int = 0;
+    var sum: int = 0;
+    loop (counter < 5) {
+        sum = sum + counter;
+        counter = counter + 1;
+    }
+
+    var final_result: int = calculate_total(f, 2, sum, arr_item);
+
+    var hero: Player = Player(100, 50, "NIKI_Hero");
+    hero.hp = hero.hp - 20;
+    var current_hp: int = hero.hp;
+
+    return final_result + current_hp + bit_and + bit_or + bit_xor + bit_shl + bit_shr + e;
+}
+

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "niki/diagnostic/diagnostic.hpp"
+#include "niki/l0_core/diagnostic/diagnostic.hpp"
 
 namespace niki::debug {
 

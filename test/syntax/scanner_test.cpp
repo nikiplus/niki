@@ -1,6 +1,6 @@
-#include "niki/diagnostic/codes.hpp"
-#include "niki/syntax/scanner.hpp"
-#include "niki/syntax/token.hpp"
+#include "niki/l0_core/diagnostic/codes.hpp"
+#include "niki/l0_core/syntax/scanner.hpp"
+#include "niki/l0_core/syntax/token.hpp"
 #include <chrono>
 #include <gtest/gtest.h>
 #include <iostream>

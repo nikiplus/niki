@@ -1,7 +1,7 @@
 #include "niki/debug/diagnostic_logger.hpp"
 
 #include "niki/debug/logger.hpp"
-#include "niki/diagnostic/renderer.hpp"
+#include "niki/l0_core/diagnostic/renderer.hpp"
 
 namespace niki::debug {
 

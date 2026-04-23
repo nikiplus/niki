@@ -1,13 +1,14 @@
+#include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/driver/driver.hpp"
-#include "niki/semantic/global_compilation.hpp"
-#include "niki/semantic/global_symbol_table.hpp"
-#include "niki/semantic/global_type_arena.hpp"
-#include "niki/semantic/type_checker.hpp"
-#include "niki/diagnostic/diagnostic.hpp"
-#include "niki/syntax/ast.hpp"
-#include "niki/syntax/compiler.hpp"
-#include "niki/vm/chunk.hpp"
-#include "niki/vm/opcode.hpp"
+#include "niki/l0_core/semantic/global_compilation.hpp"
+#include "niki/l0_core/semantic/global_symbol_table.hpp"
+#include "niki/l0_core/semantic/global_type_arena.hpp"
+#include "niki/l0_core/semantic/type_checker.hpp"
+#include "niki/l0_core/syntax/ast.hpp"
+#include "niki/l0_core/syntax/compiler.hpp"
+#include "niki/l0_core/vm/chunk.hpp"
+#include "niki/l0_core/vm/opcode.hpp"
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -16,6 +17,21 @@
 
 using namespace niki::syntax;
 using namespace niki::vm;
+
+namespace {
+std::string readScriptOrDie(const std::string &script_name) {
+    const std::array<std::string, 2> paths = {"scripts/" + script_name, "../scripts/" + script_name};
+    std::ifstream file(paths[0]);
+    if (!file.is_open()) {
+        file.open(paths[1]);
+    }
+
+    EXPECT_TRUE(file.is_open()) << "Failed to open " << script_name << " from both " << paths[0] << " and " << paths[1];
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+} // namespace
 
 // 基础的编译器测试夹具
 class CompilerTest : public ::testing::Test {
@@ -137,19 +153,7 @@ TEST_F(CompilerTest, CompileSimpleAddition) {
 
 // 【整体测试】2. 编译整个 test.nk 文件
 TEST_F(CompilerTest, CompileFullScript_TestNK) {
-    std::string path1 = "scripts/test.nk";
-    std::string path2 = "../scripts/test.nk";
-
-    std::ifstream file(path1);
-    if (!file.is_open()) {
-        file.open(path2);
-    }
-
-    ASSERT_TRUE(file.is_open()) << "Failed to open test.nk";
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string sourceCode = buffer.str();
+    std::string sourceCode = readScriptOrDie("test.nk");
 
     auto result = compileSource(sourceCode);
 
@@ -172,6 +176,50 @@ TEST_F(CompilerTest, CompileFullScript_TestNK) {
     std::cout << "\n[CompilerTest] Successfully compiled test.nk into " << chunk.code.size()
               << " bytes of VM bytecode and " << chunk.constants.size() << " constants.\n"
               << std::endl;
+}
+
+TEST_F(CompilerTest, CompileFullScript_MainNK) {
+    std::string sourceCode = readScriptOrDie("main.nk");
+    auto result = compileSource(sourceCode);
+    ASSERT_TRUE(result.has_value()) << "Compilation failed for main.nk";
+
+    const niki::Chunk &chunk = result.value();
+    EXPECT_GT(chunk.code.size(), 0);
+}
+
+TEST_F(CompilerTest, CompileFullScript_AllSyntaxOK) {
+    std::string sourceCode = readScriptOrDie("all_syntax_ok.nk");
+    auto result = compileSource(sourceCode);
+    if (!result.has_value()) {
+        const auto &errors = result.error().all();
+        for (const auto &err : errors) {
+            std::cerr << "Compile Error at line " << err.span.line << ":" << err.span.column << " - " << err.message
+                      << std::endl;
+        }
+        FAIL() << "Compilation failed for all_syntax_ok.nk. See console for error details.";
+    }
+    const niki::Chunk &chunk = result.value();
+    EXPECT_GT(chunk.code.size(), 0);
+}
+
+TEST_F(CompilerTest, CompileFullScript_FailSemanticCrossFileCallMainNK_ShouldFail) {
+    std::string sourceCode = readScriptOrDie("cases/fail/semantic_01_cross_file_call/10_main.nk");
+    auto result = compileSource(sourceCode);
+    ASSERT_FALSE(result.has_value())
+        << "cases/fail/semantic_01_cross_file_call/10_main.nk should fail compilation (undeclared add_one)";
+    ASSERT_FALSE(result.error().empty());
+}
+
+TEST_F(CompilerTest, CompileTopLevelVar_ShouldFail) {
+    auto result = compileSource("var a: int = 1;");
+    ASSERT_FALSE(result.has_value()) << "Top-level var declaration must be rejected.";
+    ASSERT_FALSE(result.error().empty());
+}
+
+TEST_F(CompilerTest, CompileTopLevelExpression_ShouldFail) {
+    auto result = compileSource("1 + 2;");
+    ASSERT_FALSE(result.has_value()) << "Top-level expression must be rejected.";
+    ASSERT_FALSE(result.error().empty());
 }
 TEST_F(CompilerTest, CompileArrayLiteral_UsesListElementsAsNodeIndices) {
     auto result = compileSource("func test() { var a = 10;\nvar b = 20;\nvar arr = [a, b, 30];\nreturn arr[1]; }");
@@ -326,7 +374,8 @@ TEST_F(CompilerTest, SharedInterner_SameNameGetsSameIdAcrossPools) {
 }
 
 TEST_F(CompilerTest, SharedInterner_ChunkStringPoolStableAcrossCompiles) {
-    auto compile_with_interner = [this](std::string_view source) -> std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> {
+    auto compile_with_interner =
+        [this](std::string_view source) -> std::expected<niki::Chunk, niki::diagnostic::DiagnosticBag> {
         niki::GlobalCompilationUnit unit(interner);
         unit.source_path = "<shared_interner_test>";
         unit.source = std::string(source);
@@ -355,8 +404,7 @@ TEST_F(CompilerTest, SharedInterner_ChunkStringPoolStableAcrossCompiles) {
     };
 
     auto chunk_a = compile_with_interner("func main() -> int { return 1; }");
-    auto chunk_b = compile_with_interner(
-        "func helper() -> int { return 2; } func main() -> int { return helper(); }");
+    auto chunk_b = compile_with_interner("func helper() -> int { return 2; } func main() -> int { return helper(); }");
 
     ASSERT_TRUE(chunk_a.has_value());
     ASSERT_TRUE(chunk_b.has_value());

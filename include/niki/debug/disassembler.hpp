@@ -1,5 +1,5 @@
 #pragma once
-#include "niki/vm/chunk.hpp"
+#include "niki/l0_core/vm/chunk.hpp"
 #include <cstddef>
 #include <string_view>
 

@@ -28,6 +28,7 @@
 | success/01_multi_file_basic | `.\build\NIKI.exe scripts/cases/success/01_multi_file_basic` | 成功执行，入口 `main` 返回 `42` |
 | success/02_init_order | `.\build\NIKI.exe scripts/cases/success/02_init_order` | 成功执行，多个声明文件可共同联编，`main` 返回 `77` |
 | success/03_multi_decl_stable | `.\build\NIKI.exe scripts/cases/success/03_multi_decl_stable` | 成功执行，多个声明文件稳定联编，`main` 返回 `100` |
+| success/04_dice_basic | `.\build\NIKI.exe scripts/cases/success/04_dice_basic` | 成功执行；`0d100+2d1+3d1` 为 `5`，再加 `1d6` 得 `6..11` |
 | fail/link_01_no_entry | `.\build\NIKI.exe scripts/cases/fail/link_01_no_entry` | 链接失败，提示未找到入口函数 `main` |
 | fail/link_02_multiple_entry | `.\build\NIKI.exe scripts/cases/fail/link_02_multiple_entry` | 链接失败，提示检测到多个入口函数 `main` |
 | fail/link_03_id_conflict | `.\build\NIKI.exe scripts/cases/fail/link_03_id_conflict` | 链接失败，提示符号重复定义 |
@@ -40,6 +41,7 @@
 - success/01_multi_file_basic: **通过**；输出 `Expr Result: 42`，EXIT=0
 - success/02_init_order: **通过**；输出 `Expr Result: 77`，EXIT=0
 - success/03_multi_decl_stable: **通过**；输出 `Expr Result: 100`，EXIT=0
+- success/04_dice_basic: **通过**；`Expr Result` 在 `6..11`，EXIT=0
 - fail/link_01_no_entry: **通过**；命中 `未找到入口函数"main"`，EXIT=65
 - fail/link_02_multiple_entry: **通过**；命中 `重复定义符号："main"` 与 `检测到多个入口函数"main"`，EXIT=65
 - fail/link_03_id_conflict: **通过**；命中 `重复定义符号："alpha"`，EXIT=65

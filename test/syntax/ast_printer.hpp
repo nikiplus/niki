@@ -1,6 +1,5 @@
 #pragma once
-#include "niki/syntax/ast.hpp"
-#include <sstream>
+#include "niki/l0_core/syntax/ast.hpp"
 #include <string>
 
 namespace niki::syntax::test {

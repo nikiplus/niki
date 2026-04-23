@@ -1,5 +1,5 @@
 #include "niki/debug/disassembler.hpp"
-#include "niki/vm/opcode.hpp"
+#include "niki/l0_core/vm/opcode.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>

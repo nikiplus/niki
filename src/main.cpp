@@ -1,5 +1,5 @@
 #include "niki/driver/driver.hpp"
-#include "niki/diagnostic/renderer.hpp"
+#include "niki/l0_core/diagnostic/renderer.hpp"
 #include <iostream>
 #include <string_view>
 
@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
         } else {
             std::cerr << "Unsupported argument: " << flag << "\n";
             std::cerr << "Usage: niki <project_root> [--diagnostic-format=text|json]\n";
-            return 64;
+            return 64; // 参数个数错误，活第三个参数不是支持的 --diagnosic-format = json
         }
     }
 
@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
         } else {
             std::cerr << niki::diagnostic::renderDiagnosticBagText(run_result.error()) << "\n";
         }
-        return 65;
+        return 65; // run result无值
     }
-    return 0;
+    return 0; // 程序正常结束
 }
