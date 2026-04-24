@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string_view>
 
+// argc和argv是c++和操作系统交互返回的标准值——后续return的各类值也是一样，属系统错误返回标准值
 int main(int argc, char *argv[]) {
     if (argc < 2 || argc > 3) {
         std::cerr << "Usage: niki <project_root> [--diagnostic-format=text|json]\n";
@@ -21,12 +22,15 @@ int main(int argc, char *argv[]) {
         } else {
             std::cerr << "Unsupported argument: " << flag << "\n";
             std::cerr << "Usage: niki <project_root> [--diagnostic-format=text|json]\n";
-            return 64; // 参数个数错误，活第三个参数不是支持的 --diagnosic-format = json
+            return 64; // 参数个数错误，活第三个参数不是支持的 --diagnosic-format = json/test
         }
     }
 
+    // 实际驱动阶段
+    // 加载驱动器及配置
     niki::driver::Driver driver;
     niki::driver::DriverOptions options;
+    // 更改配置值
     options.recursive_scan = true;
     options.file_ext = ".nk";
     options.entry_name = "main";

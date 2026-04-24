@@ -347,10 +347,6 @@ NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
 
     // 提取签名进行比对 (Function)
     uint32_t sig_id = static_cast<uint32_t>(calleeType.getTypeId());
-    if (globalArena == nullptr) {
-        reportError(line, column, "Global type arena is not available.");
-        return NKType::makeUnknown();
-    }
 
     const FunctionSignature *sig = globalArena->findFuncSig(sig_id);
 
@@ -392,10 +388,6 @@ NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) {
     }
 
     uint32_t struct_id = static_cast<uint32_t>(objType.getTypeId());
-    if (globalArena == nullptr) {
-        reportError(line, column, "Global type arena is not available.");
-        return NKType::makeUnknown();
-    }
     const auto *struct_info = globalArena->findStruct(struct_id);
     if (struct_info == nullptr) {
         reportError(line, column, "Invalid global struct type.");

@@ -29,6 +29,11 @@
  *
  * --- get_list 与 std::span---
  * get_list 返回对 lists_elements 某一段的只读视图，不持有内存所有权；遍历列表时零拷贝切片。
+ *
+ * --- clear() 与旁侧表---
+ * 凡被节点 payload 或语义阶段引用的「池内下标」向量，必须在 clear() 中与 nodes 一并清空，
+ * 否则复用同一 ASTPool 时会出现悬空下标。
+ * GlobalInterner 与 ID_INT 等内建名 id 不由 clear() 重置。
  * =============================================================================
  */
 
@@ -84,9 +89,11 @@ void ASTPool::clear() {
     constants.clear();
     function_data.clear();
     struct_data.clear();
+    impl_data.clear();
     kits_data.clear();
+    map_data.clear();
 
-    // 注意：共享字符串池由 GlobalInterner 持有，clear() 仅重置 AST 结构数据。
+    // 注意：共享字符串池由 GlobalInterner 持有，clear() 仅重置 AST 结构数据；ID_INT 等仍有效。
 };
 ASTNode &ASTPool::getNode(ASTNodeIndex index) {
     if (!index.isvalid() || index >= nodes.size()) {

@@ -18,17 +18,16 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
 }
 
 std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(
-    syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::GlobalSymbolTable *global_symbols,
-    const niki::GlobalTypeArena *global_arena) {
+    syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::GlobalSymbolTable &global_symbols,
+    const niki::GlobalTypeArena &global_arena) {
     currentPool = &pool;
     diagnostics = niki::diagnostic::DiagnosticBag{};
     symbols.clear();
     currentDepth = 0;
     inFunction = false;
 
-    // 绑定全局上下文
-    globalSymbols = global_symbols;
-    globalArena = global_arena;
+    globalSymbols = &global_symbols;
+    globalArena = &global_arena;
 
     // 1. node_types 已经在 ASTPool 分配时预填充了 Unknown，
     // 我们不需要再做初始化操作，直接开始遍历覆盖它即可。
@@ -87,11 +86,8 @@ NKType TypeChecker::resolveSymbol(uint32_t name_id, uint32_t line, uint32_t colu
         }
     }
 
-    // 再查全局符号表
-    if (globalSymbols != nullptr) {
-        if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
-            return global_sym->type;
-        }
+    if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
+        return global_sym->type;
     }
 
     reportError(line, column, "Undeclared variable.");
@@ -136,23 +132,12 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
         if (name_id == currentPool->ID_STRING)
             return NKType(NKBaseType::String, -1);
 
-        // 查找全局符号表中的结构体类型（跨文件类型标注优先）
-        if (globalSymbols != nullptr) {
-            if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
-                if (global_sym->kind == niki::Kind::Struct) {
-                    return global_sym->type;
-                }
+        if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
+            if (global_sym->kind == niki::Kind::Struct || global_sym->kind == niki::Kind::Function) {
+                return global_sym->type;
             }
         }
 
-        // 查找当前文件内的用户自定义结构体类型（仅作为同文件声明解析）
-        for (size_t i = 0; i < currentPool->struct_data.size(); ++i) {
-            if (currentPool->struct_data[i].name_id == name_id) {
-                return NKType(NKBaseType::Object, static_cast<int32_t>(i));
-            }
-        }
-
-        // 如果都不认识，才去取字符串用于报错
         std::string_view typeName = currentPool->getStringId(name_id);
         reportError(line, column, "Unknown type name :" + std::string(typeName));
         return NKType::makeUnknown();

@@ -44,6 +44,9 @@ class Scanner {
      */
     Scanner(std::string_view source, std::string_view source_path = ""); // 返回一个Scanner对象
     Token scanToken(); // 核心API，每次调用产出一个token，也是我们的主扫描函数。
+    // scanner扫描后所产出的token 并不在这里存储，而是在parser中随用随取。
+
+    // 统一错误日志输出
     bool hasDiagnostics() const { return diagnostics.hasErrors(); }
     niki::diagnostic::DiagnosticBag takeDiagnostics();
 

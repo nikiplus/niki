@@ -118,18 +118,7 @@ struct ASTPool {
     std::vector<KitsData> kits_data;
     std::vector<MapData> map_data;
 
-    // --- [semantic] 函数签名去重池（类型检查 intern，NKType::Function 携带 sig 下标）---
-    std::vector<semantic::FunctionSignature> func_sigs;
-    uint32_t internFuncSignature(const std::vector<semantic::NKType> &params, semantic::NKType retType) {
-        semantic::FunctionSignature sig{params, retType};
-        for (size_t i = 0; i < func_sigs.size(); ++i) {
-            if (func_sigs[i] == sig) {
-                return i;
-            }
-        }
-        func_sigs.push_back(sig);
-        return func_sigs.size() - 1;
-    }
+    // 函数签名的权威 intern 在 GlobalTypeArena；NKType::Function 的 type_id 均为全局 sig id。
 
     // --- [syntax.intern] Driver 级共享字符串驻留表（ASTPool 只转发，不持有权威ID状态）---
     GlobalInterner *interner = nullptr;

@@ -1,15 +1,13 @@
+#include "niki/l0_core/semantic/global_symbol_table.hpp"
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/semantic/type_checker.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
-#include <cstddef>
 #include <cstdint>
-#include <span>
-#include <vector>
 
 namespace niki::semantic {
 
-// --- 顶层声明预声明 (两遍扫描的第一遍) ---
-// 目标：先注册顶层可见符号，使第二遍检查支持前向引用。
+// 两遍扫描第一遍：仅把「已在 GlobalSymbolTable 中的顶层符号」绑定进栈，类型句柄与 Driver 预声明一致
+//（GlobalTypeArena 的 struct / func sig id）。调用方须先 predeclare，否则报错而非回落池内下标。
 
 void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
     if (!declIdx.isvalid())
@@ -20,45 +18,33 @@ void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
     } else if (node.type == syntax::NodeType::StructDecl) {
         preDeclareStruct(declIdx);
     }
-    // 未来在这里增加对 InterfaceDecl 等全局类型的预声明
 }
 
 void TypeChecker::preDeclareStruct(syntax::ASTNodeIndex nodeIdx) {
-    // 预声明结构体：将 `struct name` 注册为 Object(struct_idx) 符号。
     const auto [node, line, column] = getNodeCtx(nodeIdx);
     uint32_t struct_idx = node.payload.struct_decl.struct_index;
     const syntax::StructData &struct_data = currentPool->struct_data[struct_idx];
 
-    NKType structType(NKBaseType::Object, static_cast<int32_t>(struct_idx));
-    declareSymbol(struct_data.name_id, structType, line, column);
+    const niki::GlobalSymbol *sym = globalSymbols->find(struct_data.name_id);
+    if (sym == nullptr || sym->kind != niki::Kind::Struct) {
+        reportError(line, column,
+                    "Top-level struct missing from global symbol table; ensure predeclare ran before typecheck.");
+        return;
+    }
+    declareSymbol(struct_data.name_id, sym->type, line, column);
 }
 
 void TypeChecker::preDeclareFunction(syntax::ASTNodeIndex nodeIdx) {
-    // 预声明函数：提取签名并将函数名绑定为 Function(sig_id)。
     const auto [node, line, column] = getNodeCtx(nodeIdx);
     const syntax::FunctionData &func_data = currentPool->function_data[node.payload.func_decl.function_index];
 
-    // 提取签名
-    std::span<const syntax::ASTNodeIndex> paramNodes = currentPool->get_list(func_data.params);
-    std::vector<NKType> paramTypes;
-    for (size_t i = 0; i < paramNodes.size(); ++i) {
-        const syntax::ASTNode &paramNode = currentPool->getNode(paramNodes[i]);
-        syntax::ASTNodeIndex type_expr_idx = paramNode.payload.var_decl.type_expr;
-        paramTypes.push_back(resolveTypeAnnotation(type_expr_idx));
+    const niki::GlobalSymbol *sym = globalSymbols->find(func_data.name_id);
+    if (sym == nullptr || sym->kind != niki::Kind::Function) {
+        reportError(line, column,
+                    "Top-level function missing from global symbol table; ensure predeclare ran before typecheck.");
+        return;
     }
-
-    // 未标注返回类型时，先记录为 Unknown，避免把函数误判成固定 void 返回。
-    NKType retType = NKType::makeUnknown();
-    if (func_data.return_type.isvalid()) {
-        retType = resolveTypeAnnotation(func_data.return_type);
-    }
-
-    // 将签名注册到签名池中，获取唯一的typeid
-    uint32_t sig_id = const_cast<syntax::ASTPool *>(currentPool)->internFuncSignature(paramTypes, retType);
-    NKType funcType(NKBaseType::Function, static_cast<int32_t>(sig_id));
-
-    // 将函数类型注册到外层作用域
-    declareSymbol(func_data.name_id, funcType, line, column);
+    declareSymbol(func_data.name_id, sym->type, line, column);
 }
 
 } // namespace niki::semantic

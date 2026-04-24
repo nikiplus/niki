@@ -23,10 +23,11 @@ class TypeChecker {
     std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> check(syntax::ASTPool &pool,
                                                                           syntax::ASTNodeIndex root);
 
+    // 必须已执行 Driver 级预声明（predeclareSingleUnit / predeclareAllUnits），全局表与 arena 不可为空。
     std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> check(syntax::ASTPool &pool,
                                                                           syntax::ASTNodeIndex root,
-                                                                          const GlobalSymbolTable *global_symbols,
-                                                                          const GlobalTypeArena *global_arena);
+                                                                          const GlobalSymbolTable &global_symbols,
+                                                                          const GlobalTypeArena &global_arena);
 
   private:
     syntax::ASTPool *currentPool = nullptr;

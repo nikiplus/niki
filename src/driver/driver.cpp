@@ -199,7 +199,7 @@ std::expected<GlobalCompilationUnit, diagnostic::DiagnosticBag> Driver::parseOne
 std::expected<semantic::TypeCheckResult, diagnostic::DiagnosticBag> Driver::typeCheckUnit(
     GlobalCompilationUnit &unit, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols) {
     semantic::TypeChecker checker;
-    auto result = checker.check(unit.pool, unit.root, &global_symbols, &global_arena);
+    auto result = checker.check(unit.pool, unit.root, global_symbols, global_arena);
     if (!result.has_value()) {
         return std::unexpected(std::move(result.error()));
     }

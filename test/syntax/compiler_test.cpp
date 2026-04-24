@@ -57,7 +57,7 @@ class CompilerTest : public ::testing::Test {
         }
 
         niki::semantic::TypeChecker checker;
-        auto checkResult = checker.check(unit.pool, unit.root, &global_symbols, &global_arena);
+        auto checkResult = checker.check(unit.pool, unit.root, global_symbols, global_arena);
         if (!checkResult.has_value()) {
             return std::unexpected(std::move(checkResult.error()));
         }
@@ -393,7 +393,7 @@ TEST_F(CompilerTest, SharedInterner_ChunkStringPoolStableAcrossCompiles) {
         }
 
         niki::semantic::TypeChecker checker;
-        auto check_result = checker.check(unit.pool, unit.root, &local_symbols, &local_arena);
+        auto check_result = checker.check(unit.pool, unit.root, local_symbols, local_arena);
         if (!check_result.has_value()) {
             return std::unexpected(std::move(check_result.error()));
         }
