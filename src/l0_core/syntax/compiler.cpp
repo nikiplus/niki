@@ -69,6 +69,7 @@ std::expected<Chunk, diagnostic::DiagnosticBag> Compiler::compile(const ASTPool 
 
     // 编译成功！再次通过 Move 语义，把填满数据的Chunk 移交出去
     Chunk final_chunk = std::move(topContext.function->chunk);
+    final_chunk.max_register_slots = topContext.function->max_registers;
 
     // 使用 Driver 级共享 interner 快照，确保多模块 name_id 语义一致。
     final_chunk.string_pool = pool.snapshotStringPool();
@@ -105,6 +106,10 @@ Compiler::CompilerContext Compiler::popContext() {
     // 退出函数编译上下文：
     // 返回当前函数状态，并在存在父上下文时完整恢复父级编译现场。
     CompilerContext current{compilingFunction, compilingChunk, regAlloc, locals, scopeDepth, loop_stack};
+    if (current.function != nullptr) {
+        uint16_t peak = current.regAlloc.peakSlots();
+        current.function->max_registers = peak == 0 ? 1u : peak;
+    }
     if (!contextStack.empty()) {
         // 恢复上层状�?
         CompilerContext parent = contextStack.back();

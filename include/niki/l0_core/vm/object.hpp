@@ -78,7 +78,8 @@ struct ObjFunction {
     Object object_header; // 补齐对象头，使其参与 VM 的 C-style 多态
     uint32_t name_id;
     uint8_t arity; // 参数个数
-    uint8_t max_registers;
+    /// 本函数体使用的寄存器槽位上界（比最大寄存器下标多 1）；供 VM 与 OP_CALL 栈安全检查。
+    uint16_t max_registers;
     niki::Chunk chunk; // 属于这个函数的独立字节码块
 };
 

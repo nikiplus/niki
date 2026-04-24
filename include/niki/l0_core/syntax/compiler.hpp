@@ -52,12 +52,17 @@ true 表示该槽位已被局部变量或临时计算占用，false 表示空闲
 class RegisterAllocator {
     // 首先得让寄存器是空的，因此我们将其设为0
     bool registers[256] = {false};
+    uint16_t slot_peak = 0;
 
   public:
     uint8_t allocate() {
         for (int i = 0; i < 256; ++i) {
             if (!registers[i]) {
                 registers[i] = true;
+                const auto used = static_cast<uint16_t>(i) + 1u;
+                if (used > slot_peak) {
+                    slot_peak = used;
+                }
                 return i;
             }
         }
@@ -68,7 +73,10 @@ class RegisterAllocator {
     void reset() {
         for (int i = 0; i < 256; ++i)
             registers[i] = false;
+        slot_peak = 0;
     }
+    /// 当前上下文中曾占用的最大寄存器槽位数（max_index + 1），供 VM 栈窗口校验。
+    uint16_t peakSlots() const { return slot_peak; }
 };
 
 class Compiler {

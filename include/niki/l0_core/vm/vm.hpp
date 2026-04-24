@@ -1,4 +1,12 @@
 #pragma once
+/* niki::vm::VM —— 寄存器式字节码解释器（l0 运行时核心）。
+ *
+ * 模型概要：
+ * - 连续物理栈 `stack`（容量 `stack_capacity`）；每帧 `base_register` 指定本帧逻辑寄存器 0 在栈上的起点。
+ * - `CallFrame` 持有当前 `ObjFunction::chunk` 与 `ip`；`OP_CALL` 时新帧 `base_register` 相对实参槽滑动。
+ * - `OP_RETURN` 将寄存器 0 写回调用帧的 `out_register` 并弹栈。
+ * - `globals` / `global_objects` 存放顶层函数与结构体蓝图等，供链接后与 launcher 解析入口。
+ */
 #include "niki/l0_core/vm/chunk.hpp"
 #include "niki/l0_core/vm/object.hpp"
 #include "niki/l0_core/vm/value.hpp"
@@ -10,14 +18,15 @@
 
 namespace niki::vm {
 
-// 调用栈帧
+/// 一次激活调用：一段寄存器窗口 + 一份字节码。
 struct CallFrame {
-    ObjFunction *function; // 当前正在执行的函数
-    uint8_t *ip;           // 指令指针
-    size_t base_register;  // 当前帧在全局栈中的起始偏移量（物理寄存器的零点）
-    uint8_t out_register;  // Caller 指定的返回值存放寄存器
+    ObjFunction *function; ///< 当前函数（内含 chunk、arity、max_registers 等）
+    uint8_t *ip;          ///< 下一条指令在 `chunk.code` 中的位置
+    size_t base_register; ///< 逻辑寄存器 0 对应 `stack[base_register]`
+    uint8_t out_register; ///< `OP_RETURN` 时结果写回调用者的逻辑寄存器下标
 };
 
+/// 与 `std::expected` 错误通道配合的执行结果枚举。
 enum class InterpretResult {
     OK,
     COMPILE_ERROR,
@@ -26,90 +35,56 @@ enum class InterpretResult {
 
 class VM {
   public:
+    /// 物理 `Value` 槽位数；与编译器写入的 `max_registers` 及 `OP_CALL` 边界检查一致。
+    static constexpr size_t stack_capacity = 8192;
+
     VM() = default;
 
-    // ---- 纯执行接口：不做策略判断 ----
+    /// 用临时 `ObjFunction` 包装裸 `Chunk` 执行（脚本顶层）；不解析工程入口名。
     std::expected<Value, InterpretResult> executeChunk(const Chunk &chunk, bool should_print);
+    /// 从已有 `ObjFunction` 入口执行（新栈、base=0）。
     std::expected<Value, InterpretResult> executeFunction(ObjFunction *function, bool should_print);
-    //---查询接口，提供launcher决议入口---
+
+    /// 按字面量函数名在 `current_string_pool` 中线性查找（MVP）。
     ObjFunction *lookupGlobalFunctionByName(const std::string &name);
+    /// 按 name_id 查 `globals`。
     ObjFunction *lookupGlobalFunctionById(uint32_t id);
 
   private:
-    std::array<Value, 8192> stack{}; // 全局物理大栈
-    std::vector<CallFrame> frames;   // 调用栈帧，通常最大深度为 64 或 256
+    std::array<Value, stack_capacity> stack{}; ///< 全局寄存器文件
+    std::vector<CallFrame> frames;              ///< 调用栈；`OP_CALL` / `OP_RETURN` 维护
 
-    // --- 全局函数表（MVP） ---
-    std::unordered_map<uint32_t, ObjFunction *> globals;
-    // --- 全局结构体与对象蓝图表 ---
-    std::unordered_map<uint32_t, Object *> global_objects;
+    std::unordered_map<uint32_t, ObjFunction *> globals;   ///< 顶层函数：name_id -> ObjFunction*
+    std::unordered_map<uint32_t, Object *> global_objects; ///< 全局对象：如 StructDef
 
-    const std::vector<std::string> *current_string_pool = nullptr; // 用于运行时打印函数名等调试信息
+    const std::vector<std::string> *current_string_pool = nullptr; ///< 当前上下文字符串池（诊断、按名查找）
 
-    // 当前正在执行的栈帧快捷引用
-    CallFrame *currentFrame = nullptr;
+    CallFrame *currentFrame = nullptr; ///< 等价于 `frames` 非空时指向最后一帧
 
-    // 内部运行核心循环
+    /// 取指—译码—执行主循环。
     std::expected<Value, InterpretResult> run(bool should_print = false);
 
-    // 快捷访问当前帧的寄存器 0 的物理地址
+    /// 当前帧逻辑寄存器 `r` 即 `stack[base_register + r]`。
     Value *currentRegisters() { return &stack[currentFrame->base_register]; }
+
+    /// 当前帧常量池索引访问；越界返回 `RUNTIME_ERROR`。
     std::expected<Value, InterpretResult> readConstantByIndex(uint32_t index);
-    uint8_t readByte() { return *(currentFrame->ip)++; };
-    /*画个图来理解readShort
-    startip(s) = 0
-    currentip(C) = startip+2
-     s+2=c
-    +↓---↓--
-    |0|1|2|3|...
-    startip被覆盖——因为ip +=2，事实上是不存在startip这个玩意儿的，现在只有一个指针指着2的位置。
-        ip
-    +----↓--
-    |0|1|2|3|...
-    现在我要获得0~1这一段的数据。
-    那么这个数据的视图的起始位置就是我这个指针往回再退两格(因为刚往前走了两格)
-    startip = ip-2
-     s  ip
-    +↓---↓--
-    |0|1|2|3|...
-    这个视图的结束位置endip就是我当前位置ip-1(因为我的指针指向的是需要被读取的指令的后一位)
-     s e ip
-    +↓-↓-↓--
-    |0|1|2|3|...
-    然后把startip得到的数据压入高八位，和e的数据拼在一起，我们就得到了这一段的数据视图。
-             |<-   start ip  ->|<-       end ip     ->|
-    uint16_t:|0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|
-    ——为什么不直接+1-1？
-    那就是写成ip+= 1
-    static_cast<uint16_t>((ip[-1] << 8) | ip[0])
-    ip+=1
-    return uint16_t;
-    这样我们的指针就得动两次，这在vm这种高计算量场景下太贵了——而且我们一般也不会这样写
-    */
-    /* 嫌废话太多可以直接看这条
-    读取 16 位宽操作数（采用大端序 Big-Endian）
+    /// 从 `ip` 读取一字节并前进；防止 `code` 截断导致越界读。
+    bool tryReadByte(uint8_t *byte_out);
+    /// 大端 16 位立即数；与编译器 `patchJump` 等布局一致。
+    bool tryReadShort(uint16_t *short_out);
+    /// 相对当前 `ip` 向前跳转，目标须在 `chunk.code` 范围内。
+    bool tryJumpForward(uint16_t offset);
+    /// 相对当前 `ip` 向后回跳（循环头），目标不得早于 code 起点。
+    bool tryJumpBackward(uint16_t offset);
+    /// 校验两侧均为整数并解包到输出参数（不信任 bytecode 类型标签时调用）。
+    bool requireInt64(Value left, Value right, int64_t *left_integer, int64_t *right_integer);
+    /// 校验两侧均为浮点。
+    bool requireFloat64(Value left, Value right, double *left_float, double *right_float);
+    /// 单操作数浮点校验（如取负）。
+    bool requireFloat64(Value value, double *resolved_float);
 
-    内存布局 (ip 初始指向高位字节):
-    +-------+-------+-------+
-    | 高8位 | 低8位 | 下一指令...
-    +-------+-------+-------+
-      ip[0]   ip[1]   ip[2]
-
-    1. 性能优化：直接 ip += 2，只进行一次指针写操作。
-    2. 此时 ip 指向了 ip[2]（下一条指令的开头）。
-    3. 回溯读取：
-       ip[-2] 即原来的 ip[0] (高 8 位)。我们将其 << 8 移至高位。
-       ip[-1] 即原来的 ip[1] (低 8 位)。直接按位或（|）拼入低位。
-
-    为什么使用大端序？
-    在 dump 字节码时，如果内存是 0x01 0xFF，大端序拼装后是 255 (0x01FF)，
-    符合人类从左到右阅读的直觉，极大降低 Debug 认知负担。
-    */
-    uint16_t readShort() {
-        currentFrame->ip += 2;
-        return static_cast<uint16_t>((currentFrame->ip[-2] << 8) | currentFrame->ip[-1]);
-    }
-
+    /// 格式化错误信息并打印简化栈回溯（stderr）。
     void runtime_error(const char *format, ...);
 };
 } // namespace niki::vm

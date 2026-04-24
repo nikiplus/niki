@@ -1,4 +1,11 @@
-
+/* vm.cpp —— VM::run 主解释循环与各辅助例程实现。
+ *
+ * 约定：
+ * - 指令解码使用宏 VM_RB_(name) / VM_RS_(name) 从当前帧 `ip` 拉取 8/16 位操作数；失败则直接
+ *   `return std::unexpected(RUNTIME_ERROR)`，与 tryReadByte / tryReadShort 对称。
+ * - 算术与比较在可能接触 `.as.integer` / `.as.floating` 前经 requireInt64 / requireFloat64，避免类型混淆 UB。
+ * - 控制流跳转经 tryJumpForward / tryJumpBackward，防止损坏字节码将 ip 甩出 chunk。
+ */
 #include "niki/l0_core/vm/vm.hpp"
 #include "niki/l0_core/vm/chunk.hpp"
 #include "niki/l0_core/vm/object.hpp"
@@ -14,6 +21,8 @@
 
 using namespace niki::vm;
 
+// --- 对外入口：脚本 chunk / 命名函数 ---
+
 std::expected<Value, InterpretResult> VM::executeChunk(const Chunk &chunk, bool should_print) {
     current_string_pool = &chunk.string_pool;
 
@@ -21,6 +30,14 @@ std::expected<Value, InterpretResult> VM::executeChunk(const Chunk &chunk, bool 
     ObjFunction *scriptFunc = new ObjFunction();
     scriptFunc->name_id = 0;
     scriptFunc->chunk = chunk;
+    {
+        // 脚本帧的寄存器窗口上界：来自编译器写入的 chunk 元数据；默认按 256 槽保守估计（旧 chunk）。
+        uint16_t slots = chunk.max_register_slots;
+        if (slots == 0) {
+            slots = 256;
+        }
+        scriptFunc->max_registers = slots;
+    }
     if (scriptFunc->chunk.code.empty()) {
         delete scriptFunc;
         return Value::makeNil();
@@ -58,6 +75,8 @@ std::expected<Value, InterpretResult> VM::executeFunction(ObjFunction *function,
     return run(should_print);
 }
 
+// --- 全局符号查询（供 launcher / 测试）---
+
 ObjFunction *VM::lookupGlobalFunctionById(uint32_t id) {
     auto global_function_iter = globals.find(id);
     return global_function_iter == globals.end() ? nullptr : global_function_iter->second;
@@ -74,6 +93,8 @@ ObjFunction *VM::lookupGlobalFunctionByName(const std::string &name) {
     }
     return nullptr;
 }
+
+// --- 错误报告 ---
 
 void VM::runtime_error(const char *format, ...) {
     std::cerr << "Runtime Error:";
@@ -111,6 +132,8 @@ void VM::runtime_error(const char *format, ...) {
     }
 };
 
+// --- 常量池与指令安全读取 ---
+
 std::expected<Value, InterpretResult> VM::readConstantByIndex(uint32_t index) {
     if (index >= currentFrame->function->chunk.constants.size()) {
         runtime_error("Constant index out of range: %u", index);
@@ -119,16 +142,118 @@ std::expected<Value, InterpretResult> VM::readConstantByIndex(uint32_t index) {
     return currentFrame->function->chunk.constants[index];
 };
 
+bool VM::tryReadByte(uint8_t *byte_out) {
+    // ip 相对 chunk 尾部的剩余字节数必须 ≥1，否则视为截断或损坏字节码。
+    const auto &code = currentFrame->function->chunk.code;
+    const uint8_t *base = code.data();
+    const size_t size = code.size();
+    const size_t off = static_cast<size_t>(currentFrame->ip - base);
+    if (off >= size) {
+        runtime_error("Unexpected end of bytecode.");
+        return false;
+    }
+    *byte_out = *currentFrame->ip++;
+    return true;
+}
+
+bool VM::tryReadShort(uint16_t *short_out) {
+    // 大端 uint16：先校验再前进 ip，避免先越界再读 ip[-2]。
+    const auto &code = currentFrame->function->chunk.code;
+    const uint8_t *base = code.data();
+    const size_t size = code.size();
+    const size_t off = static_cast<size_t>(currentFrame->ip - base);
+    if (off + 2 > size) {
+        runtime_error("Unexpected end of bytecode.");
+        return false;
+    }
+    const uint8_t high_byte = currentFrame->ip[0];
+    const uint8_t low_byte = currentFrame->ip[1];
+    currentFrame->ip += 2;
+    *short_out = static_cast<uint16_t>((static_cast<uint16_t>(high_byte) << 8) | low_byte);
+    return true;
+}
+
+bool VM::tryJumpForward(uint16_t offset) {
+    // 条件/无条件前向跳转：ip 已指向操作数之后，offset 为相对前移字节数。
+    const auto &code = currentFrame->function->chunk.code;
+    const uint8_t *base = code.data();
+    const uint8_t *end = base + code.size();
+    const uint8_t *new_ip = currentFrame->ip + static_cast<size_t>(offset);
+    if (new_ip > end) {
+        runtime_error("Jump target out of range.");
+        return false;
+    }
+    currentFrame->ip = const_cast<uint8_t *>(new_ip);
+    return true;
+}
+
+bool VM::tryJumpBackward(uint16_t offset) {
+    // OP_LOOP：回跳到循环头，目标不得早于 code 首字节。
+    const auto &code = currentFrame->function->chunk.code;
+    const uint8_t *base = code.data();
+    const uint8_t *new_ip = currentFrame->ip - static_cast<size_t>(offset);
+    if (new_ip < base) {
+        runtime_error("Loop jump target out of range.");
+        return false;
+    }
+    currentFrame->ip = const_cast<uint8_t *>(new_ip);
+    return true;
+}
+
+// --- 类型守卫：在读取 .as.integer / .as.floating 前校验标签（防损坏 bytecode）---
+
+bool VM::requireInt64(Value left, Value right, int64_t *left_integer, int64_t *right_integer) {
+    if (left.type != ValueType::Integer || right.type != ValueType::Integer) {
+        runtime_error("Operands must be integers.");
+        return false;
+    }
+    *left_integer = left.as.integer;
+    *right_integer = right.as.integer;
+    return true;
+}
+
+bool VM::requireFloat64(Value left, Value right, double *left_float, double *right_float) {
+    if (left.type != ValueType::Float || right.type != ValueType::Float) {
+        runtime_error("Operands must be floats.");
+        return false;
+    }
+    *left_float = left.as.floating;
+    *right_float = right.as.floating;
+    return true;
+}
+
+bool VM::requireFloat64(Value value, double *resolved_float) {
+    if (value.type != ValueType::Float) {
+        runtime_error("Operand must be a float.");
+        return false;
+    }
+    *resolved_float = value.as.floating;
+    return true;
+}
+
+// --- 主解释循环 ---
+// VM_RB_(x) / VM_RS_(x)：声明局部操作数并从 ip 读取；失败则 return RUNTIME_ERROR（见文件头说明）。
+
 std::expected<Value, InterpretResult> VM::run(bool should_print) {
+#define VM_RB_(name)                                                                                                   \
+    uint8_t name;                                                                                                      \
+    if (!tryReadByte(&name))                                                                                           \
+    return std::unexpected(InterpretResult::RUNTIME_ERROR)
+#define VM_RS_(name)                                                                                                   \
+    uint16_t name;                                                                                                     \
+    if (!tryReadShort(&name))                                                                                          \
+    return std::unexpected(InterpretResult::RUNTIME_ERROR)
     // 本地化热点状态——未来再实现。
     // uint8_t *ip = currentFrame->ip;
     // Value *regs = &stack[currentFrame->base_register];
     while (true) {
-        uint8_t instruction = readByte();
+        VM_RB_(instruction);
         switch (static_cast<OPCODE>(instruction)) {
+            // 各 case：操作数顺序与 opcode.hpp / compiler 发射顺序一致；失败路径统一 return RUNTIME_ERROR。
+
         case OPCODE::OP_LOAD_CONST: {
-            uint8_t targetReg = readByte();
-            uint8_t constIdx = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(constIdx);
             auto constant = readConstantByIndex(static_cast<uint32_t>(constIdx));
             if (!constant.has_value()) {
                 return std::unexpected(constant.error());
@@ -137,8 +262,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_LOAD_CONST_W: {
-            uint8_t targetReg = readByte();
-            uint16_t constIdx = readShort();
+            VM_RB_(targetReg);
+            VM_RS_(constIdx);
             auto constant = readConstantByIndex(static_cast<uint32_t>(constIdx));
             if (!constant.has_value()) {
                 return std::unexpected(constant.error());
@@ -147,65 +272,80 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_MOVE: {
-            uint8_t targetReg = readByte();
-            uint8_t srcReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(srcReg);
             currentRegisters()[targetReg] = currentRegisters()[srcReg];
             break;
         }
         case OPCODE::OP_IADD: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeInt(currentRegisters()[leftReg].as.integer + currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeInt(left_integer + right_integer);
             break;
         }
         case OPCODE::OP_ISUB: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeInt(currentRegisters()[leftReg].as.integer - currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeInt(left_integer - right_integer);
             break;
         }
 
         case OPCODE::OP_IMUL: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeInt(currentRegisters()[leftReg].as.integer * currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeInt(left_integer * right_integer);
             break;
         }
 
         case OPCODE::OP_IDIV: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            if (currentRegisters()[rightReg].as.integer == 0) {
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            if (right_integer == 0) {
                 runtime_error("Division by zero.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
-            currentRegisters()[targetReg] =
-                Value::makeInt(currentRegisters()[leftReg].as.integer / currentRegisters()[rightReg].as.integer);
+            currentRegisters()[targetReg] = Value::makeInt(left_integer / right_integer);
             break;
         }
         case OPCODE::OP_IMOD: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            if (currentRegisters()[rightReg].as.integer == 0) {
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            if (right_integer == 0) {
                 runtime_error("Modulo by zero.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
-            currentRegisters()[targetReg] =
-                Value::makeInt(currentRegisters()[leftReg].as.integer % currentRegisters()[rightReg].as.integer);
+            currentRegisters()[targetReg] = Value::makeInt(left_integer % right_integer);
             break;
         }
         case OPCODE::OP_DICE: {
-            uint8_t targetReg = readByte();
-            uint8_t countReg = readByte();
-            uint8_t sidesReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(countReg);
+            VM_RB_(sidesReg);
 
             Value count_value = currentRegisters()[countReg];
             Value sides_value = currentRegisters()[sidesReg];
@@ -234,45 +374,57 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_FADD: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeFloat(currentRegisters()[leftReg].as.floating + currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeFloat(left_float + right_float);
             break;
         }
         case OPCODE::OP_FSUB: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeFloat(currentRegisters()[leftReg].as.floating - currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeFloat(left_float - right_float);
             break;
         }
         case OPCODE::OP_FMUL: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeFloat(currentRegisters()[leftReg].as.floating * currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeFloat(left_float * right_float);
             break;
         }
         case OPCODE::OP_FDIV: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            if (currentRegisters()[rightReg].as.floating == 0.0) {
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            if (right_float == 0.0) {
                 runtime_error("Division by zero.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
-            currentRegisters()[targetReg] =
-                Value::makeFloat(currentRegisters()[leftReg].as.floating / currentRegisters()[rightReg].as.floating);
+            currentRegisters()[targetReg] = Value::makeFloat(left_float / right_float);
             break;
         }
         case OPCODE::OP_CONCAT: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
 
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
@@ -301,8 +453,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_NEG: {
-            uint8_t targetReg = readByte();
-            uint8_t srcReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(srcReg);
             if (currentRegisters()[srcReg].type != ValueType::Integer) {
                 runtime_error("Operand must be a number.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -311,14 +463,17 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_FNEG: {
-            uint8_t targetReg = readByte();
-            uint8_t srcReg = readByte();
-            currentRegisters()[targetReg] = Value::makeFloat(-currentRegisters()[srcReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(srcReg);
+            double source_float = 0.0;
+            if (!requireFloat64(currentRegisters()[srcReg], &source_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeFloat(-source_float);
             break;
         }
         case OPCODE::OP_NOT: {
-            uint8_t targetReg = readByte();
-            uint8_t srcReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(srcReg);
             Value val = currentRegisters()[srcReg];
             bool is_false = false;
             if (val.type == ValueType::Nil)
@@ -332,8 +487,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_BIT_NOT: {
-            uint8_t targetReg = readByte();
-            uint8_t srcReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(srcReg);
             if (currentRegisters()[srcReg].type != ValueType::Integer) {
                 runtime_error("Operand must be an integer.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -342,9 +497,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_BIT_AND: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
@@ -355,9 +510,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_BIT_OR: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
@@ -368,9 +523,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_BIT_XOR: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
@@ -381,9 +536,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_BIT_SHL: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
@@ -394,9 +549,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_BIT_SHR: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
             if (currentRegisters()[leftReg].type != ValueType::Integer ||
                 currentRegisters()[rightReg].type != ValueType::Integer) {
                 runtime_error("Operands must be integers.");
@@ -408,31 +563,31 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_TRUE: {
-            uint8_t targetReg = readByte();
+            VM_RB_(targetReg);
             currentRegisters()[targetReg] = Value::makeBool(true);
             break;
         }
         case OPCODE::OP_FALSE: {
-            uint8_t targetReg = readByte();
+            VM_RB_(targetReg);
             currentRegisters()[targetReg] = Value::makeBool(false);
             break;
         }
         case OPCODE::OP_NIL: {
-            uint8_t targetReg = readByte();
+            VM_RB_(targetReg);
             currentRegisters()[targetReg] = Value::makeNil();
             break;
         }
         case OPCODE::OP_NEW_MAP: {
-            uint8_t targetReg = readByte();
-            uint8_t initial_capacity = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(initial_capacity);
             ObjMap *map = allocateMap(initial_capacity);
             currentRegisters()[targetReg] = Value::makeObject(map);
             break;
         }
         case OPCODE::OP_SET_MAP: {
-            uint8_t mapReg = readByte();
-            uint8_t keyReg = readByte();
-            uint8_t valReg = readByte();
+            VM_RB_(mapReg);
+            VM_RB_(keyReg);
+            VM_RB_(valReg);
 
             Value mapVal = currentRegisters()[mapReg];
             if (!isMap(mapVal)) {
@@ -445,9 +600,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_GET_MAP: {
-            uint8_t targetReg = readByte();
-            uint8_t mapReg = readByte();
-            uint8_t keyReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(mapReg);
+            VM_RB_(keyReg);
 
             Value mapVal = currentRegisters()[mapReg];
             if (!isMap(mapVal)) {
@@ -465,15 +620,15 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_NEW_ARRAY: {
-            uint8_t targetReg = readByte();
-            uint8_t initial_capacity = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(initial_capacity);
             ObjArray *array = allocateArray(initial_capacity);
             currentRegisters()[targetReg] = Value::makeObject(array);
             break;
         }
         case OPCODE::OP_PUSH_ARRAY: {
-            uint8_t arrayReg = readByte();
-            uint8_t valReg = readByte();
+            VM_RB_(arrayReg);
+            VM_RB_(valReg);
             Value arrVal = currentRegisters()[arrayReg];
             if (!isArray(arrVal)) {
                 runtime_error("Target of push must be an array.");
@@ -488,9 +643,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_GET_ARRAY: {
-            uint8_t targetReg = readByte();
-            uint8_t arrayReg = readByte();
-            uint8_t indexReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(arrayReg);
+            VM_RB_(indexReg);
             Value arrVal = currentRegisters()[arrayReg];
             Value idxVal = currentRegisters()[indexReg];
 
@@ -514,9 +669,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_SET_ARRAY: {
-            uint8_t arrayReg = readByte();
-            uint8_t indexReg = readByte();
-            uint8_t valReg = readByte();
+            VM_RB_(arrayReg);
+            VM_RB_(indexReg);
+            VM_RB_(valReg);
 
             Value arrVal = currentRegisters()[arrayReg];
             Value idxVal = currentRegisters()[indexReg];
@@ -542,9 +697,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_AND: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
 
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
@@ -565,9 +720,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_OR: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
 
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
@@ -589,106 +744,141 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
         // int == int
         case OPCODE::OP_IEQ: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.integer == currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_integer == right_integer);
             break;
         }
 
         // int != int
         case OPCODE::OP_INE: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.integer != currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_integer != right_integer);
             break;
         }
         // int < int
         case OPCODE::OP_ILT: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.integer < currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_integer < right_integer);
             break;
         }
         // int > int
         case OPCODE::OP_IGT: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.integer > currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_integer > right_integer);
             break;
         }
         // int <= int
         case OPCODE::OP_ILE: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.integer <= currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_integer <= right_integer);
             break;
         }
         // int >= int
         case OPCODE::OP_IGE: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.integer >= currentRegisters()[rightReg].as.integer);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            int64_t left_integer = 0;
+            int64_t right_integer = 0;
+            if (!requireInt64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_integer, &right_integer))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_integer >= right_integer);
             break;
         }
         case OPCODE::OP_FEQ: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.floating == currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_float == right_float);
             break;
         }
         case OPCODE::OP_FNE: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.floating != currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_float != right_float);
             break;
         }
         case OPCODE::OP_FLT: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.floating < currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_float < right_float);
             break;
         }
         case OPCODE::OP_FGT: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.floating > currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_float > right_float);
             break;
         }
         case OPCODE::OP_FLE: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.floating <= currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_float <= right_float);
             break;
         }
         case OPCODE::OP_FGE: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
-            currentRegisters()[targetReg] =
-                Value::makeBool(currentRegisters()[leftReg].as.floating >= currentRegisters()[rightReg].as.floating);
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
+            double left_float = 0.0;
+            double right_float = 0.0;
+            if (!requireFloat64(currentRegisters()[leftReg], currentRegisters()[rightReg], &left_float, &right_float))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            currentRegisters()[targetReg] = Value::makeBool(left_float >= right_float);
             break;
         }
         case OPCODE::OP_RETURN: {
@@ -724,18 +914,20 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_JMP: {
-            uint16_t offset = readShort();
-            currentFrame->ip += offset;
+            VM_RS_(offset);
+            if (!tryJumpForward(offset))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             break;
         }
         case OPCODE::OP_LOOP: {
-            uint16_t offset = readShort();
-            currentFrame->ip -= offset;
+            VM_RS_(offset);
+            if (!tryJumpBackward(offset))
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
             break;
         }
         case OPCODE::OP_JZ: {
-            uint8_t condReg = readByte();
-            uint16_t offset = readShort();
+            VM_RB_(condReg);
+            VM_RS_(offset);
 
             bool is_false = false;
             if (currentRegisters()[condReg].type == ValueType::Bool) {
@@ -747,13 +939,14 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             if (is_false) {
-                currentFrame->ip += offset;
+                if (!tryJumpForward(offset))
+                    return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             break;
         }
         case OPCODE::OP_JNZ: {
-            uint8_t condReg = readByte();
-            uint16_t offset = readShort();
+            VM_RB_(condReg);
+            VM_RS_(offset);
 
             bool is_true = false;
 
@@ -768,14 +961,15 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             if (is_true) {
-                currentFrame->ip += offset;
+                if (!tryJumpForward(offset))
+                    return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             break;
         }
 
-        // --- 全局变量与函数池 ---
+        // --- 全局定义与解析（与 linker 之后 init chunk 配合）---
         case OPCODE::OP_DEFINE_GLOBAL: {
-            uint8_t constIdx = readByte();
+            VM_RB_(constIdx);
             auto funcVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
             if (!funcVal.has_value()) {
                 return std::unexpected(funcVal.error());
@@ -796,7 +990,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_DEFINE_GLOBAL_W: {
-            uint16_t constIdx = readShort();
+            VM_RS_(constIdx);
             auto funcVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
             if (!funcVal.has_value()) {
                 return std::unexpected(funcVal.error());
@@ -815,8 +1009,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_GET_GLOBAL: {
-            uint8_t targetReg = readByte();
-            uint8_t constIdx = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(constIdx);
             auto nameIdVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
             if (!nameIdVal.has_value()) {
                 return std::unexpected(nameIdVal.error());
@@ -840,8 +1034,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_GET_GLOBAL_W: {
-            uint8_t targetReg = readByte();
-            uint16_t constIdx = readShort();
+            VM_RB_(targetReg);
+            VM_RS_(constIdx);
             auto nameIdVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
             if (!nameIdVal.has_value()) {
                 return std::unexpected(nameIdVal.error());
@@ -864,10 +1058,10 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_NEW_INSTANCE: {
-            uint8_t outReg = readByte();
-            uint8_t calleeReg = readByte();
-            uint8_t argStartReg = readByte();
-            uint8_t argc = readByte();
+            VM_RB_(outReg);
+            VM_RB_(calleeReg);
+            VM_RB_(argStartReg);
+            VM_RB_(argc);
 
             Value callee = currentRegisters()[calleeReg];
             if (!isStructDef(callee)) {
@@ -877,6 +1071,12 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             ObjStructDef *struct_definition = static_cast<ObjStructDef *>(callee.as.object);
             if (struct_definition->field_count != argc) {
                 runtime_error("Struct instance argument count mismatch.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
+            const size_t arg_base = currentFrame->base_register + static_cast<size_t>(argStartReg);
+            if (arg_base + static_cast<size_t>(argc) > stack_capacity) {
+                runtime_error("Struct constructor argument registers out of stack range.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
@@ -890,9 +1090,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_GET_FIELD: {
-            uint8_t outReg = readByte();
-            uint8_t instanceReg = readByte();
-            uint8_t fieldIndex = readByte();
+            VM_RB_(outReg);
+            VM_RB_(instanceReg);
+            VM_RB_(fieldIndex);
 
             Value instanceVal = currentRegisters()[instanceReg];
             if (!isInstance(instanceVal)) {
@@ -909,9 +1109,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_SET_FIELD: {
-            uint8_t instanceReg = readByte();
-            uint8_t fieldIndex = readByte();
-            uint8_t valueReg = readByte();
+            VM_RB_(instanceReg);
+            VM_RB_(fieldIndex);
+            VM_RB_(valueReg);
 
             Value instanceVal = currentRegisters()[instanceReg];
             if (!isInstance(instanceVal)) {
@@ -928,10 +1128,10 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_CALL: {
-            uint8_t outReg = readByte();
-            uint8_t calleeReg = readByte();
-            uint8_t argStartReg = readByte();
-            uint8_t argc = readByte();
+            VM_RB_(outReg);
+            VM_RB_(calleeReg);
+            VM_RB_(argStartReg);
+            VM_RB_(argc);
 
             Value callee = currentRegisters()[calleeReg];
             if (!isFunction(callee)) {
@@ -942,7 +1142,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             ObjFunction *callee_function = asFunction(callee);
 
             if (argc != callee_function->arity) {
-                runtime_error("Expected %d .", callee_function->arity, argc);
+                runtime_error("Expected %u arguments, got %u.", static_cast<unsigned>(callee_function->arity),
+                              static_cast<unsigned>(argc));
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
@@ -954,7 +1155,22 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
 
             //--- 核心：滑动寄存器窗口---
             // 下一个函数的base_register = 当前函数的 base_register +参数起始寄存器
-            size_t new_base = currentFrame->base_register + argStartReg;
+            const size_t new_base = currentFrame->base_register + static_cast<size_t>(argStartReg);
+            const size_t arg_end = new_base + static_cast<size_t>(argc);
+            if (arg_end > stack_capacity) {
+                runtime_error("Call argument registers out of stack range.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
+            uint16_t callee_slots = callee_function->max_registers;
+            if (callee_slots == 0) {
+                callee_slots = 256;
+            }
+            if (new_base + static_cast<size_t>(callee_slots) > stack_capacity) {
+                runtime_error("Callee register window exceeds physical stack.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+
             // 为了安全起见，我们将 outReg 存在某个地方，等被调用函数返回时，把结果写回这里。
             // 因为当 CallFrame 弹出时，我们会丢失 outReg 的信息。
             // 工业级做法通常是将 Caller 的 outReg 保存在 CallFrame 结构中。
@@ -968,7 +1184,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_FREE: {
-            uint8_t targetReg = readByte();
+            VM_RB_(targetReg);
             Value val = currentRegisters()[targetReg];
             if (val.type == ValueType::Object && val.as.object != nullptr) {
                 // 根据具体的对象类型，执行彻底的物理销毁
@@ -1009,9 +1225,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_SEQ: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
 
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
@@ -1027,9 +1243,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_SNE: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
 
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
@@ -1043,9 +1259,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         case OPCODE::OP_OEQ: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
 
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
@@ -1058,9 +1274,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
         case OPCODE::OP_ONE: {
-            uint8_t targetReg = readByte();
-            uint8_t leftReg = readByte();
-            uint8_t rightReg = readByte();
+            VM_RB_(targetReg);
+            VM_RB_(leftReg);
+            VM_RB_(rightReg);
 
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
@@ -1078,6 +1294,8 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         case OPCODE::OP_METHOD:
             runtime_error("Opcode not implemented yet.");
             return std::unexpected(InterpretResult::RUNTIME_ERROR);
+#undef VM_RB_
+#undef VM_RS_
         default:
             runtime_error("Unknown opcode.");
             return std::unexpected(InterpretResult::RUNTIME_ERROR);
