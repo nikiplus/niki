@@ -27,11 +27,13 @@ std::expected<Value, InterpretResult> VM::executeChunk(const Chunk &chunk, bool 
     current_string_pool = &chunk.string_pool;
 
     // 顶层脚本：用伪 ObjFunction 持有 chunk（与旧 interpret 前半段一致；不再在此自动调用 main）
+    // 这样 VM 主循环始终“执行函数对象”，脚本与普通函数走同一执行协议。
     ObjFunction *scriptFunc = new ObjFunction();
     scriptFunc->name_id = 0;
     scriptFunc->chunk = chunk;
     {
         // 脚本帧的寄存器窗口上界：来自编译器写入的 chunk 元数据；默认按 256 槽保守估计（旧 chunk）。
+        // 编译期给出静态上界，运行期在 OP_CALL 处继续做硬边界检查（双保险）。
         uint16_t slots = chunk.max_register_slots;
         if (slots == 0) {
             slots = 256;
@@ -175,6 +177,7 @@ bool VM::tryReadShort(uint16_t *short_out) {
 
 bool VM::tryJumpForward(uint16_t offset) {
     // 条件/无条件前向跳转：ip 已指向操作数之后，offset 为相对前移字节数。
+    // 这是“显式改写下一条执行地址”的动作，本质对应硬件层面对 PC 的重定向。
     const auto &code = currentFrame->function->chunk.code;
     const uint8_t *base = code.data();
     const uint8_t *end = base + code.size();
@@ -189,6 +192,7 @@ bool VM::tryJumpForward(uint16_t offset) {
 
 bool VM::tryJumpBackward(uint16_t offset) {
     // OP_LOOP：回跳到循环头，目标不得早于 code 首字节。
+    // 循环并非“回到源码再解析”，而是把 ip/PC 直接回写到先前字节码位置。
     const auto &code = currentFrame->function->chunk.code;
     const uint8_t *base = code.data();
     const uint8_t *new_ip = currentFrame->ip - static_cast<size_t>(offset);
@@ -246,6 +250,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
     // 本地化热点状态——未来再实现。
     // uint8_t *ip = currentFrame->ip;
     // Value *regs = &stack[currentFrame->base_register];
+    // 解释器内核循环：Fetch -> Decode -> Execute -> 更新 ip。
+    // 顺序类指令依赖读取操作数自然推进 ip；
+    // 控制流类指令通过 tryJump* / 栈帧切换显式改写“下一条指令位置”。
     while (true) {
         VM_RB_(instruction);
         switch (static_cast<OPCODE>(instruction)) {
@@ -905,6 +912,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 }
                 return result;
             }
+            // 返回协议：
+            // 1) 被调函数把结果放在自身逻辑 r0；
+            // 2) 弹栈后写回调用者在 OP_CALL 时指定的 out_register。
             uint8_t outReg = currentFrame->out_register;
             frames.pop_back();
 
@@ -929,6 +939,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             VM_RB_(condReg);
             VM_RS_(offset);
 
+            // 这里的真假判定是语言层 truthy/falsy 规则，不是 CPU 原生布尔语义。
             bool is_false = false;
             if (currentRegisters()[condReg].type == ValueType::Bool) {
                 is_false = !currentRegisters()[condReg].as.boolean;
@@ -1148,13 +1159,17 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             if (frames.size() == 256) {
-                // 硬编码最大调用深度
+                // 硬编码最大调用深度（逻辑调用栈保护）。
+                // 与 stack_capacity（物理寄存器槽位保护）是不同维度的限制。
                 runtime_error("Stack overflow.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
             //--- 核心：滑动寄存器窗口---
             // 下一个函数的base_register = 当前函数的 base_register +参数起始寄存器
+            // Why:
+            // - 避免参数复制，通过移动窗口起点复用同一物理 stack；
+            // - caller/callee 看到不同逻辑寄存器视图，但底层仍是连续内存。
             const size_t new_base = currentFrame->base_register + static_cast<size_t>(argStartReg);
             const size_t arg_end = new_base + static_cast<size_t>(argc);
             if (arg_end > stack_capacity) {

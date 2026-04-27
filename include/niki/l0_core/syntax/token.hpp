@@ -106,6 +106,10 @@ enum class TokenType : uint8_t {
     KW_AWAIT,     // await 挂起并等待某结果
     KW_NOCK,      // nock 主动放弃当前帧执行权
     KW_ASYNC,     // async 异步函数
+    KW_IMPORT,    // import 导入
+    KW_EXPORT,    // export 导出
+    KW_FROM,      // from 导入来源
+    KW_AS,        // as 别名
     KW_SYSTEM,    // system 系统
     KW_COMPONENT, // component 组件
     KW_TARGET,    // target 目标
@@ -119,8 +123,8 @@ enum class TokenType : uint8_t {
     KW_READ,      // read 读取模块
     KW_WRITE,     // write 写入模块
     KW_MODULE,    // module (模块)
-    KW_STRUCT,    // struct (结构体)
-    KW_ENUM,      // enum (枚举)
+    KW_STRUCT, // struct (结构体)
+    KW_ENUM,   // enum (枚举)
 
     /*---[control]控制标记---*/
     TOKEN_EOF,   // 结束标记
@@ -307,6 +311,14 @@ inline std::string_view toString(TokenType type) {
         return "KW_NOCK";
     case TokenType::KW_ASYNC:
         return "KW_ASYNC";
+    case TokenType::KW_IMPORT:
+        return "KW_IMPORT";
+    case TokenType::KW_EXPORT:
+        return "KW_EXPORT";
+    case TokenType::KW_FROM:
+        return "KW_FROM";
+    case TokenType::KW_AS:
+        return "KW_AS";
     case TokenType::KW_SYSTEM:
         return "KW_SYSTEM";
     case TokenType::KW_COMPONENT:

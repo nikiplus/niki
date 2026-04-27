@@ -23,6 +23,12 @@ struct CallFrame {
     ObjFunction *function; ///< 当前函数（内含 chunk、arity、max_registers 等）
     uint8_t *ip;          ///< 下一条指令在 `chunk.code` 中的位置
     size_t base_register; ///< 逻辑寄存器 0 对应 `stack[base_register]`
+    /**
+     * out_register:
+     * - Why: 返回值需要回写到“调用者窗口”中的一个槽位。
+     * - How: OP_CALL 入栈时记录 caller 期望接收结果的寄存器号，OP_RETURN 弹栈后据此回填。
+     * - 这让“被调函数固定写 r0”与“调用者自选接收寄存器”能够同时成立。
+     */
     uint8_t out_register; ///< `OP_RETURN` 时结果写回调用者的逻辑寄存器下标
 };
 
@@ -36,6 +42,7 @@ enum class InterpretResult {
 class VM {
   public:
     /// 物理 `Value` 槽位数；与编译器写入的 `max_registers` 及 `OP_CALL` 边界检查一致。
+    /// 可理解为“解释器级寄存器文件”的硬上限，不等同于调用深度上限。
     static constexpr size_t stack_capacity = 8192;
 
     VM() = default;
@@ -65,6 +72,7 @@ class VM {
     std::expected<Value, InterpretResult> run(bool should_print = false);
 
     /// 当前帧逻辑寄存器 `r` 即 `stack[base_register + r]`。
+    /// 这是“寄存器窗口”抽象的核心：逻辑寄存器编号通过 base 偏移映射到统一物理数组。
     Value *currentRegisters() { return &stack[currentFrame->base_register]; }
 
     /// 当前帧常量池索引访问；越界返回 `RUNTIME_ERROR`。

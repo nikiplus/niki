@@ -1,5 +1,4 @@
 #include "niki/l0_core/linker/linker.hpp"
-#include "niki/l0_core/diagnostic/codes.hpp"
 #include "niki/l0_core/vm/object.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include <cstdint>
@@ -22,6 +21,9 @@ struct SymbolDef {
 static void collectMergedStringPool(const std::vector<CompileModule> &modules, std::vector<std::string> &out_pool) {
     // MVP 合并策略：按字符串去重并保持首次出现顺序。
     // 当前主要用于诊断输出；未来可扩展为 old_id -> new_id 重映射表。
+    // 底层视角：
+    // - 这里处理的是“逻辑符号 ID 空间合并”，不是机器地址重定位；
+    // - 真正的“地址级重定位”通常发生在更靠后端的装载/链接阶段。
     std::unordered_map<std::string, uint32_t> seen;
     for (const auto &module : modules) {
         for (const auto &interned_string : module.init_chunk.string_pool) {
@@ -38,6 +40,9 @@ static void collectMergedStringPool(const std::vector<CompileModule> &modules, s
 static std::vector<SymbolDef> collectDefinedSymbols(const CompileModule &module) {
     // 从模块常量池里提取“可定义全局符号”的对象（函数/结构体定义）。
     // 这一步等价于“模块导出扫描”，后续冲突检查和入口决议都依赖它。
+    // Why:
+    // - 当前 MVP 还没有独立导出段，因此先从常量池对象反射定义信息；
+    // - 后续迁移到 IR-first 后，应优先消费显式符号表而非常量池启发式扫描。
     std::vector<SymbolDef> symbols;
     const auto &string_pool = module.init_chunk.string_pool;
 
@@ -75,8 +80,7 @@ std::expected<LinkedProgram, niki::diagnostic::DiagnosticBag> Linker::link(const
     niki::diagnostic::DiagnosticBag diagnostics;
 
     if (modules.empty()) {
-        diagnostics.reportError(niki::diagnostic::DiagnosticStage::Linker,
-                                niki::diagnostic::codes::linker::EntryNotFound, "No modules to link.");
+        diagnostics.error(niki::diagnostic::events::LinkerCode::EntryNotFound, "No modules to link.");
         return std::unexpected(std::move(diagnostics));
     }
 
@@ -96,6 +100,7 @@ std::expected<LinkedProgram, niki::diagnostic::DiagnosticBag> Linker::link(const
     // 3) MVP: 入口决议 + 重复符号检查。
     // 在共享 interner 下，name_id 已是会话级统一值；
     // 这里按“名字是否重复定义”做冲突判断，避免跨文件同名覆盖。
+    // 可将其理解为“链接前符号解析”：先在逻辑名字空间里消解冲突，再进入运行期入口装载。
     std::unordered_map<std::string, std::string> name_to_owner;
 
     uint32_t entry_id = UINT32_MAX;
@@ -108,10 +113,9 @@ std::expected<LinkedProgram, niki::diagnostic::DiagnosticBag> Linker::link(const
             if (existing_owner == name_to_owner.end()) {
                 name_to_owner.emplace(symbol_def.name, symbol_def.module_path);
             } else {
-                diagnostics.reportError(niki::diagnostic::DiagnosticStage::Linker,
-                                        niki::diagnostic::codes::linker::DuplicateSymbol,
-                                        "Duplicate symbol: \"" + symbol_def.name + "\"",
-                                        niki::diagnostic::makeSourceSpan(symbol_def.module_path));
+                diagnostics.error(niki::diagnostic::events::LinkerCode::DuplicateSymbol,
+                                  "Duplicate symbol: \"" + symbol_def.name + "\"",
+                                  niki::diagnostic::makeSourceSpan(symbol_def.module_path));
             }
             if (symbol_def.name == options.entry_name) {
                 entry_id = symbol_def.id;
@@ -121,13 +125,11 @@ std::expected<LinkedProgram, niki::diagnostic::DiagnosticBag> Linker::link(const
     }
 
     if (entry_count > 1) {
-        diagnostics.reportError(niki::diagnostic::DiagnosticStage::Linker,
-                                niki::diagnostic::codes::linker::MultipleEntry,
-                                "Multiple entry functions named \"" + options.entry_name + "\".");
+        diagnostics.error(niki::diagnostic::events::LinkerCode::MultipleEntry,
+                          "Multiple entry functions named \"" + options.entry_name + "\".");
     } else if (entry_count == 0) {
-        diagnostics.reportError(niki::diagnostic::DiagnosticStage::Linker,
-                                niki::diagnostic::codes::linker::EntryNotFound,
-                                "Entry function \"" + options.entry_name + "\" not found.");
+        diagnostics.error(niki::diagnostic::events::LinkerCode::EntryNotFound,
+                          "Entry function \"" + options.entry_name + "\" not found.");
     }
 
     if (!diagnostics.empty()) {

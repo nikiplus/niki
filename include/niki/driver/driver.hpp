@@ -4,6 +4,7 @@
 #include "niki/l0_core/semantic/global_compilation.hpp"
 #include "niki/l0_core/semantic/global_symbol_table.hpp"
 #include "niki/l0_core/semantic/global_type_arena.hpp"
+#include "niki/l0_core/semantic/module_semantic.hpp"
 #include "niki/l0_core/semantic/type_checker.hpp"
 #include "niki/l0_core/syntax/global_interner.hpp"
 #include "niki/l0_core/vm/chunk.hpp"
@@ -67,5 +68,23 @@ class Driver {
     std::expected<void, diagnostic::DiagnosticBag> predeclareAllUnits(const std::vector<GlobalCompilationUnit> &units,
                                                                       GlobalTypeArena &global_arena,
                                                                       GlobalSymbolTable &global_symbols);
+
+    // 阶段2入口:构建模块语义上下文
+    std::expected<void, diagnostic::DiagnosticBag> buildModuleSemanticContext(
+        const std::vector<GlobalCompilationUnit> &units, const GlobalSymbolTable &global_symbols,
+        semantic::ModuleRegistry &out_regisry, semantic::ModuleExportTable &out_exports,
+        std::vector<semantic::UnitVisibleSymbols> &out_visible_per_unit);
+
+    // 子步骤
+    std::expected<semantic::ModuleRegistry, diagnostic::DiagnosticBag> collectModuleRegistry(
+        const std::vector<GlobalCompilationUnit> &units);
+
+    std::expected<semantic::ModuleExportTable, diagnostic::DiagnosticBag> buildModuleExportTable(
+        const std::vector<GlobalCompilationUnit> &units, const semantic::ModuleRegistry &registry,
+        const GlobalSymbolTable &global_symbols);
+
+    std::expected<std::vector<semantic::UnitVisibleSymbols>, diagnostic::DiagnosticBag> resolveVisibleSymbols(
+        const std::vector<GlobalCompilationUnit> &units, const semantic::ModuleRegistry &registry,
+        const semantic::ModuleExportTable &export_table, const GlobalSymbolTable &global_symbols);
 };
 } // namespace niki::driver

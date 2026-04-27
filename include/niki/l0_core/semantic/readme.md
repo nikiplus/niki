@@ -79,12 +79,12 @@ graph LR
   - 输入对象：各 `GlobalCompilationUnit` 的顶层声明 AST
   - 输出对象：填充后的 `GlobalSymbolTable`、`GlobalTypeArena`
   - 失败语义：预声明冲突/非法签名写入 `DiagnosticBag`；任一失败会阻止后续全局语义阶段
-  - 错误码来源：`diagnostic::codes::semantic::*`
+  - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::SemanticCode`）
 - TypeCheck（`TypeChecker::check`）
   - 输入对象：`ASTPool&`、`root`、`global_symbols`、`global_arena`
   - 输出对象：`std::expected<TypeCheckResult, DiagnosticBag>`，并回填 `ASTPool.node_types`
   - 失败语义：返回 `unexpected(DiagnosticBag)`；`node_types` 可能是部分回填状态
-  - 错误码来源：`diagnostic::codes::semantic::*`
+  - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::SemanticCode`）
 
 ## 主要文件
 

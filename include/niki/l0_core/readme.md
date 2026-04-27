@@ -64,6 +64,73 @@ graph LR
     V --> O[vm::Value]
 ```
 
+## 五条主链路（图）
+
+### 1) 编译执行主链
+
+```mermaid
+graph LR
+    S[source] --> SC[Scanner]
+    SC --> PR[Parser]
+    PR --> PD[Predeclare]
+    PD --> TC[TypeCheck]
+    TC --> CP[Compile]
+    CP --> LK[Linker]
+    LK --> RT[Runtime]
+    RT --> VM[VM]
+    VM --> O[vm::Value]
+```
+
+### 2) 语义分析链
+
+```mermaid
+graph LR
+    A[ASTPool] --> PD[Predeclare]
+    PD --> GST[GlobalSymbolTable]
+    PD --> GTA[GlobalTypeArena]
+    A --> TC[TypeChecker]
+    GST --> TC
+    GTA --> TC
+    TC --> NT[ASTPool.node_types]
+```
+
+### 3) 报错诊断链
+
+```mermaid
+graph LR
+    SX[syntax] --> RP[Report]
+    SM[semantic] --> RP
+    LK[linker] --> RP
+    RT[runtime] --> RP
+    VM[vm] --> RP
+    RP --> BAG[DiagnosticBag]
+    BAG --> MG[merge]
+    MG --> RN[renderer]
+    RN --> OUT[diagnostic output]
+```
+
+### 4) 链接装载链
+
+```mermaid
+graph LR
+    CM[CompileModule[]] --> LK[Linker]
+    LK --> LP[LinkedProgram]
+    LP --> LA[Launcher]
+    LA --> VM[VM ready state]
+```
+
+### 5) 运行时执行链
+
+```mermaid
+graph LR
+    EN[entry function/chunk] --> FD[Fetch]
+    FD --> DC[Decode]
+    DC --> EX[Execute]
+    EX --> ST[State Update]
+    ST --> FD
+    EX --> RES[Value / InterpretResult]
+```
+
 ## 阶段索引
 
 - Pass-1 Parse

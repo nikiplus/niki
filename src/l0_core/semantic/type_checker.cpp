@@ -1,5 +1,4 @@
 #include "niki/l0_core/semantic/type_checker.hpp"
-#include "niki/l0_core/diagnostic/codes.hpp"
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include <cstdint>
@@ -11,9 +10,8 @@ namespace niki::semantic {
 std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(syntax::ASTPool &pool,
                                                                                    syntax::ASTNodeIndex root) {
     niki::diagnostic::DiagnosticBag diagnostics;
-    diagnostics.reportError(niki::diagnostic::DiagnosticStage::Semantic,
-                            niki::diagnostic::codes::semantic::GenericError,
-                            "Legacy TypeChecker entry is disabled; use global semantic context.");
+    diagnostics.error(niki::diagnostic::events::SemanticCode::GenericError,
+                      "Legacy TypeChecker entry is disabled; use global semantic context.");
     return std::unexpected(std::move(diagnostics));
 }
 
@@ -148,9 +146,8 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
 };
 
 void TypeChecker::reportError(uint32_t line, uint32_t column, const std::string &message) {
-    diagnostics.reportError(
-        niki::diagnostic::DiagnosticStage::Semantic, niki::diagnostic::codes::semantic::GenericError, message,
-        niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
+    diagnostics.error(niki::diagnostic::events::SemanticCode::GenericError, message,
+                      niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
 }
 
 NKType TypeChecker::checkNode(syntax::ASTNodeIndex nodeIdx) {

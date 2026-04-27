@@ -5,13 +5,15 @@
 #include <string>
 
 namespace {
+namespace fs = std::filesystem;
+
 std::string resolveCaseDirOrDie(const std::string &relative_case_path) {
     const std::string path_a = "scripts/" + relative_case_path;
     const std::string path_b = "../scripts/" + relative_case_path;
-    if (std::filesystem::exists(path_a)) {
+    if (fs::exists(path_a)) {
         return path_a;
     }
-    if (std::filesystem::exists(path_b)) {
+    if (fs::exists(path_b)) {
         return path_b;
     }
     ADD_FAILURE() << "Failed to resolve case dir from " << path_a << " and " << path_b;

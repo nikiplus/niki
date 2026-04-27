@@ -61,6 +61,8 @@ union ASTNodePayload {
     TypeAliasDeclPayload type_alias;
     InterfaceDeclPayload interface_decl;
     ImplDeclPayload impl_decl;
+    ImportDeclPayload import_decl;
+    ExportDeclPayload export_decl;
     ModuleDeclPayload module_decl;
     SystemDeclPayload system_decl;
     ComponentDeclPayload component_decl;
@@ -117,6 +119,10 @@ struct ASTPool {
     std::vector<ImplData> impl_data;
     std::vector<KitsData> kits_data;
     std::vector<MapData> map_data;
+    std::vector<ImportItem> import_items;
+    std::vector<ExportItem> export_items;
+    std::vector<ImportDeclData> import_decl_data;
+    std::vector<ExportDeclData> export_decl_data;
 
     // 函数签名的权威 intern 在 GlobalTypeArena；NKType::Function 的 type_id 均为全局 sig id。
 

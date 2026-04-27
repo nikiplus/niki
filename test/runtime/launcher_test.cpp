@@ -1,4 +1,4 @@
-#include "niki/l0_core/diagnostic/codes.hpp"
+#include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/runtime/launcher.hpp"
 #include "niki/l0_core/vm/vm.hpp"
 #include <gtest/gtest.h>
@@ -17,5 +17,5 @@ TEST(LauncherDiagnosticsTest, EntryLookupFailureProducesDiagnostic) {
     ASSERT_FALSE(result.has_value());
     const auto &diagnostics = result.error().all();
     ASSERT_FALSE(diagnostics.empty());
-    EXPECT_EQ(diagnostics[0].code, niki::diagnostic::codes::launcher::EntryLookupFailed);
+    EXPECT_EQ(diagnostics[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::LauncherCode::EntryLookupFailed));
 }

@@ -83,17 +83,17 @@ graph LR
   - 输入对象：`std::string_view source`、`source_path`
   - 输出对象：逐次 `Token`；错误聚合在 `DiagnosticBag`
   - 失败语义：扫描不中断；非法字符以诊断记录，最终由上层检查 `DiagnosticBag` 决定是否终止流水线
-  - 错误码来源：`diagnostic::codes::scanner::*`
+  - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::ScannerCode`）
 - Parser（`Parser::parse`）
   - 输入对象：`source`、`std::span<const Token>`、`ASTPool&`
   - 输出对象：`ParseResult{root, diagnostics}`
   - 失败语义：返回部分 AST + 诊断（支持 panic/synchronize 错误恢复）
-  - 错误码来源：`diagnostic::codes::parser::*`
+  - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::ParserCode`）
 - Compiler（`Compiler::compile`）
   - 输入对象：`ASTPool`、`ASTNodeIndex root`、`typeTable(node_types)`、可选全局语义表
   - 输出对象：`std::expected<Chunk, DiagnosticBag>`
   - 失败语义：返回 `unexpected(DiagnosticBag)`，当前单元编译失败
-  - 错误码来源：`diagnostic::codes::compiler::*`
+  - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::CompilerCode`）
 
 ## 主要文件
 

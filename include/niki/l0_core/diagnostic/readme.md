@@ -1,6 +1,6 @@
 # Diagnostic 模块说明
 
-`diagnostic` 提供统一的诊断数据结构、错误码与渲染能力。
+`diagnostic` 提供统一的诊断数据结构、事件化错误码与渲染能力。
 
 ## 职责
 
@@ -50,8 +50,8 @@ graph LR
 
 ## 阶段接口（对外）
 
-- Report
-  - 输入：阶段、错误码、消息、源码位置
+- Emit
+  - 输入：阶段事件（`events::*Event`）、消息、源码位置
   - 输出：追加到 `DiagnosticBag`
 - Merge
   - 输入：多个诊断集合
@@ -63,15 +63,14 @@ graph LR
 ## 接口契约（输入/输出/失败语义）
 
 - Diagnostic 收集（`DiagnosticBag`）
-  - 输入对象：`DiagnosticStage`、`code`、`message`、`SourceSpan`
+  - 输入对象：`events::Event`（通过 `emit` 接口上报）
   - 输出对象：可合并、可传递的 `DiagnosticBag`
   - 失败语义：诊断系统本身不抛业务失败；仅承载上游失败事实
-  - 错误码来源：`diagnostic::codes::{scanner,parser,semantic,compiler,linker,launcher,driver}::*`
+  - 错误码来源：`diagnostic` 模块内部映射（可通过 `codeOf(events::*Code)` 查询）
 
 ## 主要文件
 
 - `diagnostic/diagnostic.hpp`
 - `src/l0_core/diagnostic/diagnostic.cpp`
-- `diagnostic/codes.hpp`
 - `diagnostic/renderer.hpp`
 - `src/l0_core/diagnostic/renderer.cpp`

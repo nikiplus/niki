@@ -1,5 +1,4 @@
 #include "niki/debug/logger.hpp"
-#include "niki/l0_core/diagnostic/codes.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/syntax/parser.hpp"
 #include "niki/l0_core/syntax/token.hpp"
@@ -139,10 +138,9 @@ void Parser::errorAtCurrent(const char *message) {
     if (panicMode)
         return;
     panicMode = true;
-    diagnostics.reportError(
-        niki::diagnostic::DiagnosticStage::Parser, niki::diagnostic::codes::parser::GenericError, message,
-        niki::diagnostic::makeSourceSpan(std::string(sourcePath), current.line, current.column,
-                                         current.type != TokenType::TOKEN_EOF ? current.length : 0));
+    diagnostics.error(niki::diagnostic::events::ParserCode::GenericError, message,
+                      niki::diagnostic::makeSourceSpan(std::string(sourcePath), current.line, current.column,
+                                                       current.type != TokenType::TOKEN_EOF ? current.length : 0));
     hadError = true;
 };
 void Parser::synchronize() {
@@ -160,6 +158,8 @@ void Parser::synchronize() {
         case TokenType::KW_RETURN:
         case TokenType::KW_LOOP:
         case TokenType::KW_MATCH:
+        case TokenType::KW_IMPORT:
+        case TokenType::KW_EXPORT:
         case TokenType::KW_SYSTEM:
         case TokenType::KW_FLOW:
         case TokenType::KW_COMPONENT:

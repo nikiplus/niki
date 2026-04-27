@@ -1,4 +1,4 @@
-#include "niki/l0_core/diagnostic/codes.hpp"
+#include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/syntax/scanner.hpp"
 #include "niki/l0_core/syntax/token.hpp"
 #include <chrono>
@@ -8,6 +8,7 @@
 #include <vector>
 
 using namespace niki::syntax;
+namespace ch = std::chrono;
 
 TEST(ScannerTest, AllSymbolsCoverage) {
     std::string source =
@@ -77,7 +78,7 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         EXPECT_EQ(token.type, TokenType::TOKEN_ERROR);
         auto diagnostics = scanner.takeDiagnostics();
         ASSERT_FALSE(diagnostics.empty());
-        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codes::scanner::InvalidToken);
+        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::ScannerCode::InvalidToken));
     }
     {
         std::string source = "\"未闭合的字符串";
@@ -86,7 +87,7 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         EXPECT_EQ(token.type, TokenType::TOKEN_ERROR);
         auto diagnostics = scanner.takeDiagnostics();
         ASSERT_FALSE(diagnostics.empty());
-        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codes::scanner::InvalidToken);
+        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::ScannerCode::InvalidToken));
     }
     {
         std::string source = "\'";
@@ -95,7 +96,7 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         EXPECT_EQ(token.type, TokenType::TOKEN_ERROR);
         auto diagnostics = scanner.takeDiagnostics();
         ASSERT_FALSE(diagnostics.empty());
-        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codes::scanner::InvalidToken);
+        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::ScannerCode::InvalidToken));
     }
     {
         std::string source = "\'ab\'";
@@ -104,7 +105,7 @@ TEST(ScannerTest, ErrorCharacterRecognition) {
         EXPECT_EQ(token.type, TokenType::TOKEN_ERROR);
         auto diagnostics = scanner.takeDiagnostics();
         ASSERT_FALSE(diagnostics.empty());
-        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codes::scanner::InvalidToken);
+        EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::ScannerCode::InvalidToken));
     }
 }
 
@@ -145,7 +146,7 @@ TEST(ScannerTest, PerformanceTest) {
         source += "if (x > 50) { return true; }\n";
     }
 
-    auto start_time = std::chrono::high_resolution_clock::now();
+    auto start_time = ch::high_resolution_clock::now();
     Scanner scanner(source);
     int tokenCount = 0;
     while (true) {
@@ -155,8 +156,8 @@ TEST(ScannerTest, PerformanceTest) {
             break;
         }
     }
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    auto end_time = ch::high_resolution_clock::now();
+    auto duration = ch::duration_cast<ch::milliseconds>(end_time - start_time);
 
     EXPECT_GT(tokenCount, 100000);
     std::cout << "[ PERFORMANCE ] Scanned " << tokenCount << " tokens, time cost " << duration.count() << " ms\n";

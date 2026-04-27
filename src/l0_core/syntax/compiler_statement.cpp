@@ -233,6 +233,9 @@ void Compiler::compileBlockStmt(ASTNodeIndex stmtIdx) {
 // 控制流
 void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
     // 模板：condition -> JZ 占位 -> then -> 可选 else -> patchJump。
+    // 底层视角：
+    // - 先发射占位跳转，再在目标地址确定后回填 offset（典型两遍式 patch）。
+    // - 这对应机器码生成中“前向引用尚未知地址”的常见处理模式。
     auto [node, line, column] = getNodeCtx(nodeIdx);
     niki::debug::trace("compiler", "{}|-> if at {}:{}", makeTracePrefix(), line, column);
 
@@ -268,6 +271,9 @@ void Compiler::compileIfStmt(ASTNodeIndex nodeIdx) {
 
 void Compiler::compileLoopStmt(ASTNodeIndex nodeIdx) {
     // 模板：记录 loopStart，编译可选条件与循环体，回跳并回填 break 补丁。
+    // 底层视角：
+    // - continue 是已知目标（loopStart）的后向跳转；
+    // - break 是未知目标（loopEnd）的前向跳转，先占位，出循环后统一 patch。
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
     size_t loopStart = currentCodePos();
@@ -310,7 +316,8 @@ void Compiler::compileContinueStmt(ASTNodeIndex nodeIdx) {
         reportError(line, column, "continue outside loop.");
         return;
     }
-    // 目标地址已知，直接发射后向跳跃，拒绝冗余分配
+    // 目标地址已知，直接发射后向跳跃，拒绝冗余分配。
+    // 本质是“显式改写下一 PC 到循环头”，而非重复解析循环体源码。
     emitLoopBack(vm::OPCODE::OP_LOOP, loop_stack.back().start_pos, line, column);
 }
 void Compiler::compileBreakStmt(ASTNodeIndex nodeIdx) {
@@ -320,6 +327,8 @@ void Compiler::compileBreakStmt(ASTNodeIndex nodeIdx) {
         return;
     }
 
+    // break 不会“停止执行”，它是跳到循环出口块的控制流转移。
+    // 由于出口地址尚未知，先发射占位跳转并记录 patch 点。
     size_t patch = emitJump(vm::OPCODE::OP_JMP, line, column);
     loop_stack.back().break_patches.push_back(patch);
 }

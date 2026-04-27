@@ -77,6 +77,8 @@ enum class NodeType : uint8_t {
     TypeAliasDecl,   // 类型别名声明
     InterfaceDecl,   // 接口定义
     ImplDecl,        // 实现声明 (impl块)
+    ImportDecl,      // import 声明
+    ExportDecl,      // export 声明
 
     //---NIKI特有---
     ModuleDecl,    // 模块声明
@@ -172,6 +174,10 @@ inline std::string_view toString(NodeType type) {
         return "InterfaceDecl";
     case NodeType::ImplDecl:
         return "ImplDecl";
+    case NodeType::ImportDecl:
+        return "ImportDecl";
+    case NodeType::ExportDecl:
+        return "ExportDecl";
     case NodeType::ModuleDecl:
         return "ModuleDecl";
     case NodeType::SystemDecl:
@@ -271,6 +277,38 @@ struct ImplData {
 
 struct ImplDeclPayload {
     uint32_t impl_index;
+};
+
+struct ImportItem {
+    uint32_t imported_name_id;
+    uint32_t local_name_id;
+};
+
+struct ExportItem {
+    uint32_t local_name_id;
+    uint32_t exported_name_id;
+};
+
+struct ImportDeclData {
+    uint32_t module_name_id;
+    uint32_t first_item_index;
+    uint32_t item_count;
+    bool import_module_only;
+};
+
+struct ExportDeclData {
+    uint32_t first_item_index;
+    uint32_t item_count;
+    ASTNodeIndex wrapped_decl;
+    bool has_wrapped_decl;
+};
+
+struct ImportDeclPayload {
+    uint32_t import_decl_index;
+};
+
+struct ExportDeclPayload {
+    uint32_t export_decl_index;
 };
 
 struct KitsData {

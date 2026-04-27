@@ -9,7 +9,11 @@ using namespace niki::syntax;
 
 // 顶层声明入口：仅允许声明关键字；不再接受顶层语句/表达式。
 ASTNodeIndex Parser::parseTopLevelDeclaration() {
-    if (match(TokenType::KW_FUNC)) {
+    if (match(TokenType::KW_IMPORT)) {
+        return parseImportDecl();
+    } else if (match(TokenType::KW_EXPORT)) {
+        return parseExportDecl();
+    } else if (match(TokenType::KW_FUNC)) {
         return parseFunctionDecl();
     } else if (match(TokenType::KW_STRUCT)) {
         return parseStructDecl();
@@ -44,7 +48,10 @@ ASTNodeIndex Parser::parseTopLevelDeclaration() {
 
 // 块内声明入口：优先局部声明（var/const），其余回退语句解析。
 ASTNodeIndex Parser::parseDeclaration() {
-    if (match(TokenType::KW_VAR)) {
+    if (match(TokenType::KW_IMPORT) || match(TokenType::KW_EXPORT)) {
+        errorAtCurrent("import/export declarations are only allowed at top level.");
+        return emitNode(NodeType::ErrorNode, ASTNodePayload{});
+    } else if (match(TokenType::KW_VAR)) {
         return parseVarDeclStmt();
     } else if (match(TokenType::KW_CONST)) {
         return parseConstDeclStmt();
@@ -220,6 +227,123 @@ ASTNodeIndex Parser::parseImplDecl() {
     astPool.impl_data.push_back(data);
     payload.impl_decl.impl_index = data_index;
     return emitNode(NodeType::ImplDecl, payload, startToken);
+}
+
+ASTNodeIndex Parser::parseImportDecl() {
+    Token startToken = previous; // already consumed 'import'
+    ASTNodePayload payload{};
+    ImportDeclData data{};
+
+    if (check(TokenType::IDENTIFIER)) {
+        advance();
+        data.module_name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+        data.first_item_index = static_cast<uint32_t>(astPool.import_items.size());
+        data.item_count = 0;
+        data.import_module_only = true;
+        consume(TokenType::SYM_SEMICOLON, "Expected ';' after import declaration.");
+    } else {
+        consume(TokenType::SYM_BRACE_L, "Expected '{' after 'import'.");
+        data.first_item_index = static_cast<uint32_t>(astPool.import_items.size());
+        while (!check(TokenType::SYM_BRACE_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
+            consume(TokenType::IDENTIFIER, "Expected imported symbol name.");
+            uint32_t imported_name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+            uint32_t local_name_id = imported_name_id;
+            if (match(TokenType::KW_AS)) {
+                consume(TokenType::IDENTIFIER, "Expected alias name after 'as'.");
+                local_name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+            }
+            astPool.import_items.push_back(ImportItem{
+                .imported_name_id = imported_name_id,
+                .local_name_id = local_name_id,
+            });
+
+            if (!match(TokenType::SYM_COMMA)) {
+                break;
+            }
+        }
+        consume(TokenType::SYM_BRACE_R, "Expected '}' after import item list.");
+        consume(TokenType::KW_FROM, "Expected 'from' in named import declaration.");
+        consume(TokenType::IDENTIFIER, "Expected module name after 'from'.");
+        data.module_name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+        data.item_count = static_cast<uint32_t>(astPool.import_items.size()) - data.first_item_index;
+        data.import_module_only = false;
+        consume(TokenType::SYM_SEMICOLON, "Expected ';' after import declaration.");
+    }
+
+    astPool.import_decl_data.push_back(data);
+    payload.import_decl.import_decl_index = static_cast<uint32_t>(astPool.import_decl_data.size() - 1);
+    return emitNode(NodeType::ImportDecl, payload, startToken);
+}
+
+ASTNodeIndex Parser::parseExportDecl() {
+    Token startToken = previous; // already consumed 'export'
+    ASTNodePayload payload{};
+    ExportDeclData data{};
+    data.first_item_index = static_cast<uint32_t>(astPool.export_items.size());
+    data.item_count = 0;
+    data.wrapped_decl = ASTNodeIndex::invalid();
+    data.has_wrapped_decl = false;
+
+    if (match(TokenType::SYM_BRACE_L)) {
+        while (!check(TokenType::SYM_BRACE_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
+            consume(TokenType::IDENTIFIER, "Expected exported symbol name.");
+            uint32_t local_name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+            uint32_t exported_name_id = local_name_id;
+            if (match(TokenType::KW_AS)) {
+                consume(TokenType::IDENTIFIER, "Expected exported alias name after 'as'.");
+                exported_name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+            }
+            astPool.export_items.push_back(ExportItem{
+                .local_name_id = local_name_id,
+                .exported_name_id = exported_name_id,
+            });
+            if (!match(TokenType::SYM_COMMA)) {
+                break;
+            }
+        }
+        consume(TokenType::SYM_BRACE_R, "Expected '}' after export item list.");
+        consume(TokenType::SYM_SEMICOLON, "Expected ';' after export declaration.");
+        data.item_count = static_cast<uint32_t>(astPool.export_items.size()) - data.first_item_index;
+    } else {
+        ASTNodeIndex wrapped_decl = ASTNodeIndex::invalid();
+        if (match(TokenType::KW_FUNC)) {
+            wrapped_decl = parseFunctionDecl();
+        } else if (match(TokenType::KW_STRUCT)) {
+            wrapped_decl = parseStructDecl();
+        } else if (match(TokenType::KW_ENUM)) {
+            wrapped_decl = parseEnumDecl();
+        } else if (match(TokenType::KW_TYPE)) {
+            wrapped_decl = parseTypeAliasDecl();
+        } else if (match(TokenType::KW_INTERFACE)) {
+            wrapped_decl = parseInterfaceDecl();
+        } else if (match(TokenType::KW_IMPL)) {
+            wrapped_decl = parseImplDecl();
+        } else if (match(TokenType::KW_MODULE)) {
+            wrapped_decl = parseModuleDecl();
+        } else if (match(TokenType::KW_SYSTEM)) {
+            wrapped_decl = parseSystemDecl();
+        } else if (match(TokenType::KW_COMPONENT)) {
+            wrapped_decl = parseComponentDecl();
+        } else if (match(TokenType::KW_FLOW)) {
+            wrapped_decl = parseFlowDecl();
+        } else if (match(TokenType::KW_KITS)) {
+            wrapped_decl = parseKitsDecl();
+        } else if (match(TokenType::KW_TAG)) {
+            wrapped_decl = parseTagDecl();
+        } else if (match(TokenType::KW_TAGGROUP)) {
+            wrapped_decl = parseTagGroupDecl();
+        } else {
+            errorAtCurrent("Expected declaration after 'export'.");
+            wrapped_decl = emitNode(NodeType::ErrorNode, ASTNodePayload{});
+        }
+
+        data.wrapped_decl = wrapped_decl;
+        data.has_wrapped_decl = true;
+    }
+
+    astPool.export_decl_data.push_back(data);
+    payload.export_decl.export_decl_index = static_cast<uint32_t>(astPool.export_decl_data.size() - 1);
+    return emitNode(NodeType::ExportDecl, payload, startToken);
 }
 //---NIKI特有---
 ASTNodeIndex Parser::parseModuleDecl() {

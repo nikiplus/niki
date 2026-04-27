@@ -1,5 +1,4 @@
 #include "niki/driver/driver.hpp"
-#include "niki/l0_core/diagnostic/codes.hpp"
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/linker/linker.hpp"
 #include "niki/l0_core/runtime/launcher.hpp"
@@ -20,6 +19,7 @@
 #include "niki/l0_core/vm/value.hpp"
 #include "niki/l0_core/vm/vm.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -31,11 +31,12 @@
 #include <vector>
 
 namespace niki::driver {
+namespace fs = std::filesystem;
 
-static diagnostic::DiagnosticBag makeDriverError(std::string code, std::string message, std::string file = "") {
+static diagnostic::DiagnosticBag makeDriverError(diagnostic::events::DriverCode code, std::string message,
+                                                 std::string file = "") {
     diagnostic::DiagnosticBag bag;
-    bag.reportError(diagnostic::DiagnosticStage::Driver, std::move(code), std::move(message),
-                    diagnostic::makeSourceSpan(std::move(file)));
+    bag.error(code, std::move(message), diagnostic::makeSourceSpan(std::move(file)));
     return bag;
 }
 
@@ -59,9 +60,9 @@ static semantic::NKType resolvePredeclareType(const GlobalCompilationUnit &unit,
         case syntax::TokenType::KW_STRING:
             return semantic::NKType(semantic::NKBaseType::String, -1);
         default:
-            diagnostics.reportError(diagnostic::DiagnosticStage::Semantic, diagnostic::codes::semantic::GenericError,
-                                    "Unknown built-in type annotation in predeclare.",
-                                    diagnostic::makeSourceSpan(unit.source_path, line, column));
+            diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                              "Unknown built-in type annotation in predeclare.",
+                              diagnostic::makeSourceSpan(unit.source_path, line, column));
             return semantic::NKType::makeUnknown();
         }
     }
@@ -86,14 +87,12 @@ static semantic::NKType resolvePredeclareType(const GlobalCompilationUnit &unit,
             return sym->type; // struct会是nktype::object(global_struct_id)     }
         }
 
-        diagnostics.reportError(diagnostic::DiagnosticStage::Semantic, diagnostic::codes::semantic::GenericError,
-                                "Unknown type name in predeclare.",
-                                diagnostic::makeSourceSpan(unit.source_path, line, column));
+        diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Unknown type name in predeclare.",
+                          diagnostic::makeSourceSpan(unit.source_path, line, column));
         return semantic::NKType::makeUnknown();
     }
-    diagnostics.reportError(diagnostic::DiagnosticStage::Semantic, diagnostic::codes::semantic::GenericError,
-                            "Invalid type annotation node in predeclare.",
-                            diagnostic::makeSourceSpan(unit.source_path, line, column));
+    diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Invalid type annotation node in predeclare.",
+                      diagnostic::makeSourceSpan(unit.source_path, line, column));
     return semantic::NKType::makeUnknown();
 };
 
@@ -102,12 +101,12 @@ std::vector<std::string> Driver::collectNkFiles(const std::string &root_dir, con
     std::vector<std::string> files;
     std::error_code errcode;
 
-    std::filesystem::path root(root_dir);
-    if (!std::filesystem::exists(root, errcode) || !std::filesystem::is_directory(root, errcode)) {
+    fs::path root(root_dir);
+    if (!fs::exists(root, errcode) || !fs::is_directory(root, errcode)) {
         return files;
     }
 
-    auto accept = [&](const std::filesystem::directory_entry &entry) {
+    auto accept = [&](const fs::directory_entry &entry) {
         if (!entry.is_regular_file()) {
             return false;
         }
@@ -115,8 +114,8 @@ std::vector<std::string> Driver::collectNkFiles(const std::string &root_dir, con
     };
     if (options.recursive_scan) {
         // 递归扫描：适合项目模式（子目录按模块组织）。
-        for (std::filesystem::recursive_directory_iterator file_iterator(root, errcode), end;
-             file_iterator != end && !errcode; file_iterator.increment(errcode)) {
+        for (fs::recursive_directory_iterator file_iterator(root, errcode), end; file_iterator != end && !errcode;
+             file_iterator.increment(errcode)) {
             if (errcode) {
                 break;
             }
@@ -126,7 +125,7 @@ std::vector<std::string> Driver::collectNkFiles(const std::string &root_dir, con
         }
     } else {
         // 非递归扫描：适合单目录脚本模式。
-        for (std::filesystem::directory_iterator file_iterator(root, errcode), end; file_iterator != end && !errcode;
+        for (fs::directory_iterator file_iterator(root, errcode), end; file_iterator != end && !errcode;
              file_iterator.increment(errcode)) {
             if (errcode) {
                 break;
@@ -181,7 +180,7 @@ std::expected<GlobalCompilationUnit, diagnostic::DiagnosticBag> Driver::parseOne
     std::ifstream in(source_path, std::ios::binary);
     if (!in.is_open()) {
         return std::unexpected(
-            makeDriverError(diagnostic::codes::driver::IoError, "Failed to open source file.", source_path));
+            makeDriverError(diagnostic::events::DriverCode::IoError, "Failed to open source file.", source_path));
     }
 
     std::stringstream buffer;
@@ -206,8 +205,8 @@ std::expected<semantic::TypeCheckResult, diagnostic::DiagnosticBag> Driver::type
 
     if (unit.pool.node_types.size() != unit.pool.nodes.size()) {
         diagnostic::DiagnosticBag bag;
-        bag.reportError(diagnostic::DiagnosticStage::Semantic, diagnostic::codes::semantic::GenericError,
-                        "Type table size mismatch after type check.", diagnostic::makeSourceSpan(unit.source_path));
+        bag.error(diagnostic::events::SemanticCode::GenericError, "Type table size mismatch after type check.",
+                  diagnostic::makeSourceSpan(unit.source_path));
         return std::unexpected(std::move(bag));
     }
 
@@ -227,7 +226,7 @@ std::expected<Chunk, diagnostic::DiagnosticBag> Driver::compileUnitChunk(const G
 // 4)将编译结果组装为linker：：compileModule
 linker::CompileModule Driver::buildCompileModule(std::string source_path, Chunk chunk) {
     linker::CompileModule module;
-    module.module_name = std::filesystem::path(source_path).stem().string();
+    module.module_name = fs::path(source_path).stem().string();
     module.source_path = std::move(source_path);
     module.init_chunk = std::move(chunk);
 
@@ -269,6 +268,7 @@ std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Dri
     GlobalSymbolTable global_symbols;
 
     std::vector<GlobalCompilationUnit> units;
+
     units.reserve(files.size());
     // Pass-1: 先把所有文件 parse 成 unit（不要边 parse 边 compile）
     for (const auto &file : files) {
@@ -326,16 +326,15 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
     diagnostic::DiagnosticBag diagnostics;
 
     if (!unit.root.isvalid()) {
-        diagnostics.reportError(diagnostic::DiagnosticStage::Semantic, diagnostic::codes::semantic::GenericError,
-                                "Invalid module root in predeclare.", diagnostic::makeSourceSpan(unit.source_path));
+        diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Invalid module root in predeclare.",
+                          diagnostic::makeSourceSpan(unit.source_path));
         return std::unexpected(std::move(diagnostics));
     }
 
     const auto &root = unit.pool.getNode(unit.root);
     if (root.type != syntax::NodeType::ModuleDecl) {
-        diagnostics.reportError(diagnostic::DiagnosticStage::Semantic, diagnostic::codes::semantic::GenericError,
-                                "Root node must be ModuleDecl in predeclare.",
-                                diagnostic::makeSourceSpan(unit.source_path));
+        diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Root node must be ModuleDecl in predeclare.",
+                          diagnostic::makeSourceSpan(unit.source_path));
         return std::unexpected(std::move(diagnostics));
     }
 
@@ -379,9 +378,9 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
                              .owner_module = unit.source_path};
 
             if (!global_symbols.insert(std::move(sym))) {
-                diagnostics.reportError(
-                    diagnostic::DiagnosticStage::Semantic, diagnostic::codes::semantic::GenericError,
-                    "Duplicate top-level symbol (struct).", diagnostic::makeSourceSpan(unit.source_path, line, column));
+                diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                  "Duplicate top-level symbol (struct).",
+                                  diagnostic::makeSourceSpan(unit.source_path, line, column));
             }
             continue;
         }
@@ -415,10 +414,9 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
             };
 
             if (!global_symbols.insert(std::move(sym))) {
-                diagnostics.reportError(diagnostic::DiagnosticStage::Semantic,
-                                        diagnostic::codes::semantic::GenericError,
-                                        "Duplicate top-level symbol (function).",
-                                        diagnostic::makeSourceSpan(unit.source_path, line, column));
+                diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                  "Duplicate top-level symbol (function).",
+                                  diagnostic::makeSourceSpan(unit.source_path, line, column));
             }
             continue;
         }
@@ -454,7 +452,7 @@ std::expected<vm::Value, diagnostic::DiagnosticBag> Driver::runProject(const std
     auto files = collectNkFiles(root_dir, options);
     if (files.empty()) {
         return std::unexpected(
-            makeDriverError(diagnostic::codes::driver::NoInput, "No .nk source files found.", root_dir));
+            makeDriverError(diagnostic::events::DriverCode::NoInput, "No .nk source files found.", root_dir));
     }
     auto compiled = compileAll(files);
 
@@ -481,4 +479,37 @@ std::expected<vm::Value, diagnostic::DiagnosticBag> Driver::runProject(const std
     }
     return launch_result.value();
 };
+
+// 阶段2入口:构建模块语义上下文
+std::expected<void, diagnostic::DiagnosticBag> Driver::buildModuleSemanticContext(
+    const std::vector<GlobalCompilationUnit> &units, const GlobalSymbolTable &global_symbols,
+    semantic::ModuleRegistry &out_regisry, semantic::ModuleExportTable &out_exports,
+    std::vector<semantic::UnitVisibleSymbols> &out_visible_per_unit) {};
+
+// 子步骤
+std::expected<semantic::ModuleRegistry, diagnostic::DiagnosticBag> Driver::collectModuleRegistry(
+    const std::vector<GlobalCompilationUnit> &units) {
+    diagnostic::DiagnosticBag diagnostics;
+    semantic::ModuleRegistry registry{};
+
+    registry.modules.reserve(units.size());
+
+    for (size_t unit_idx = 0; unit_idx < units.size(); ++unit_idx) {
+        const auto &unit = units[unit_idx];
+        if (!unit.root.isvalid()) {
+            diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                              "Invalid root for module registry collection.",
+                              diagnostic::makeSourceSpan(unit.source_path));
+            continue;
+        }
+    }
+};
+
+std::expected<semantic::ModuleExportTable, diagnostic::DiagnosticBag> Driver::buildModuleExportTable(
+    const std::vector<GlobalCompilationUnit> &units, const semantic::ModuleRegistry &registry,
+    const GlobalSymbolTable &global_symbols) {};
+
+std::expected<std::vector<semantic::UnitVisibleSymbols>, diagnostic::DiagnosticBag> Driver::resolveVisibleSymbols(
+    const std::vector<GlobalCompilationUnit> &units, const semantic::ModuleRegistry &registry,
+    const semantic::ModuleExportTable &export_table, const GlobalSymbolTable &global_symbols) {};
 } // namespace niki::driver

@@ -60,7 +60,7 @@ graph LR
   - 输入对象：`Chunk` 或 `ObjFunction*`、打印选项
   - 输出对象：`std::expected<Value, InterpretResult>`
   - 失败语义：失败通过 `InterpretResult::RUNTIME_ERROR` 或 `COMPILE_ERROR` 反馈；上层（Launcher）将其映射为 `DiagnosticBag`
-  - 错误码来源：VM 本层使用 `InterpretResult`；统一错误码在上层来自 `diagnostic::codes::launcher::*`
+  - 错误码来源：VM 本层使用 `InterpretResult`；统一错误码在上层来自 `diagnostic` 模块内部映射（事件码：`diagnostic::events::LauncherCode`）
 
 ## 主要文件
 

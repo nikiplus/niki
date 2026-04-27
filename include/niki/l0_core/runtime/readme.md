@@ -62,7 +62,7 @@ graph LR
   - 输入对象：`vm::VM&`、`linker::LinkedProgram`、`LaunchOptions`
   - 输出对象：`std::expected<vm::Value, DiagnosticBag>`
   - 失败语义：初始化 chunk 执行失败、入口查找失败、入口执行失败均返回 `unexpected(DiagnosticBag)`
-  - 错误码来源：`diagnostic::codes::launcher::*`
+  - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::LauncherCode`）
 
 ## 主要文件
 

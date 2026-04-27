@@ -59,7 +59,7 @@ graph LR
   - 输入对象：`std::vector<CompileModule>`、`LinkOptions`
   - 输出对象：`std::expected<LinkedProgram, DiagnosticBag>`
   - 失败语义：出现符号冲突、入口歧义或入口缺失时返回 `unexpected(DiagnosticBag)`，不生成可执行产物
-  - 错误码来源：`diagnostic::codes::linker::*`
+  - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::LinkerCode`）
 
 ## 主要文件
 

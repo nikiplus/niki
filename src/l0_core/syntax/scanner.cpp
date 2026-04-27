@@ -1,5 +1,4 @@
 #include "niki/l0_core/syntax/scanner.hpp"
-#include "niki/l0_core/diagnostic/codes.hpp"
 #include "niki/l0_core/syntax/token.hpp"
 #include <cstdint>
 #include <string>
@@ -269,6 +268,8 @@ TokenType Scanner::checkIdentifierType() {
     // 极致的硬编码 Trie 树，O(1) 无哈希无循环查找
     switch (c0) {
     case 'a':
+        if (length == 2)
+            return checkKeyword(1, 1, "s", TokenType::KW_AS);
         if (length == 3)
             return checkKeyword(1, 2, "ny", TokenType::KW_ANY);
         if (length == 5) {
@@ -321,6 +322,8 @@ TokenType Scanner::checkIdentifierType() {
             if (source[start + 1] == 'n')
                 return checkKeyword(2, 2, "um", TokenType::KW_ENUM);
         }
+        if (length == 6)
+            return checkKeyword(1, 5, "xport", TokenType::KW_EXPORT);
         if (length == 9)
             return checkKeyword(1, 8, "xclusive", TokenType::KW_EXCLUSIVE);
         break;
@@ -341,6 +344,8 @@ TokenType Scanner::checkIdentifierType() {
                 break;
             case 'o':
                 return checkKeyword(2, 1, "r", TokenType::KW_FOR);
+            case 'r':
+                return checkKeyword(2, 2, "om", TokenType::KW_FROM);
             case 'u':
                 return checkKeyword(2, 2, "nc", TokenType::KW_FUNC);
             }
@@ -354,6 +359,8 @@ TokenType Scanner::checkIdentifierType() {
             case 'm':
                 if (length == 4)
                     return checkKeyword(2, 2, "pl", TokenType::KW_IMPL);
+                if (length == 6)
+                    return checkKeyword(2, 4, "port", TokenType::KW_IMPORT);
                 break;
             case 'n':
                 if (length == 3)
@@ -524,10 +531,8 @@ Token Scanner::errorToken() {
     token.length = static_cast<uint16_t>(current - start);
     token.line = line;
     token.column = static_cast<uint16_t>(start - lineStart + 1);
-    diagnostics.reportError(
-        niki::diagnostic::DiagnosticStage::Scanner, niki::diagnostic::codes::scanner::InvalidToken,
-        "Invalid or unsupported token.",
-        niki::diagnostic::makeSourceSpan(std::string(sourcePath), token.line, token.column, token.length));
+    diagnostics.error(niki::diagnostic::events::ScannerCode::InvalidToken, "Invalid or unsupported token.",
+                      niki::diagnostic::makeSourceSpan(std::string(sourcePath), token.line, token.column, token.length));
     return token;
 };
 

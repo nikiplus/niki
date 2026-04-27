@@ -1,7 +1,6 @@
 #include "niki/l0_core/syntax/compiler.hpp"
 
 #include "niki/debug/logger.hpp"
-#include "niki/l0_core/diagnostic/codes.hpp"
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/syntax/token.hpp"
@@ -30,8 +29,7 @@ std::expected<Chunk, diagnostic::DiagnosticBag> Compiler::compile(const ASTPool 
     // D. 若无错误则导出 chunk + string_pool
     if (!root.isvalid()) {
         diagnostic::DiagnosticBag bag;
-        bag.reportError(diagnostic::DiagnosticStage::Compiler, diagnostic::codes::compiler::InvalidRoot,
-                        "Invalid AST root node.");
+        bag.error(diagnostic::events::CompilerCode::InvalidRoot, "Invalid AST root node.");
         return std::unexpected(std::move(bag));
     }
 
@@ -376,12 +374,15 @@ void Compiler::reportError(const Token &token, std::string_view message) {
 }
 
 void Compiler::reportError(uint32_t line, uint32_t column, std::string_view message) {
-    diagnostics.reportError(
-        diagnostic::DiagnosticStage::Compiler, diagnostic::codes::compiler::GenericError, std::string(message),
-        diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
+    diagnostics.error(diagnostic::events::CompilerCode::GenericError, std::string(message),
+                      diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
     hadError = true;
 }
 
-void Compiler::reportWarning(uint32_t line, uint32_t column, std::string_view message) { warningCount++; }
+void Compiler::reportWarning(uint32_t line, uint32_t column, std::string_view message) {
+    diagnostics.warning(diagnostic::events::CompilerCode::GenericError, std::string(message),
+                        diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
+    warningCount++;
+}
 
 } // namespace niki::syntax

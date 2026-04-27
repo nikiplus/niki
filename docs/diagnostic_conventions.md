@@ -2,23 +2,23 @@
 
 本文档规定 Niki 全链路错误与日志策略，适用于 `scanner/parser/semantic/compiler/linker/launcher/driver`。
 
-## 1. 错误码常量统一
+## 1. 错误码来源统一
 
-- 所有 `Diagnostic.code` 必须来自 `include/niki/diagnostic/codes.hpp`。
-- 禁止在业务代码里手写错误码字符串字面量（测试断言可引用常量）。
-- 新增错误码时按 stage 分组追加到 `codes.hpp`，命名使用 `UPPER_SNAKE_CASE`。
+- 所有 `Diagnostic.code` 由 `diagnostic` 模块内部映射生成（业务代码不直接依赖错误码常量头文件）。
+- 禁止在业务代码里手写错误码字符串字面量（测试断言优先使用 `codeOf(events::*Code)`）。
+- 新增错误码时按 stage 更新 `diagnostic.cpp` 内部映射与 `events::*Code` 枚举。
 
 ## 2. SourceSpan 填充策略统一
 
 - 最小必填：`stage + code + message`。
 - 推荐填充：`file + line + column + length`。
-- 当存在 `line/column` 但无 `file` 时，`DiagnosticBag::report` 会自动回填 `\"<unknown>\"`。
+- 当存在 `line/column` 但无 `file` 时，`DiagnosticBag::emit` 会自动回填 `\"<unknown>\"`。
 - 所有阶段优先使用 `makeSourceSpan(...)` 构造 span。
 
-## 3. reportError/reportWarning/reportInfo 统一
+## 3. emit 接口统一
 
-- 统一使用 `DiagnosticBag::reportError/reportWarning/reportInfo` 作为接口。
-- `addError/addWarning/addInfo` 保留为兼容别名，但新代码不应优先使用。
+- 统一使用 `DiagnosticBag::emit(events::makeError/makeWarning/makeInfo(...))` 作为接口。
+- 新代码不再直接传 `DiagnosticStage + code string`。
 
 ## 4. CLI 输出策略统一
 
@@ -54,7 +54,7 @@
 新增可失败模块时，必须同时完成：
 
 1. 在 `DiagnosticStage` 增加新 stage（如有必要）
-2. 在 `codes.hpp` 增加错误码分组
-3. 在模块内使用 `DiagnosticBag::report*` 报错
+2. 在 `events::*Code` 与内部映射中增加错误码
+3. 在模块内使用 `DiagnosticBag::emit(...)` 上报
 4. 在测试中按 `Diagnostic.code` 断言
 5. 通过 `text/json` 渲染检查输出一致性
