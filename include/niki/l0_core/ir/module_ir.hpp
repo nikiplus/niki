@@ -1,191 +1,50 @@
 #pragma once
-
-#include "niki/l0_core/semantic/nktype.hpp"
 #include <cstdint>
 #include <limits>
 #include <string>
-#include <unordered_map>
 #include <vector>
 namespace niki::ir {
-
-/**
- * @brief IR（Intermediate Representation）数据模型总览
- *
- * 这份头文件定义的是编译器在“语义分析之后、目标字节码之前”的内部语言。
- *
- * Why（为什么需要 IR）:
- * - AST 擅长表达“语法形状”，不擅长直接承载后端执行语义。
- * - 后端需要稳定、可验证、可降级（lowering）的结构化表示。
- * - Linker 需要显式符号信息，不能长期依赖常量池扫描推断。
- *
- * How（怎么组织）:
- * - 用“模块 -> 函数 -> 基本块 -> 指令 -> 值”的层级组织 IR。
- * - 用 ID（uint32_t）替代裸指针，保证跨容器与跨阶段的稳定引用。
- * - 用统一 IRValue 承载寄存器、立即数、符号、块目标等多种操作数。
- *
- * 全景图：
- * ModuleIR
- *  ├─ func_table (IRFunction[])
- *  │   └─ basic_blocks (IRBasicBlock[])
- *  │      └─ instruction_list (IRInst[])
- *  │         └─ operands (IRValue)
- *  ├─ sym_table (IRSymbol[])
- *  └─ module_string_pool (string[])
- */
-
-//---基础ID类型---
-// Why:
-// - IR 在 builder/verify/lowering/linker 多阶段流转，需要稳定、可序列化、可比较的身份标识。
-// - 使用 uint32_t 而非指针，避免生命周期耦合与跨容器失效问题。
-// How:
-// - 统一采用“索引即 ID”模型：对象存于 vector，ID 为其下标。
-using IRFunctionId = uint32_t;
-using IRBlockId = uint32_t;
-using IRRegId = uint32_t;
-using IRSymbolId = uint32_t;
-
-//---类型系统(IR)侧---
-// MVP阶段直接复用semantic::NKType
-// Why:
-// - 避免 AST/语义/IR 三层重复维护类型定义，减少类型漂移风险。
-// - 降低迁移成本：先跑通 IR-first 主链，再按需拆分专用 IRType。
-using IRType = semantic::NKType;
-
-//---IRValue---
-// Why:
-// - 后端需要统一表示“值来源”：寄存器、立即数、符号、控制流目标。
-// - 统一值模型可让 verify/lowering 用相同规则处理操作数合法性。
-// How:
-// - value_kind 决定 payload 的解释方式（tagged payload）。
-// - 这样所有指令都能使用统一的操作数字段，不需要为每种值单独建结构。
-enum class IRValueKind : uint8_t {
+// ID: 基础索引类型定义。
+using FuncId = uint32_t;
+using BlockId = uint32_t;
+using InstId = uint32_t;
+using RegId = uint32_t;
+using SymId = uint32_t;
+// VALUE: 值与指令枚举定义。
+enum class ValueKind : uint8_t {
     Invalid = 0,
-    VReg,     // 虚拟寄存器
-    ImmI64,   // 立即数整数
-    ImmF64,   // 立即数浮点(bit-case 存储)
-    ImmBool,  // 立即数布尔值(payload_u32:0/1)
-    StringId, // 字符池ID
-    SymbolId, // 符号ID(模块内/跨模块)
-    BlockId,  // 基本块ID(跳转目标)
-    FuncId,   // 函数ID(直接调用目标)
+    VReg,
+    ImmI64,
+    ImmF64Bits,
+    ImmBool,
+    StringId,
+    SymbolId,
+    BlockId,
+    FuncId
 };
-
-struct IRValue {
-    // Why:
-    // - 运行时并不知道这个字段的具体语义，解释权由 value_kind 决定。
-    // - 这是一个“tagged payload”模型：小而稳定，便于跨阶段传递。
-    IRValueKind value_kind = IRValueKind::Invalid;
-
-    // 统一payload，按value_kind解释
-    uint32_t payload_as_u32 = 0;
-    int64_t payload_as_i64 = 0;
-    uint64_t payload_as_u64 = 0;
-
-    static IRValue makeInvalid() { return {}; }
-
-    // Why:
-    // - 工厂函数保证“kind 与 payload”总是成对正确写入，避免手写错配。
-    // How:
-    // - 每个构造函数只设置自身所需字段，未使用字段保持默认值。
-    // - 例如 makeVirtualRegisterValue() 只写 VReg + payload_as_u32。
-    static IRValue makeVirtualRegisterValue(IRRegId reg_id) {
-        IRValue value;
-        value.value_kind = IRValueKind::VReg;
-        value.payload_as_u32 = reg_id;
-        return value;
-    };
-
-    static IRValue makeImmediateIntegerValue(int64_t integer_value) {
-        IRValue value;
-        value.value_kind = IRValueKind::ImmI64;
-        value.payload_as_i64 = integer_value;
-        return value;
-    };
-
-    static IRValue makeImmediateFloatBitValue(uint64_t float_bit_pattern) {
-        IRValue value;
-        value.value_kind = IRValueKind::ImmF64;
-        value.payload_as_u64 = float_bit_pattern;
-        return value;
-    };
-
-    static IRValue makeImmediateBooleanValue(bool boolean_value) {
-        IRValue value;
-        value.value_kind = IRValueKind::ImmBool;
-        value.payload_as_u32 = boolean_value ? 1u : 0u;
-        return value;
-    };
-
-    static IRValue makeStringIdentifierValue(uint32_t string_id) {
-        IRValue value;
-        value.value_kind = IRValueKind::StringId;
-        value.payload_as_u32 = string_id;
-        return value;
-    };
-
-    static IRValue makeSymbolIdentifierValue(IRSymbolId sym_id) {
-        IRValue value;
-        value.value_kind = IRValueKind::SymbolId;
-        value.payload_as_u32 = sym_id;
-        return value;
-    };
-
-    static IRValue makeBlockIdentifierValue(IRBlockId block_id) {
-        IRValue value;
-        value.value_kind = IRValueKind::BlockId;
-        value.payload_as_u32 = block_id;
-        return value;
-    };
-
-    static IRValue makeFunctionIdentifierValue(IRFunctionId func_id) {
-        IRValue value;
-        value.value_kind = IRValueKind::FuncId;
-        value.payload_as_u32 = func_id;
-        return value;
-    };
-
-    bool isInvalid() const { return value_kind == IRValueKind::Invalid; }
-};
-
-//---指令---
-// Why:
-// - IRInstKind 应表示“后端语义原语”，而非“语法树节点”。
-// - 语法多样性在 builder 收敛；IR 保持小而稳定，利于验证与降级。
-// How:
-// - 例如 if/while/match 这类语法结构，最终会展开为 Branch/Jump/BasicBlock 组合。
-enum class IRInstKind : uint8_t {
+enum class InstKind : uint8_t {
     Nop = 0,
-    // 常量与数据搬运
     Constant,
     Move,
-    // 算术/比较/逻辑
     Add,
     Sub,
     Mul,
     Div,
     Mod,
     Neg,
-
     CmpEq,
     CmpNe,
     CmpLt,
     CmpLe,
     CmpGt,
     CmpGe,
-
     LogicAnd,
     LogicOr,
     LogicNot,
-
-    // 变量/符号访问
     LoadGlobal,
     StoreGlobal,
-
-    // 调用
     Call,
     Return,
-
-    // 聚合与访问
     NewArray,
     PushArray,
     NewMap,
@@ -194,233 +53,82 @@ enum class IRInstKind : uint8_t {
     SetIndex,
     GetMember,
     SetMember,
-
-    // 控制流
-    Jump,   // 无条件跳转
-    Branch, // 条件跳转
-
-    // 占位
+    Jump,
+    Branch,
     Phi
 };
-
-struct IRInst {
-    // Why:
-    // - 指令模型采用固定槽位(目标+3操作数)，简化数据结构与遍历逻辑。
-    // - 不同指令对槽位的解释由 instruction_kind 决定。
-    // How:
-    // - verify 负责检查“当前 kind 是否正确使用了这些槽位”。
-    IRInstKind instruction_kind = IRInstKind::Nop;
-
-    // 统一操作数字段，按instruction_kind解释
-    // How（示例）:
-    // - Add: destination = first + second
-    // - CmpEq: destination = (first == second)
-    // - Branch: first_operand=条件，second_operand=真分支块，third_operand=假分支块
-    IRValue destination_value = IRValue::makeInvalid();
-    IRValue first_operand = IRValue::makeInvalid();
-    IRValue second_operand = IRValue::makeInvalid();
-    IRValue third_operand = IRValue::makeInvalid();
-
-    // 可选附加字段，如call参数数量，源位置信息
-    // Why:
-    // - auxiliary_data 作为轻量扩展位，避免为少数指令膨胀结构体。
-    // - source_line/source_column 让 IR 层错误可回溯到源码，便于诊断。
-    uint32_t auxiliary_data = 0;
-    uint32_t source_line = 0;
-    uint32_t source_column = 0;
+struct Span {
+    uint32_t begin = 0;
+    uint32_t count = 0;
 };
-
-//---基本块---
-// Why:
-// - 显式基本块是控制流结构化的最小单位，为 jump/branch/phi 提供锚点。
-// How:
-// - instruction_list 顺序执行，末尾应由 terminator 指令结束（verify 约束）。
-// - terminator 通常是 Jump / Branch / Return 之一。
-struct IRBasicBlock {
-    IRBlockId block_id = std::numeric_limits<IRBlockId>::max();
-    std::string debug_block_name;
-    std::vector<IRInst> instruction_list;
+struct FuncRecord {
+    FuncId func_id = std::numeric_limits<FuncId>::max();
+    uint32_t func_name_sid = std::numeric_limits<uint32_t>::max();
+    uint32_t src_sid = std::numeric_limits<uint32_t>::max();
+    BlockId entry_block = std::numeric_limits<BlockId>::max();
+    RegId next_vreg = 0;
+    Span block_span{}; // SPAN: 函数对应的块区间（位于 block 表）。
 };
-
-//---函数签名---
-// Why:
-// - 把签名独立出来，便于 call 校验、链接期检查和未来 ABI 扩展。
-// How:
-// - parameter_types + return_type 是 call 指令与符号检查的类型依据。
-struct IRFunctionSignature {
-    std::vector<IRType> parameter_types;
-    IRType return_type = IRType::makeUnknown();
+struct BlockRecord {
+    BlockId block_id = std::numeric_limits<BlockId>::max(); // ID: 函数内相对块标识。
+    uint32_t debug_name_sid = std::numeric_limits<uint32_t>::max();
+    Span inst_span{}; // SPAN: 基本块对应的指令区间（位于 inst 表）。
 };
-
-//---函数---
-struct IRFunction {
-    // Why:
-    // - func_id 是模块内稳定身份；func_name_id 是用户可见名映射键。
-    // - 二者分离可避免重命名、导出别名等场景下的身份歧义。
-    IRFunctionId func_id = std::numeric_limits<IRFunctionId>::max();
-    // 与现有字符串池对齐：函数名存name_id,避免跨模块字符串比较开销
-    uint32_t func_name_id = std::numeric_limits<uint32_t>::max();
-
-    // Why:
-    // - src_path 直接挂在函数上，便于多文件项目的精确报错与审计。
-    std::string func_src_path;
-    IRFunctionSignature func_sig;
-
-    // 形参对应的vreg列表(与function_signature.parameter_types 同长度)
-    std::vector<IRRegId> parameter_registers;
-
-    // 基本块
-    IRBlockId entry_block_id = std::numeric_limits<IRBlockId>::max();
-    std::vector<IRBasicBlock> basic_blocks;
-
-    // virtual register 分配上界[0,next_vreg_id)
-    IRRegId next_vreg_id = 0;
-
-    // Why:
-    // - IR 使用虚拟寄存器表达值流，避免在 builder 阶段绑定物理寄存器策略。
-    // - 物理分配推迟到 lowering，可按目标 VM 约束选择策略。
-    // How:
-    // - 每次 allocateVirtualRegister() 返回一个新编号，形成 SSA-like 的值流基础。
-    IRRegId allocateVirtualRegister() { return next_vreg_id++; }
-
-    // Why:
-    // - 构建基本块时自动分配 block_id，避免调用侧手动维护一致性。
-    // How:
-    // - block_id 采用当前 basic_blocks.size()，保持连续且可预测。
-    IRBasicBlock &createBasicBlock(const std::string &block_name) {
-        IRBasicBlock blk;
-        blk.block_id = static_cast<IRBlockId>(basic_blocks.size());
-        blk.debug_block_name = block_name;
-        basic_blocks.push_back(blk);
-        return basic_blocks.back();
-    }
-};
-
-//---符号---
-// Why:
-// - 符号种类描述链接语义，而不是语法形态。
-// - 例如 Function/Struct/GlobalVar 可指导链接冲突检查与入口决议。
-// How:
-// - 外部符号（External）可在链接阶段解析到其他模块定义。
-enum class IRSymbolKind : uint8_t {
-    Function = 0,
+enum class SymKind : uint8_t {
+    Func = 0,
     Struct,
     GlobalVar,
     External
 };
-
-struct IRSymbol {
-    // Why:
-    // - sym_id 是模块内符号主键。
-    // - sym_name_id 是和字符串池对齐的名称键，便于快速比较。
-    IRSymbolId sym_id = std::numeric_limits<IRSymbolId>::max();
-    uint32_t sym_name_id = std::numeric_limits<uint32_t>::max();
-    IRSymbolKind sym_kind = IRSymbolKind::External;
-    IRType sym_type = IRType::makeUnknown();
-
-    // 该符号归属函数(函数符号时可用)，否则保持uint32_max
-    IRFunctionId owner_func_id = std::numeric_limits<IRFunctionId>::max();
-
-    // Why:
-    // - owner_mod_path 用于跨模块诊断（重复符号/可见性冲突时需要归属信息）。
-    // - is_exported 明确该符号是否对外可见，避免 linker 通过启发式推断。
-    // How:
-    // - Linker 可据此执行：重名冲突检查、导出可见性过滤、入口决议。
-    std::string owner_mod_path;
+struct SymRecord {
+    SymId sym_id = std::numeric_limits<SymId>::max();
+    uint32_t sym_name_sid = std::numeric_limits<uint32_t>::max();
+    SymKind sym_kind = SymKind::External;
+    uint32_t owner_mod_sid = std::numeric_limits<uint32_t>::max();
     bool is_exported = false;
 };
-
-//---模块级IR---
+struct InstTable {
+    // SOA: 指令字段采用列式存储（kind + dst/a/b/c + payload）。
+    std::vector<InstKind> kind;
+    std::vector<ValueKind> dst_kind;
+    std::vector<uint32_t> dst_u32;
+    std::vector<int64_t> dst_i64;
+    std::vector<uint64_t> dst_u64;
+    std::vector<ValueKind> a_kind;
+    std::vector<uint32_t> a_u32;
+    std::vector<int64_t> a_i64;
+    std::vector<uint64_t> a_u64;
+    std::vector<ValueKind> b_kind;
+    std::vector<uint32_t> b_u32;
+    std::vector<int64_t> b_i64;
+    std::vector<uint64_t> b_u64;
+    std::vector<ValueKind> c_kind;
+    std::vector<uint32_t> c_u32;
+    std::vector<int64_t> c_i64;
+    std::vector<uint64_t> c_u64;
+    std::vector<uint32_t> aux;
+    std::vector<uint32_t> src_line;
+    std::vector<uint32_t> src_col;
+    uint32_t size() const { return static_cast<uint32_t>(kind.size()); }
+    void clear();
+    bool aligned() const;
+    InstId push(InstKind inst_kind, ValueKind dst_value_kind, uint32_t dst_u32_payload, int64_t dst_i64_payload,
+                uint64_t dst_u64_payload, ValueKind first_value_kind, uint32_t first_u32_payload,
+                int64_t first_i64_payload, uint64_t first_u64_payload, ValueKind second_value_kind,
+                uint32_t second_u32_payload, int64_t second_i64_payload, uint64_t second_u64_payload,
+                ValueKind third_value_kind, uint32_t third_u32_payload, int64_t third_i64_payload,
+                uint64_t third_u64_payload, uint32_t auxiliary_data, uint32_t source_line, uint32_t source_col);
+};
 struct ModuleIR {
-    // Why:
-    // - ModuleIR 是“单模块后端契约对象”，连接 builder/verify/lowering/linker。
-    // - 它不重复 AST 语法细节，只保留后端需要的结构化信息。
-    //
-    // 关键边界：
-    // - AST：语法层（解析友好、语法种类丰富）
-    // - IR：后端层（执行友好、语义原语稳定）
-    // - 因此“新增一个语法节点”通常修改 builder，而不是修改 ModuleIR 核心结构。
     std::string module_name;
     std::string module_src_path;
-
-    // 与Chunk对齐：每个模块携带一份string_pool快照
-    std::vector<std::string> module_string_pool;
-
-    // 顶层初始化入口(模块加载时执行)
-    IRFunctionId module_initializer_func_id = std::numeric_limits<IRFunctionId>::max();
-
-    // 函数与符号表
-    std::vector<IRFunction> func_table;
-    std::vector<IRSymbol> sym_table;
-
-    // (name_id, kind) -> sym_id
-    std::unordered_map<uint64_t, IRSymbolId> sym_id_by_name_and_kind;
-
-    static uint64_t makeSymbolDedupKey(uint32_t sym_name_id, IRSymbolKind sym_kind) {
-        return (static_cast<uint64_t>(sym_name_id) << 32) | static_cast<uint64_t>(sym_kind);
-    }
-
-    // Why:
-    // - 统一入口创建函数，保证 func_id 与 func_table 下标一致。
-    // How:
-    // - 创建时写入 func_src_path，避免后续调用方忘记填来源路径。
-    IRFunction &createFunc(uint32_t func_name_id, const std::string &src_path) {
-        IRFunction func;
-        func.func_id = static_cast<IRFunctionId>(func_table.size());
-        func.func_name_id = func_name_id;
-        func.func_src_path = src_path;
-        func_table.push_back(func);
-        return func_table.back();
-    };
-
-    // Why:
-    // - addSym 实现“按名称去重”的最小语义，避免模块内重复插入。
-    // - 冲突是否报错交给 verify/linker 决策，这里只提供一致的数据写入入口。
-    // How:
-    // - 先查 (name, kind) 去重索引，存在则复用，不存在再创建。
-    // - 这样可以把“写入”与“规则判断”解耦，便于分阶段演进。
-    IRSymbolId addSym(uint32_t sym_name_id, IRSymbolKind sym_kind, const IRType &sym_type,
-                      const std::string &owner_mod_path, bool is_exported) {
-        uint64_t dedup_key = makeSymbolDedupKey(sym_name_id, sym_kind);
-        auto existing_sym = sym_id_by_name_and_kind.find(dedup_key);
-        if (existing_sym != sym_id_by_name_and_kind.end()) {
-            return existing_sym->second;
-        }
-
-        IRSymbol sym;
-        sym.sym_id = static_cast<IRSymbolId>(sym_table.size());
-        sym.sym_name_id = sym_name_id;
-        sym.sym_kind = sym_kind;
-        sym.sym_type = sym_type;
-        sym.owner_mod_path = owner_mod_path;
-        sym.is_exported = is_exported;
-
-        sym_table.push_back(sym);
-        sym_id_by_name_and_kind.emplace(dedup_key, sym.sym_id);
-        return sym.sym_id;
-    };
-
-    // Why:
-    // - 明确模块是否存在初始化函数，避免各处直接比较哨兵值。
-    bool hasInitializerFunc() const { return module_initializer_func_id != std::numeric_limits<IRFunctionId>::max(); }
+    std::vector<std::string> string_pool;
+    FuncId init_func = std::numeric_limits<FuncId>::max();
+    std::vector<FuncRecord> funcs;
+    std::vector<BlockRecord> blocks;
+    InstTable insts;
+    std::vector<SymRecord> syms;
+    bool has_init() const;
+    uint32_t intern(const std::string &text);
 };
-// ==============================
-// IR Utility Declarations
-// ==============================
-// --- enum/string helpers ---
-const char *toString(IRValueKind val_kind);
-const char *toString(IRInstKind inst_kind);
-const char *toString(IRSymbolKind sym_kind);
-// --- lookup helpers (const / mutable) ---
-const IRFunction *findFuncById(const ModuleIR &mod_ir, IRFunctionId func_id);
-IRFunction *findFuncById(ModuleIR &mod_ir, IRFunctionId func_id);
-const IRBasicBlock *findBlockById(const IRFunction &func_ir, IRBlockId block_id);
-IRBasicBlock *findBlockById(IRFunction &func_ir, IRBlockId block_id);
-const IRSymbol *findSymbolById(const ModuleIR &mod_ir, IRSymbolId sym_id);
-IRSymbol *findSymbolById(ModuleIR &mod_ir, IRSymbolId sym_id);
-// --- format / dump helpers ---
-std::string formatValue(const IRValue &value);
-std::string dumpInstruction(const IRInst &inst, uint32_t inst_idx);
-std::string dumpFunction(const IRFunction &func_ir);
-std::string dumpModule(const ModuleIR &mod_ir);
 } // namespace niki::ir
