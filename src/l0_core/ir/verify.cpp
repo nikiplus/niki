@@ -45,120 +45,132 @@ namespace {
 // Why:
 // - 基本块必须以“控制流终结指令”结束，才能形成合法 CFG。
 // - 若允许块尾不是终结指令，后续 lowering/linking 对后继块关系将不确定。
-bool isTerminator(IRInstKind instruction_kind) {
-    return instruction_kind == IRInstKind::Jump || instruction_kind == IRInstKind::Branch ||
-           instruction_kind == IRInstKind::Return;
+bool isTerminator(IRInstKind inst_kind) {
+    return inst_kind == IRInstKind::Jump || inst_kind == IRInstKind::Branch || inst_kind == IRInstKind::Return;
 }
 
 // Why:
 // - 当前 IR 约定 destination 只用于“写入结果寄存器”。
 // - 允许 Invalid 是为了支持无目标写入的指令（如部分 Return/Jump）。
-bool isDestinationKindAllowed(IRValueKind value_kind) {
-    return value_kind == IRValueKind::Invalid || value_kind == IRValueKind::VReg;
+bool isDestinationKindAllowed(IRValueKind val_kind) {
+    return val_kind == IRValueKind::Invalid || val_kind == IRValueKind::VReg;
 }
 
 // Why:
 // - VReg 引用必须在函数已分配范围内，越界说明 builder 或手工构造有错误。
-bool isValidVirtualRegister(const IRFunction &function_ir, const IRValue &value) {
+bool isValidVirtualRegister(const IRFunction &func_ir, const IRValue &value) {
     if (value.value_kind != IRValueKind::VReg) {
         return true;
     }
-    return value.payload_as_u32 < function_ir.next_virtual_register_identifier;
+    return value.payload_as_u32 < func_ir.next_vreg_id;
 }
 
 // Why:
-// - FuncId 是 module 级引用，必须落在 function_table 范围内。
-bool isValidFunctionReference(const ModuleIR &module_ir, const IRValue &value) {
+// - FuncId 是 module 级引用，必须落在 func_table 范围内。
+bool isValidFunctionReference(const ModuleIR &mod_ir, const IRValue &value) {
     if (value.value_kind != IRValueKind::FuncId) {
         return true;
     }
-    return value.payload_as_u32 < module_ir.function_table.size();
+    return value.payload_as_u32 < mod_ir.func_table.size();
 }
 
 // Why:
 // - BlockId 是 function 级引用，必须落在当前函数 basic_blocks 范围内。
-bool isValidBlockReference(const IRFunction &function_ir, const IRValue &value) {
+bool isValidBlockReference(const IRFunction &func_ir, const IRValue &value) {
     if (value.value_kind != IRValueKind::BlockId) {
         return true;
     }
-    return value.payload_as_u32 < function_ir.basic_blocks.size();
+    return value.payload_as_u32 < func_ir.basic_blocks.size();
 }
 
 // Why:
 // - SymbolId 由 module 符号表统一分配，越界代表符号绑定错误。
-bool isValidSymbolReference(const ModuleIR &module_ir, const IRValue &value) {
+bool isValidSymbolReference(const ModuleIR &mod_ir, const IRValue &value) {
     if (value.value_kind != IRValueKind::SymbolId) {
         return true;
     }
-    return value.payload_as_u32 < module_ir.symbol_table.size();
+    return value.payload_as_u32 < mod_ir.sym_table.size();
 }
 
 // Why:
 // - StringId 指向模块字符串池，越界会导致名称解析/报错渲染异常。
-bool isValidStringReference(const ModuleIR &module_ir, const IRValue &value) {
+bool isValidStringReference(const ModuleIR &mod_ir, const IRValue &value) {
     if (value.value_kind != IRValueKind::StringId) {
         return true;
     }
-    return value.payload_as_u32 < module_ir.module_string_pool.size();
+    return value.payload_as_u32 < mod_ir.module_string_pool.size();
 }
-
-void verifyOneOperandReference(VerifyReport &report, const ModuleIR &module_ir, const IRFunction &function_ir,
-                               const IRValue &operand_value, uint32_t function_identifier, uint32_t block_identifier,
-                               uint32_t instruction_index) {
+ 
+void verifyOneOperandReference(VerifyReport &report, const ModuleIR &mod_ir, const IRFunction &func_ir,
+                               const IRValue &operand, uint32_t function_id, uint32_t block_id,
+                               uint32_t inst_idx) {
     // How:
     // - 一个操作数可能是多种 kind，本函数只在对应 kind 时触发范围检查；
     // - 非对应 kind 直接放行，避免重复写 switch 并降低维护成本。
-    if (!isValidVirtualRegister(function_ir, operand_value)) {
+    if (!isValidVirtualRegister(func_ir, operand)) {
         report.addIssue(VerifyErrorCode::InvalidVirtualRegisterIdentifier, "Virtual register out of range.",
-                        function_identifier, block_identifier, instruction_index);
+                        function_id, block_id, inst_idx);
     }
-    if (!isValidFunctionReference(module_ir, operand_value)) {
-        report.addIssue(VerifyErrorCode::InvalidFunctionReference, "Function reference out of range.",
-                        function_identifier, block_identifier, instruction_index);
+    if (!isValidFunctionReference(mod_ir, operand)) {
+        report.addIssue(VerifyErrorCode::InvalidFunctionReference, "Function reference out of range.", function_id,
+                        block_id, inst_idx);
     }
-    if (!isValidBlockReference(function_ir, operand_value)) {
-        report.addIssue(VerifyErrorCode::InvalidBlockReference, "Block reference out of range.", function_identifier,
-                        block_identifier, instruction_index);
+    if (!isValidBlockReference(func_ir, operand)) {
+        report.addIssue(VerifyErrorCode::InvalidBlockReference, "Block reference out of range.", function_id, block_id,
+                        inst_idx);
     }
-    if (!isValidSymbolReference(module_ir, operand_value)) {
-        report.addIssue(VerifyErrorCode::InvalidSymbolReference, "Symbol reference out of range.", function_identifier,
-                        block_identifier, instruction_index);
+    if (!isValidSymbolReference(mod_ir, operand)) {
+        report.addIssue(VerifyErrorCode::InvalidSymbolReference, "Symbol reference out of range.", function_id,
+                        block_id, inst_idx);
     }
-    if (!isValidStringReference(module_ir, operand_value)) {
-        report.addIssue(VerifyErrorCode::InvalidStringReference, "String reference out of range.", function_identifier,
-                        block_identifier, instruction_index);
+    if (!isValidStringReference(mod_ir, operand)) {
+        report.addIssue(VerifyErrorCode::InvalidStringReference, "String reference out of range.", function_id,
+                        block_id, inst_idx);
     }
 }
 
-void verifyInstructionShape(VerifyReport &report, const IRInst &instruction, uint32_t function_identifier,
-                            uint32_t block_identifier, uint32_t instruction_index) {
+void verifyInstructionShape(VerifyReport &report, const IRInst &inst, uint32_t function_id, uint32_t block_id,
+                            uint32_t inst_idx) {
+    const auto addInvalidSourceKindIssue = [&](const std::string &message) {
+        report.addIssue(VerifyErrorCode::InvalidSourceValueKind, message, function_id, block_id, inst_idx);
+    };
+    const auto expectSourceKind = [&](const IRValue &value, IRValueKind expected_kind, const std::string &message) {
+        if (value.value_kind != expected_kind) {
+            addInvalidSourceKindIssue(message);
+        }
+    };
+    const auto expectSourceKindOneOf = [&](const IRValue &value, IRValueKind kind_a, IRValueKind kind_b,
+                                           const std::string &message) {
+        if (value.value_kind != kind_a && value.value_kind != kind_b) {
+            addInvalidSourceKindIssue(message);
+        }
+    };
+
     // 通用约束: dst 仅允许 Invalid 或 VReg
-    if (!isDestinationKindAllowed(instruction.destination_value.value_kind)) {
+    if (!isDestinationKindAllowed(inst.destination_value.value_kind)) {
         report.addIssue(VerifyErrorCode::InvalidDestinationValueKind, "Destination value must be Invalid or VReg.",
-                        function_identifier, block_identifier, instruction_index);
+                        function_id, block_id, inst_idx);
     }
     // MVP 最小形状校验
     // Why:
     // - 这里校验的是“结构完整性”而非“类型正确性”；
     // - 类型匹配（int/float/bool）应由 semantic 或后续专门 pass 处理。
-    switch (instruction.instruction_kind) {
+    switch (inst.instruction_kind) {
     case IRInstKind::Nop:
         break;
 
     case IRInstKind::Constant:
         // 期望有 destination，source 在 first_operand（立即数/字符串等）
-        if (instruction.destination_value.value_kind != IRValueKind::VReg) {
+        if (inst.destination_value.value_kind != IRValueKind::VReg) {
             report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout, "Constant expects VReg destination.",
-                            function_identifier, block_identifier, instruction_index);
+                            function_id, block_id, inst_idx);
         }
         break;
 
     case IRInstKind::Move:
-        if (instruction.destination_value.value_kind != IRValueKind::VReg ||
-            instruction.first_operand.value_kind == IRValueKind::Invalid) {
+        if (inst.destination_value.value_kind != IRValueKind::VReg || inst.first_operand.value_kind == IRValueKind::Invalid) {
             report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
-                            "Move expects VReg destination and valid source operand.", function_identifier,
-                            block_identifier, instruction_index);
+                            "Move expects VReg destination and valid source operand.", function_id, block_id, inst_idx);
         }
         break;
 
@@ -175,41 +187,108 @@ void verifyInstructionShape(VerifyReport &report, const IRInst &instruction, uin
     case IRInstKind::CmpGe:
     case IRInstKind::LogicAnd:
     case IRInstKind::LogicOr:
-        if (instruction.destination_value.value_kind != IRValueKind::VReg ||
-            instruction.first_operand.value_kind == IRValueKind::Invalid ||
-            instruction.second_operand.value_kind == IRValueKind::Invalid) {
+        if (inst.destination_value.value_kind != IRValueKind::VReg || inst.first_operand.value_kind == IRValueKind::Invalid ||
+            inst.second_operand.value_kind == IRValueKind::Invalid) {
             report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
-                            "Binary-like instruction expects dest + 2 operands.", function_identifier, block_identifier,
-                            instruction_index);
+                            "Binary-like instruction expects dest + 2 operands.", function_id, block_id, inst_idx);
         }
         break;
 
     case IRInstKind::Neg:
     case IRInstKind::LogicNot:
-    case IRInstKind::LoadGlobal:
-        if (instruction.destination_value.value_kind != IRValueKind::VReg ||
-            instruction.first_operand.value_kind == IRValueKind::Invalid) {
+        if (inst.destination_value.value_kind != IRValueKind::VReg || inst.first_operand.value_kind == IRValueKind::Invalid) {
             report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
-                            "Unary-like instruction expects dst + 1 operand.", function_identifier, block_identifier,
-                            instruction_index);
+                            "Unary-like instruction expects dst + 1 operand.", function_id, block_id, inst_idx);
+        }
+        break;
+    case IRInstKind::LoadGlobal:
+        if (inst.destination_value.value_kind != IRValueKind::VReg || inst.first_operand.value_kind == IRValueKind::Invalid) {
+            report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
+                            "LoadGlobal expects dst + symbol operand.", function_id, block_id, inst_idx);
+        } else {
+            expectSourceKind(inst.first_operand, IRValueKind::SymbolId, "LoadGlobal first operand must be SymbolId.");
         }
         break;
 
     case IRInstKind::StoreGlobal:
-        if (instruction.first_operand.value_kind == IRValueKind::Invalid ||
-            instruction.second_operand.value_kind == IRValueKind::Invalid) {
+        if (inst.first_operand.value_kind == IRValueKind::Invalid || inst.second_operand.value_kind == IRValueKind::Invalid) {
             report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
-                            "StoreGlobal expects symbol/value operands.", function_identifier, block_identifier,
-                            instruction_index);
+                            "StoreGlobal expects symbol/value operands.", function_id, block_id, inst_idx);
+        } else {
+            expectSourceKind(inst.first_operand, IRValueKind::SymbolId, "StoreGlobal first operand must be SymbolId.");
         }
         break;
 
     case IRInstKind::Call:
         // 约定：destination 可为 Invalid 或 VReg
         // first_operand 通常是 FuncId / SymbolId / VReg(callee)
-        if (instruction.first_operand.value_kind == IRValueKind::Invalid) {
+        if (inst.first_operand.value_kind == IRValueKind::Invalid) {
             report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout, "Call expects valid callee operand.",
-                            function_identifier, block_identifier, instruction_index);
+                            function_id, block_id, inst_idx);
+        } else {
+            expectSourceKindOneOf(inst.first_operand, IRValueKind::VReg, IRValueKind::FuncId,
+                                  "Call callee operand must be VReg or FuncId.");
+            if (inst.auxiliary_data > 0) {
+                expectSourceKind(inst.second_operand, IRValueKind::VReg,
+                                 "Call second operand must be argument base VReg when arg_count > 0.");
+            }
+        }
+        break;
+    case IRInstKind::NewArray:
+    case IRInstKind::NewMap:
+        if (inst.destination_value.value_kind != IRValueKind::VReg) {
+            report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
+                            "NewArray/NewMap expects VReg destination.", function_id, block_id, inst_idx);
+        }
+        break;
+    case IRInstKind::PushArray:
+        if (inst.first_operand.value_kind != IRValueKind::VReg || inst.second_operand.value_kind == IRValueKind::Invalid) {
+            report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
+                            "PushArray expects array VReg and element operand.", function_id, block_id, inst_idx);
+        }
+        break;
+    case IRInstKind::SetMap:
+        if (inst.first_operand.value_kind == IRValueKind::Invalid || inst.second_operand.value_kind == IRValueKind::Invalid ||
+            inst.third_operand.value_kind == IRValueKind::Invalid) {
+            report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
+                            "Set* instruction expects target/key(or member)/value operands.", function_id, block_id,
+                            inst_idx);
+        }
+        break;
+    case IRInstKind::SetIndex:
+        if (inst.first_operand.value_kind != IRValueKind::VReg || inst.second_operand.value_kind != IRValueKind::VReg ||
+            inst.third_operand.value_kind == IRValueKind::Invalid) {
+            report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
+                            "SetIndex expects target VReg, index VReg and value operand.", function_id, block_id,
+                            inst_idx);
+        }
+        break;
+    case IRInstKind::SetMember:
+        if (inst.first_operand.value_kind != IRValueKind::VReg || inst.second_operand.value_kind == IRValueKind::Invalid ||
+            inst.third_operand.value_kind == IRValueKind::Invalid) {
+            report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
+                            "SetMember expects target VReg, member StringId and value operand.", function_id, block_id,
+                            inst_idx);
+        } else {
+            expectSourceKind(inst.second_operand, IRValueKind::StringId,
+                             "SetMember second operand must be StringId.");
+        }
+        break;
+    case IRInstKind::GetIndex:
+        if (inst.destination_value.value_kind != IRValueKind::VReg || inst.first_operand.value_kind == IRValueKind::Invalid ||
+            inst.second_operand.value_kind == IRValueKind::Invalid) {
+            report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
+                            "Get* instruction expects dst + target + key(or member).", function_id, block_id, inst_idx);
+        }
+        break;
+    case IRInstKind::GetMember:
+        if (inst.destination_value.value_kind != IRValueKind::VReg || inst.first_operand.value_kind != IRValueKind::VReg ||
+            inst.second_operand.value_kind == IRValueKind::Invalid) {
+            report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
+                            "GetMember expects dst + target VReg + member StringId.", function_id, block_id, inst_idx);
+        } else {
+            expectSourceKind(inst.second_operand, IRValueKind::StringId,
+                             "GetMember second operand must be StringId.");
         }
         break;
     case IRInstKind::Return:
@@ -217,19 +296,17 @@ void verifyInstructionShape(VerifyReport &report, const IRInst &instruction, uin
         break;
 
     case IRInstKind::Jump:
-        if (instruction.first_operand.value_kind != IRValueKind::BlockId) {
+        if (inst.first_operand.value_kind != IRValueKind::BlockId) {
             report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout, "Jump expects BlockId operand.",
-                            function_identifier, block_identifier, instruction_index);
+                            function_id, block_id, inst_idx);
         }
         break;
 
     case IRInstKind::Branch:
-        if (instruction.first_operand.value_kind == IRValueKind::Invalid ||
-            instruction.second_operand.value_kind != IRValueKind::BlockId ||
-            instruction.third_operand.value_kind != IRValueKind::BlockId) {
+        if (inst.first_operand.value_kind == IRValueKind::Invalid || inst.second_operand.value_kind != IRValueKind::BlockId ||
+            inst.third_operand.value_kind != IRValueKind::BlockId) {
             report.addIssue(VerifyErrorCode::InvalidInstructionOperandLayout,
-                            "Branch expects cond + true_block + false_block.", function_identifier, block_identifier,
-                            instruction_index);
+                            "Branch expects cond + true_block + false_block.", function_id, block_id, inst_idx);
         }
         break;
 
@@ -239,79 +316,99 @@ void verifyInstructionShape(VerifyReport &report, const IRInst &instruction, uin
     }
 }
 
-void verifyCallArgumentCountIfDirect(VerifyReport &report, const ModuleIR &module_ir, const IRInst &instruction,
-                                     uint32_t function_identifier, uint32_t block_identifier,
-                                     uint32_t instruction_index) {
+void verifyCallArgumentCountIfDirect(VerifyReport &report, const ModuleIR &mod_ir, const IRInst &inst,
+                                     uint32_t function_id, uint32_t block_id, uint32_t inst_idx) {
     // Why:
     // - 仅 direct FuncId 才能在 verify 阶段静态拿到签名并做个数校验。
     // - 对 SymbolId/VReg 间接调用，参数校验通常需要更晚阶段信息（链接或运行时）。
-    if (instruction.instruction_kind != IRInstKind::Call) {
+    if (inst.instruction_kind != IRInstKind::Call) {
         return;
     }
     // 约定：auxiliary_data = 实参个数
-    uint32_t argument_count = instruction.auxiliary_data;
+    uint32_t arg_count = inst.auxiliary_data;
 
     // 仅在 direct FuncId 调用时做静态个数校验
-    if (instruction.first_operand.value_kind != IRValueKind::FuncId)
+    if (inst.first_operand.value_kind != IRValueKind::FuncId)
         return;
 
-    uint32_t callee_function_identifier = instruction.first_operand.payload_as_u32;
-    if (callee_function_identifier >= module_ir.function_table.size()) {
+    uint32_t callee_func_id = inst.first_operand.payload_as_u32;
+    if (callee_func_id >= mod_ir.func_table.size()) {
         return; // 越界已由通用引用检查报告
     }
 
-    const IRFunction &callee_function = module_ir.function_table[callee_function_identifier];
-    uint32_t expected_parameter_count =
-        static_cast<uint32_t>(callee_function.function_signature.parameter_types.size());
+    const IRFunction &callee_func = mod_ir.func_table[callee_func_id];
+    uint32_t expected_param_count = static_cast<uint32_t>(callee_func.func_sig.parameter_types.size());
 
-    if (argument_count != expected_parameter_count) {
+    if (arg_count != expected_param_count) {
         report.addIssue(VerifyErrorCode::CallArgumentCountMismatch,
-                        "Call argument count mismatch: expected " + std::to_string(expected_parameter_count) +
-                            ", got " + std::to_string(argument_count) + ".",
-                        function_identifier, block_identifier, instruction_index);
+                        "Call argument count mismatch: expected " + std::to_string(expected_param_count) + ", got " +
+                            std::to_string(arg_count) + ".",
+                        function_id, block_id, inst_idx);
     }
 }
 } // namespace
 
-VerifyReport verifyFunctionIR(const ModuleIR &module_ir, const IRFunction &function_ir) {
+VerifyReport verifyModuleIR(const ModuleIR &mod_ir) {
     VerifyReport report;
 
-    const uint32_t function_identifier = function_ir.function_identifier;
+    if (mod_ir.hasInitializerFunc() && mod_ir.module_initializer_func_id >= mod_ir.func_table.size()) {
+        report.addIssue(VerifyErrorCode::InvalidInitializerFunctionIdentifier,
+                        "Initializer function identifier out of range.");
+    }
 
-    // 1) function id 与表位置的一致性（若能在表中找到）
+    std::unordered_set<uint32_t> seen_symbol_name_ids;
+    for (const IRSymbol &symbol : mod_ir.sym_table) {
+        if (!seen_symbol_name_ids.insert(symbol.sym_name_id).second) {
+            report.addIssue(VerifyErrorCode::DuplicateSymbolNameIdentifier,
+                            "Duplicate symbol name identifier found.");
+        }
+    }
+
+    for (const IRFunction &func_ir : mod_ir.func_table) {
+        VerifyReport func_report = verifyFuncIR(mod_ir, func_ir);
+        report.issues.insert(report.issues.end(), func_report.issues.begin(), func_report.issues.end());
+    }
+    return report;
+}
+
+VerifyReport verifyFuncIR(const ModuleIR &mod_ir, const IRFunction &func_ir) {
+    VerifyReport report;
+
+    const uint32_t func_id = func_ir.func_id;
+
+    // 1) func id 与表位置的一致性（若能在表中找到）
     // Why:
     // - 本项目默认“ID==vector 下标”契约；若不一致，后续任何跨表引用都可能错位。
-    if (function_identifier >= module_ir.function_table.size() ||
-        &module_ir.function_table[function_identifier] != &function_ir) {
+    if (func_id >= mod_ir.func_table.size() || &mod_ir.func_table[func_id] != &func_ir) {
         report.addIssue(VerifyErrorCode::InvalidFunctionIdentifier,
-                        "Function identifier is not consistent with function_table index.", function_identifier);
+                        "Function identifier is not consistent with func_table index.", func_id);
     }
 
     // 2) entry block 合法
     // Why:
-    // - entry_block_identifier 是函数执行入口，必须指向现有基本块。
-    if (function_ir.entry_block_identifier >= function_ir.basic_blocks.size()) {
+    // - entry_block_id 是函数执行入口，必须指向现有基本块。
+    if (func_ir.entry_block_id >= func_ir.basic_blocks.size()) {
         report.addIssue(VerifyErrorCode::InvalidEntryBlockIdentifier, "Entry block identifier out of range.",
-                        function_identifier);
+                        func_id);
     }
 
     // 3) block id 唯一性 + 合法性
     // Why:
     // - block id 重复会让 branch/jump 目标语义歧义；
     // - block id 越界会导致 CFG 不可构建。
-    std::unordered_set<uint32_t> seen_block_identifiers;
-    for (uint32_t block_index = 0; block_index < function_ir.basic_blocks.size(); ++block_index) {
-        const IRBasicBlock &block = function_ir.basic_blocks[block_index];
-        const uint32_t block_identifier = block.block_identifier;
+    std::unordered_set<uint32_t> seen_block_ids;
+    for (uint32_t blk_idx = 0; blk_idx < func_ir.basic_blocks.size(); ++blk_idx) {
+        const IRBasicBlock &block = func_ir.basic_blocks[blk_idx];
+        const uint32_t block_id = block.block_id;
 
-        if (block_identifier >= function_ir.basic_blocks.size()) {
+        if (block_id >= func_ir.basic_blocks.size()) {
             report.addIssue(VerifyErrorCode::InvalidBlockIdentifier, "Block identifier out of range.",
-                            function_identifier, block_identifier);
+                            func_id, block_id);
         }
 
-        if (!seen_block_identifiers.insert(block_identifier).second) {
+        if (!seen_block_ids.insert(block_id).second) {
             report.addIssue(VerifyErrorCode::DuplicateBlockIdentifier, "Duplicate block identifier found.",
-                            function_identifier, block_identifier);
+                            func_id, block_id);
         }
 
         // 4) block 至少应该有 terminator
@@ -320,43 +417,42 @@ VerifyReport verifyFunctionIR(const ModuleIR &module_ir, const IRFunction &funct
         // - terminator 不在尾部也会破坏单入口-单出口的基本块约束。
         if (block.instruction_list.empty()) {
             report.addIssue(VerifyErrorCode::EmptyBlockWithoutTerminator, "Basic block has no instructions.",
-                            function_identifier, block_identifier);
+                            func_id, block_id);
             continue;
         }
 
-        const uint32_t last_instruction_index = static_cast<uint32_t>(block.instruction_list.size() - 1);
-        for (uint32_t instruction_index = 0; instruction_index < block.instruction_list.size(); ++instruction_index) {
-            const IRInst &instruction = block.instruction_list[instruction_index];
+        const uint32_t last_inst_idx = static_cast<uint32_t>(block.instruction_list.size() - 1);
+        for (uint32_t inst_idx = 0; inst_idx < block.instruction_list.size(); ++inst_idx) {
+            const IRInst &inst = block.instruction_list[inst_idx];
 
-            verifyInstructionShape(report, instruction, function_identifier, block_identifier, instruction_index);
+            verifyInstructionShape(report, inst, func_id, block_id, inst_idx);
 
-            verifyOneOperandReference(report, module_ir, function_ir, instruction.destination_value,
-                                      function_identifier, block_identifier, instruction_index);
+            verifyOneOperandReference(report, mod_ir, func_ir, inst.destination_value, func_id, block_id,
+                                      inst_idx);
 
-            verifyOneOperandReference(report, module_ir, function_ir, instruction.first_operand, function_identifier,
-                                      block_identifier, instruction_index);
+            verifyOneOperandReference(report, mod_ir, func_ir, inst.first_operand, func_id, block_id,
+                                      inst_idx);
 
-            verifyOneOperandReference(report, module_ir, function_ir, instruction.second_operand, function_identifier,
-                                      block_identifier, instruction_index);
+            verifyOneOperandReference(report, mod_ir, func_ir, inst.second_operand, func_id, block_id,
+                                      inst_idx);
 
-            verifyOneOperandReference(report, module_ir, function_ir, instruction.third_operand, function_identifier,
-                                      block_identifier, instruction_index);
+            verifyOneOperandReference(report, mod_ir, func_ir, inst.third_operand, func_id, block_id,
+                                      inst_idx);
 
-            verifyCallArgumentCountIfDirect(report, module_ir, instruction, function_identifier, block_identifier,
-                                            instruction_index);
+            verifyCallArgumentCountIfDirect(report, mod_ir, inst, func_id, block_id, inst_idx);
 
-            const bool current_is_terminator = isTerminator(instruction.instruction_kind);
-            if (instruction_index != last_instruction_index && current_is_terminator) {
+            const bool is_current_terminator = isTerminator(inst.instruction_kind);
+            if (inst_idx != last_inst_idx && is_current_terminator) {
                 report.addIssue(VerifyErrorCode::InvalidTerminatorInstruction,
-                                "Terminator instruction must be the last instruction in the block.",
-                                function_identifier, block_identifier, instruction_index);
+                                "Terminator instruction must be the last instruction in the block.", func_id, block_id,
+                                inst_idx);
             }
         }
-        const IRInst &terminator_instruction = block.instruction_list.back();
-        if (!isTerminator(terminator_instruction.instruction_kind)) {
+        const IRInst &term_inst = block.instruction_list.back();
+        if (!isTerminator(term_inst.instruction_kind)) {
             report.addIssue(VerifyErrorCode::MissingTerminatorInstruction,
-                            "Basic block must end with Jump/Branch/Return terminator.", function_identifier,
-                            block_identifier, last_instruction_index);
+                            "Basic block must end with Jump/Branch/Return terminator.", func_id, block_id,
+                            last_inst_idx);
         }
     }
     return report;
@@ -378,6 +474,7 @@ bool hasStructuralErrors(const VerifyReport &report) {
         case VerifyErrorCode::InvalidTerminatorInstruction:
         case VerifyErrorCode::InvalidInstructionOperandLayout:
         case VerifyErrorCode::InvalidDestinationValueKind:
+        case VerifyErrorCode::InvalidSourceValueKind:
         case VerifyErrorCode::InvalidVirtualRegisterIdentifier:
         case VerifyErrorCode::InvalidFunctionReference:
         case VerifyErrorCode::InvalidBlockReference:
@@ -386,7 +483,6 @@ bool hasStructuralErrors(const VerifyReport &report) {
             return true;
         case VerifyErrorCode::None:
         case VerifyErrorCode::DuplicateSymbolNameIdentifier:
-        case VerifyErrorCode::InvalidSourceValueKind:
         case VerifyErrorCode::CallArgumentCountMismatch:
             break;
         }

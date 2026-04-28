@@ -25,11 +25,11 @@ namespace niki::ir {
  *
  * 全景图：
  * ModuleIR
- *  ├─ function_table (IRFunction[])
+ *  ├─ func_table (IRFunction[])
  *  │   └─ basic_blocks (IRBasicBlock[])
  *  │      └─ instruction_list (IRInst[])
  *  │         └─ operands (IRValue)
- *  ├─ symbol_table (IRSymbol[])
+ *  ├─ sym_table (IRSymbol[])
  *  └─ module_string_pool (string[])
  */
 
@@ -88,10 +88,10 @@ struct IRValue {
     // How:
     // - 每个构造函数只设置自身所需字段，未使用字段保持默认值。
     // - 例如 makeVirtualRegisterValue() 只写 VReg + payload_as_u32。
-    static IRValue makeVirtualRegisterValue(IRRegId register_id) {
+    static IRValue makeVirtualRegisterValue(IRRegId reg_id) {
         IRValue value;
         value.value_kind = IRValueKind::VReg;
-        value.payload_as_u32 = register_id;
+        value.payload_as_u32 = reg_id;
         return value;
     };
 
@@ -116,31 +116,31 @@ struct IRValue {
         return value;
     };
 
-    static IRValue makeStringIdentifierValue(uint32_t string_identifier) {
+    static IRValue makeStringIdentifierValue(uint32_t string_id) {
         IRValue value;
         value.value_kind = IRValueKind::StringId;
-        value.payload_as_u32 = string_identifier;
+        value.payload_as_u32 = string_id;
         return value;
     };
 
-    static IRValue makeSymbolIdentifierValue(IRSymbolId symbol_identifier) {
+    static IRValue makeSymbolIdentifierValue(IRSymbolId sym_id) {
         IRValue value;
         value.value_kind = IRValueKind::SymbolId;
-        value.payload_as_u32 = symbol_identifier;
+        value.payload_as_u32 = sym_id;
         return value;
     };
 
-    static IRValue makeBlockIdentifierValue(IRBlockId block_identifier) {
+    static IRValue makeBlockIdentifierValue(IRBlockId block_id) {
         IRValue value;
         value.value_kind = IRValueKind::BlockId;
-        value.payload_as_u32 = block_identifier;
+        value.payload_as_u32 = block_id;
         return value;
     };
 
-    static IRValue makeFunctionIdentifierValue(IRFunctionId function_identifier) {
+    static IRValue makeFunctionIdentifierValue(IRFunctionId func_id) {
         IRValue value;
         value.value_kind = IRValueKind::FuncId;
-        value.payload_as_u32 = function_identifier;
+        value.payload_as_u32 = func_id;
         return value;
     };
 
@@ -185,6 +185,16 @@ enum class IRInstKind : uint8_t {
     Call,
     Return,
 
+    // 聚合与访问
+    NewArray,
+    PushArray,
+    NewMap,
+    SetMap,
+    GetIndex,
+    SetIndex,
+    GetMember,
+    SetMember,
+
     // 控制流
     Jump,   // 无条件跳转
     Branch, // 条件跳转
@@ -227,7 +237,7 @@ struct IRInst {
 // - instruction_list 顺序执行，末尾应由 terminator 指令结束（verify 约束）。
 // - terminator 通常是 Jump / Branch / Return 之一。
 struct IRBasicBlock {
-    IRBlockId block_identifier = std::numeric_limits<IRBlockId>::max();
+    IRBlockId block_id = std::numeric_limits<IRBlockId>::max();
     std::string debug_block_name;
     std::vector<IRInst> instruction_list;
 };
@@ -245,43 +255,43 @@ struct IRFunctionSignature {
 //---函数---
 struct IRFunction {
     // Why:
-    // - function_identifier 是模块内稳定身份；function_name_identifier 是用户可见名映射键。
+    // - func_id 是模块内稳定身份；func_name_id 是用户可见名映射键。
     // - 二者分离可避免重命名、导出别名等场景下的身份歧义。
-    IRFunctionId function_identifier = std::numeric_limits<IRFunctionId>::max();
+    IRFunctionId func_id = std::numeric_limits<IRFunctionId>::max();
     // 与现有字符串池对齐：函数名存name_id,避免跨模块字符串比较开销
-    uint32_t function_name_identifier = std::numeric_limits<uint32_t>::max();
+    uint32_t func_name_id = std::numeric_limits<uint32_t>::max();
 
     // Why:
-    // - source_path 直接挂在函数上，便于多文件项目的精确报错与审计。
-    std::string function_source_path;
-    IRFunctionSignature function_signature;
+    // - src_path 直接挂在函数上，便于多文件项目的精确报错与审计。
+    std::string func_src_path;
+    IRFunctionSignature func_sig;
 
     // 形参对应的vreg列表(与function_signature.parameter_types 同长度)
     std::vector<IRRegId> parameter_registers;
 
     // 基本块
-    IRBlockId entry_block_identifier = std::numeric_limits<IRBlockId>::max();
+    IRBlockId entry_block_id = std::numeric_limits<IRBlockId>::max();
     std::vector<IRBasicBlock> basic_blocks;
 
-    // virtual register 分配上界[0,next_virtual_register_identifier)
-    IRRegId next_virtual_register_identifier = 0;
+    // virtual register 分配上界[0,next_vreg_id)
+    IRRegId next_vreg_id = 0;
 
     // Why:
     // - IR 使用虚拟寄存器表达值流，避免在 builder 阶段绑定物理寄存器策略。
     // - 物理分配推迟到 lowering，可按目标 VM 约束选择策略。
     // How:
     // - 每次 allocateVirtualRegister() 返回一个新编号，形成 SSA-like 的值流基础。
-    IRRegId allocateVirtualRegister() { return next_virtual_register_identifier++; }
+    IRRegId allocateVirtualRegister() { return next_vreg_id++; }
 
     // Why:
-    // - 构建基本块时自动分配 block_identifier，避免调用侧手动维护一致性。
+    // - 构建基本块时自动分配 block_id，避免调用侧手动维护一致性。
     // How:
-    // - block_identifier 采用当前 basic_blocks.size()，保持连续且可预测。
+    // - block_id 采用当前 basic_blocks.size()，保持连续且可预测。
     IRBasicBlock &createBasicBlock(const std::string &block_name) {
-        IRBasicBlock basic_block;
-        basic_block.block_identifier = static_cast<IRBlockId>(basic_blocks.size());
-        basic_block.debug_block_name = block_name;
-        basic_blocks.push_back(basic_block);
+        IRBasicBlock blk;
+        blk.block_id = static_cast<IRBlockId>(basic_blocks.size());
+        blk.debug_block_name = block_name;
+        basic_blocks.push_back(blk);
         return basic_blocks.back();
     }
 };
@@ -301,22 +311,22 @@ enum class IRSymbolKind : uint8_t {
 
 struct IRSymbol {
     // Why:
-    // - symbol_identifier 是模块内符号主键。
-    // - symbol_name_identifier 是和字符串池对齐的名称键，便于快速比较。
-    IRSymbolId symbol_identifier = std::numeric_limits<IRSymbolId>::max();
-    uint32_t symbol_name_identifier = std::numeric_limits<uint32_t>::max();
-    IRSymbolKind symbol_kind = IRSymbolKind::External;
-    IRType symbol_type = IRType::makeUnknown();
+    // - sym_id 是模块内符号主键。
+    // - sym_name_id 是和字符串池对齐的名称键，便于快速比较。
+    IRSymbolId sym_id = std::numeric_limits<IRSymbolId>::max();
+    uint32_t sym_name_id = std::numeric_limits<uint32_t>::max();
+    IRSymbolKind sym_kind = IRSymbolKind::External;
+    IRType sym_type = IRType::makeUnknown();
 
     // 该符号归属函数(函数符号时可用)，否则保持uint32_max
-    IRFunctionId owner_function_identifier = std::numeric_limits<IRFunctionId>::max();
+    IRFunctionId owner_func_id = std::numeric_limits<IRFunctionId>::max();
 
     // Why:
-    // - owner_module_path 用于跨模块诊断（重复符号/可见性冲突时需要归属信息）。
+    // - owner_mod_path 用于跨模块诊断（重复符号/可见性冲突时需要归属信息）。
     // - is_exported 明确该符号是否对外可见，避免 linker 通过启发式推断。
     // How:
     // - Linker 可据此执行：重名冲突检查、导出可见性过滤、入口决议。
-    std::string owner_module_path;
+    std::string owner_mod_path;
     bool is_exported = false;
 };
 
@@ -331,65 +341,86 @@ struct ModuleIR {
     // - IR：后端层（执行友好、语义原语稳定）
     // - 因此“新增一个语法节点”通常修改 builder，而不是修改 ModuleIR 核心结构。
     std::string module_name;
-    std::string module_source_path;
+    std::string module_src_path;
 
     // 与Chunk对齐：每个模块携带一份string_pool快照
     std::vector<std::string> module_string_pool;
 
     // 顶层初始化入口(模块加载时执行)
-    IRFunctionId module_initializer_function_identifier = std::numeric_limits<IRFunctionId>::max();
+    IRFunctionId module_initializer_func_id = std::numeric_limits<IRFunctionId>::max();
 
     // 函数与符号表
-    std::vector<IRFunction> function_table;
-    std::vector<IRSymbol> symbol_table;
+    std::vector<IRFunction> func_table;
+    std::vector<IRSymbol> sym_table;
 
-    // function_name_identifier -> symbol_identifier
-    std::unordered_map<uint32_t, IRSymbolId> symbol_identifier_by_name_identifier;
+    // (name_id, kind) -> sym_id
+    std::unordered_map<uint64_t, IRSymbolId> sym_id_by_name_and_kind;
+
+    static uint64_t makeSymbolDedupKey(uint32_t sym_name_id, IRSymbolKind sym_kind) {
+        return (static_cast<uint64_t>(sym_name_id) << 32) | static_cast<uint64_t>(sym_kind);
+    }
 
     // Why:
-    // - 统一入口创建函数，保证 function_identifier 与 function_table 下标一致。
+    // - 统一入口创建函数，保证 func_id 与 func_table 下标一致。
     // How:
-    // - 创建时写入 function_source_path，避免后续调用方忘记填来源路径。
-    IRFunction &createFunction(uint32_t function_name_identifier, const std::string &source_path) {
-        IRFunction function;
-        function.function_identifier = static_cast<IRFunctionId>(function_table.size());
-        function.function_name_identifier = function_name_identifier;
-        function.function_source_path = source_path;
-        function_table.push_back(function);
-        return function_table.back();
+    // - 创建时写入 func_src_path，避免后续调用方忘记填来源路径。
+    IRFunction &createFunc(uint32_t func_name_id, const std::string &src_path) {
+        IRFunction func;
+        func.func_id = static_cast<IRFunctionId>(func_table.size());
+        func.func_name_id = func_name_id;
+        func.func_src_path = src_path;
+        func_table.push_back(func);
+        return func_table.back();
     };
 
     // Why:
-    // - addSymbol 实现“按名称去重”的最小语义，避免模块内重复插入。
+    // - addSym 实现“按名称去重”的最小语义，避免模块内重复插入。
     // - 冲突是否报错交给 verify/linker 决策，这里只提供一致的数据写入入口。
     // How:
-    // - 先查 symbol_identifier_by_name_identifier，存在则复用，不存在再创建。
+    // - 先查 (name, kind) 去重索引，存在则复用，不存在再创建。
     // - 这样可以把“写入”与“规则判断”解耦，便于分阶段演进。
-    IRSymbolId addSymbol(uint32_t symbol_name_identifier, IRSymbolKind symbol_kind, const IRType &symbol_type,
-                         const std::string &owner_module_path, bool is_exported) {
-        auto existing_symbol = symbol_identifier_by_name_identifier.find(symbol_name_identifier);
-        if (existing_symbol != symbol_identifier_by_name_identifier.end()) {
-            return existing_symbol->second;
+    IRSymbolId addSym(uint32_t sym_name_id, IRSymbolKind sym_kind, const IRType &sym_type,
+                      const std::string &owner_mod_path, bool is_exported) {
+        uint64_t dedup_key = makeSymbolDedupKey(sym_name_id, sym_kind);
+        auto existing_sym = sym_id_by_name_and_kind.find(dedup_key);
+        if (existing_sym != sym_id_by_name_and_kind.end()) {
+            return existing_sym->second;
         }
 
-        IRSymbol symbol;
-        symbol.symbol_identifier = static_cast<IRSymbolId>(symbol_table.size());
-        symbol.symbol_name_identifier = symbol_name_identifier;
-        symbol.symbol_kind = symbol_kind;
-        symbol.symbol_type = symbol_type;
-        symbol.owner_module_path = owner_module_path;
-        symbol.is_exported = is_exported;
+        IRSymbol sym;
+        sym.sym_id = static_cast<IRSymbolId>(sym_table.size());
+        sym.sym_name_id = sym_name_id;
+        sym.sym_kind = sym_kind;
+        sym.sym_type = sym_type;
+        sym.owner_mod_path = owner_mod_path;
+        sym.is_exported = is_exported;
 
-        symbol_table.push_back(symbol);
-        symbol_identifier_by_name_identifier.emplace(symbol_name_identifier, symbol.symbol_identifier);
-        return symbol.symbol_identifier;
+        sym_table.push_back(sym);
+        sym_id_by_name_and_kind.emplace(dedup_key, sym.sym_id);
+        return sym.sym_id;
     };
 
     // Why:
     // - 明确模块是否存在初始化函数，避免各处直接比较哨兵值。
-    bool hasInitializerFunction() const {
-        return module_initializer_function_identifier != std::numeric_limits<IRFunctionId>::max();
-    }
+    bool hasInitializerFunc() const { return module_initializer_func_id != std::numeric_limits<IRFunctionId>::max(); }
 };
-
+// ==============================
+// IR Utility Declarations
+// ==============================
+// --- enum/string helpers ---
+const char *toString(IRValueKind val_kind);
+const char *toString(IRInstKind inst_kind);
+const char *toString(IRSymbolKind sym_kind);
+// --- lookup helpers (const / mutable) ---
+const IRFunction *findFuncById(const ModuleIR &mod_ir, IRFunctionId func_id);
+IRFunction *findFuncById(ModuleIR &mod_ir, IRFunctionId func_id);
+const IRBasicBlock *findBlockById(const IRFunction &func_ir, IRBlockId block_id);
+IRBasicBlock *findBlockById(IRFunction &func_ir, IRBlockId block_id);
+const IRSymbol *findSymbolById(const ModuleIR &mod_ir, IRSymbolId sym_id);
+IRSymbol *findSymbolById(ModuleIR &mod_ir, IRSymbolId sym_id);
+// --- format / dump helpers ---
+std::string formatValue(const IRValue &value);
+std::string dumpInstruction(const IRInst &inst, uint32_t inst_idx);
+std::string dumpFunction(const IRFunction &func_ir);
+std::string dumpModule(const ModuleIR &mod_ir);
 } // namespace niki::ir

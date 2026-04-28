@@ -12,6 +12,12 @@ find_package(GTest CONFIG REQUIRED)
 set(NIKI_L0_CORE_SOURCES
     src/l0_core/diagnostic/diagnostic.cpp
     src/l0_core/diagnostic/renderer.cpp
+    src/l0_core/ir/module_ir.cpp
+    src/l0_core/ir/verify.cpp
+    src/l0_core/ir/builder.cpp
+    src/l0_core/ir/builder_expression.cpp
+    src/l0_core/ir/builder_statement.cpp
+    src/l0_core/ir/builder_declaration.cpp
     src/l0_core/syntax/global_interner.cpp
     src/l0_core/syntax/scanner.cpp
     src/l0_core/syntax/parse.cpp
@@ -105,6 +111,9 @@ add_executable(niki_tests
     test/syntax/scanner_test.cpp
     test/syntax/parser_test.cpp
     test/syntax/compiler_test.cpp
+    test/ir/builder_test.cpp
+    test/ir/verify_test.cpp
+    test/ir/module_ir_test.cpp
     test/driver/driver_project_test.cpp
     test/linker/linker_test.cpp
     test/runtime/launcher_test.cpp
