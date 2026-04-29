@@ -1,5 +1,6 @@
 #include "niki/l0_core/ir/verify.hpp"
 #include <array>
+#include <unordered_set>
 
 /** @verify_impl: 扁平 IR 结构校验实现
  * 这个文件实现 verify 核心算法：在 lowering 前线性扫描 ModuleIR，收集结构违规项。
@@ -42,6 +43,60 @@ VerifyReport verifyModuleIRFlat(const ModuleIR &module_ir) {
     if (!module_ir.insts.aligned()) {
         report.add(VerifyErrorCode::InstColumnsMisaligned, "inst table columns are not aligned");
         return report;
+    }
+
+    // PASS_0_5: kits 元数据结构与引用域校验。
+    for (uint32_t kits_index = 0; kits_index < module_ir.kits.size(); ++kits_index) {
+        const KitsRecord &kits_record = module_ir.kits[kits_index];
+        if (kits_record.first_item + kits_record.item_count > module_ir.kits_items.size()) {
+            report.add(VerifyErrorCode::KitsItemSpanOutOfRange, "kits item span out of range", kits_index);
+            continue;
+        }
+        if (kits_record.kits_sid >= module_ir.string_pool.size()) {
+            report.add(VerifyErrorCode::KitsNameRefOutOfRange, "kits name sid out of range", kits_index);
+        }
+        if (kits_record.owner_mod_sid >= module_ir.string_pool.size()) {
+            report.add(VerifyErrorCode::KitsOwnerModuleRefOutOfRange, "kits owner module sid out of range", kits_index);
+        }
+
+        std::unordered_set<uint32_t> alias_sids;
+        alias_sids.reserve(kits_record.item_count);
+        for (uint32_t dedup_index = 0; dedup_index < kits_record.item_count; ++dedup_index) {
+            const KitsItemRecord &dedup_item = module_ir.kits_items[kits_record.first_item + dedup_index];
+            if (!alias_sids.insert(dedup_item.alias_sid).second) {
+                report.add(VerifyErrorCode::KitsDuplicateAliasInWindow, "duplicate kits alias in same window", kits_index,
+                           dedup_index);
+            }
+        }
+
+        for (uint32_t rel_item_index = 0; rel_item_index < kits_record.item_count; ++rel_item_index) {
+            const KitsItemRecord &item = module_ir.kits_items[kits_record.first_item + rel_item_index];
+            if (item.alias_sid >= module_ir.string_pool.size()) {
+                report.add(VerifyErrorCode::KitsAliasRefOutOfRange, "kits alias sid out of range", kits_index,
+                           rel_item_index);
+            }
+            if (item.component_sid >= module_ir.string_pool.size()) {
+                report.add(VerifyErrorCode::KitsComponentRefOutOfRange, "kits component sid out of range", kits_index,
+                           rel_item_index);
+            }
+        }
+    }
+
+    // PASS_0_6: component 元数据结构与引用域校验。
+    for (uint32_t component_index = 0; component_index < module_ir.components.size(); ++component_index) {
+        const ComponentRecord &component_record = module_ir.components[component_index];
+        if (component_record.component_sid >= module_ir.string_pool.size()) {
+            report.add(VerifyErrorCode::ComponentNameRefOutOfRange, "component name sid out of range", component_index);
+        }
+        if (component_record.owner_mod_sid >= module_ir.string_pool.size()) {
+            report.add(VerifyErrorCode::ComponentOwnerModuleRefOutOfRange, "component owner module sid out of range",
+                       component_index);
+        }
+        if (component_record.is_struct_promotion &&
+            component_record.source_struct_sid >= module_ir.string_pool.size()) {
+            report.add(VerifyErrorCode::ComponentSourceStructRefOutOfRange,
+                       "component source struct sid out of range for promotion", component_index);
+        }
     }
 
     // PASS_PLAN（只说明一次）：

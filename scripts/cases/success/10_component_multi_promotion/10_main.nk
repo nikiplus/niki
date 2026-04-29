@@ -1,0 +1,16 @@
+struct vec {
+  x: int,
+  y: int
+}
+
+component vec as vec_com;
+component vec as vec_2;
+
+kits MoveWindow {
+  vec_com as pos_a;
+  vec_2 as pos_b;
+}
+
+func main() -> int {
+  return 0;
+}

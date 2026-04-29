@@ -1,0 +1,8 @@
+kits MoveWindow {
+    &Position as pos;
+}
+
+func main() -> int {
+    return 0;
+}
+

@@ -7,7 +7,8 @@
 namespace niki {
 enum class Kind {
     Function,
-    Struct
+    Struct,
+    TypeAlias
 };
 
 struct GlobalSymbol {

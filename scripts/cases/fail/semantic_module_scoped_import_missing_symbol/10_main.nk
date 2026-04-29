@@ -1,0 +1,7 @@
+module main {
+    import {sub} from math;
+    func main() -> int {
+        return sub();
+    }
+}
+

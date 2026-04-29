@@ -392,7 +392,29 @@ ASTNodeIndex Parser::parseModuleDecl() {
     consume(TokenType::IDENTIFIER, "Expected module name.");
     payload.module_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
     consume(TokenType::SYM_BRACE_L, "Expected '{' before module body.");
-    payload.module_decl.body = parseBlockStmt();
+
+    // module 主体块需要允许 module-scoped import/export。
+    // parseBlockStmt 会走 parseDeclaration，而 parseDeclaration 默认会拒绝 import/export。
+    // 因此这里单独实现 module body 的声明扫描逻辑。
+    Token bodyStartToken = previous; // '{'
+    std::vector<ASTNodeIndex> declarations;
+    while (!check(TokenType::SYM_BRACE_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
+        if (match(TokenType::KW_IMPORT)) {
+            declarations.push_back(parseImportDecl());
+            continue;
+        }
+        if (match(TokenType::KW_EXPORT)) {
+            declarations.push_back(parseExportDecl());
+            continue;
+        }
+        declarations.push_back(parseDeclaration());
+    }
+    consume(TokenType::SYM_BRACE_R, "Expected '}' after module body.");
+
+    ASTNodePayload blockPayload{};
+    blockPayload.list.elements = astPool.allocateList(declarations);
+    payload.module_decl.body = emitNode(NodeType::BlockStmt, blockPayload, bodyStartToken);
+
     return emitNode(NodeType::ModuleDecl, payload, startToken);
 }
 
@@ -424,14 +446,29 @@ ASTNodeIndex Parser::parseSystemDecl() {
 ASTNodeIndex Parser::parseComponentDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
+    payload.component_decl.is_struct_promotion = false;
+    payload.component_decl.source_struct_name_id = 0;
 
-    // 1. 解析组件名
-    consume(TokenType::IDENTIFIER, "Expected component name.");
-    payload.component_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+    // 支持两种声明形式：
+    // 1) 直接声明：component Name { ... }
+    // 2) struct 提升：component StructName as ComponentName;
+    consume(TokenType::IDENTIFIER, "Expected component name or source struct name.");
+    const uint32_t first_name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
 
-    // 2. 解析组件体 (复用 parseBlockStmt，将语义验证留给下游 Checker)
-    consume(TokenType::SYM_BRACE_L, "Expected '{' before component body.");
-    payload.component_decl.body = parseBlockStmt();
+    if (match(TokenType::KW_AS)) {
+        // component <StructName> as <ComponentName>;
+        payload.component_decl.is_struct_promotion = true;
+        payload.component_decl.source_struct_name_id = first_name_id;
+        consume(TokenType::IDENTIFIER, "Expected component alias name after 'as'.");
+        payload.component_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+        consume(TokenType::SYM_SEMICOLON, "Expected ';' after component promotion declaration.");
+        payload.component_decl.body = ASTNodeIndex::invalid();
+    } else {
+        // component <ComponentName> { ... }
+        payload.component_decl.name_id = first_name_id;
+        consume(TokenType::SYM_BRACE_L, "Expected '{' before component body.");
+        payload.component_decl.body = parseBlockStmt();
+    }
 
     return emitNode(NodeType::ComponentDecl, payload, startToken);
 }
@@ -455,9 +492,8 @@ ASTNodeIndex Parser::parseFlowDecl() {
     return emitNode(NodeType::FlowDecl, payload, startToken);
 }
 
-// kits具体实现未敲定，暂且先保留为类似于struct和component的数据格式。
 /**
- * @brief 解析 kits 声明（当前为占位结构）。
+ * @brief 解析 kits 声明（组件窗口定义）。
  * @return KitsDecl 节点。
  */
 ASTNodeIndex Parser::parseKitsDecl() {
@@ -466,7 +502,42 @@ ASTNodeIndex Parser::parseKitsDecl() {
     consume(TokenType::IDENTIFIER, "Expected kits name.");
     payload.kits_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
     consume(TokenType::SYM_BRACE_L, "Expected '{' before kits body.");
-    payload.kits_decl.body = parseBlockStmt();
+
+    // kits 主体最小语法（MVP）：
+    //   <Component> as <alias>;      // 默认可写
+    //   &<Component> as <alias>;     // 只读
+    // 语义约定：默认 -> VarDeclStmt；'&' 前缀 -> ConstDeclStmt。
+    // 这里复用 Var/ConstDeclStmt 是为了复用后续 TypeChecker 的“可写/只读”判定分支。
+    Token bodyStartToken = previous; // '{'
+    std::vector<ASTNodeIndex> members;
+    while (!check(TokenType::SYM_BRACE_R) && !isAtEnd(TokenType::TOKEN_EOF)) {
+        const bool is_readonly = match(TokenType::SYM_BIT_AND);
+        const bool is_mutable = !is_readonly;
+
+        consume(TokenType::IDENTIFIER, "Expected component name (optionally prefixed by '&') in kits body.");
+        ASTNodePayload type_payload{};
+        type_payload.identifier.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+        ASTNodeIndex component_type_expr = emitNode(NodeType::IdentifierExpr, type_payload, previous);
+
+        consume(TokenType::KW_AS, "Expected 'as' after component name.");
+        consume(TokenType::IDENTIFIER, "Expected alias name after 'as'.");
+        const uint32_t alias_name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+
+        consume(TokenType::SYM_SEMICOLON, "Expected ';' after kits item.");
+
+        ASTNodePayload member_payload{};
+        member_payload.var_decl.name_id = alias_name_id;
+        member_payload.var_decl.type_expr = component_type_expr;
+        member_payload.var_decl.init_expr = ASTNodeIndex::invalid();
+        // kits 条目本质是“类型映射声明”，不允许在语法层携带初始化表达式。
+        members.push_back(
+            emitNode(is_mutable ? NodeType::VarDeclStmt : NodeType::ConstDeclStmt, member_payload, previous));
+    }
+    consume(TokenType::SYM_BRACE_R, "Expected '}' after kits body.");
+
+    ASTNodePayload block_payload{};
+    block_payload.list.elements = astPool.allocateList(members);
+    payload.kits_decl.body = emitNode(NodeType::BlockStmt, block_payload, bodyStartToken);
     return emitNode(NodeType::KitsDecl, payload, startToken);
 }
 

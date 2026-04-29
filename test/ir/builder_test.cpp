@@ -150,6 +150,166 @@ func test() {
     EXPECT_FALSE(continue_result.error().empty());
 }
 
+TEST_F(IRBuilderTest, BuildKitsDecl_ShouldLowerToModuleKitsMetadata) {
+    auto result = buildModule(R"(
+component Position {}
+component Velocity {}
+
+kits MoveWindow {
+    &Position as pos;
+    Velocity as vel;
+}
+
+func main() {
+    return 0;
+}
+)");
+    ASSERT_TRUE(result.has_value()) << diagnostic::renderDiagnosticBagText(result.error());
+
+    const ModuleIR &module_ir = result.value();
+    ASSERT_EQ(module_ir.kits.size(), 1u);
+    ASSERT_EQ(module_ir.kits_items.size(), 2u);
+
+    const KitsRecord &kits = module_ir.kits[0];
+    EXPECT_EQ(module_ir.string_pool[kits.kits_sid], "MoveWindow");
+    ASSERT_EQ(kits.item_count, 2u);
+
+    const KitsItemRecord &item0 = module_ir.kits_items[kits.first_item];
+    const KitsItemRecord &item1 = module_ir.kits_items[kits.first_item + 1];
+    EXPECT_EQ(module_ir.string_pool[item0.alias_sid], "pos");
+    EXPECT_EQ(module_ir.string_pool[item0.component_sid], "Position");
+    EXPECT_FALSE(item0.is_mutable);
+    EXPECT_EQ(module_ir.string_pool[item1.alias_sid], "vel");
+    EXPECT_EQ(module_ir.string_pool[item1.component_sid], "Velocity");
+    EXPECT_TRUE(item1.is_mutable);
+}
+
+TEST_F(IRBuilderTest, BuildKitsDeclWithDuplicateAlias_ShouldReportIRDiagnostic) {
+    auto result = buildModule(R"(
+component Position {}
+component Velocity {}
+
+kits MoveWindow {
+    &Position as pos;
+    Velocity as pos;
+}
+
+func main() {
+    return 0;
+}
+)");
+    ASSERT_FALSE(result.has_value());
+    ASSERT_FALSE(result.error().empty());
+    EXPECT_NE(diagnostic::renderDiagnosticBagText(result.error()).find("Duplicate kits alias in IR lowering."),
+              std::string::npos);
+}
+
+TEST_F(IRBuilderTest, BuildModuleDeclWithKits_ShouldUseSemanticModuleNameAsOwner) {
+    auto result = buildModule(R"(
+module gameplay {
+component Position {}
+kits MoveWindow {
+    Position as pos;
+}
+func main() {
+    return 0;
+}
+}
+)");
+    ASSERT_TRUE(result.has_value()) << diagnostic::renderDiagnosticBagText(result.error());
+    const ModuleIR &module_ir = result.value();
+    ASSERT_EQ(module_ir.kits.size(), 1u);
+    const KitsRecord &kits = module_ir.kits[0];
+    ASSERT_LT(static_cast<size_t>(kits.owner_mod_sid), module_ir.string_pool.size());
+    EXPECT_EQ(module_ir.string_pool[kits.owner_mod_sid], "gameplay");
+}
+
+TEST_F(IRBuilderTest, BuildExportWrappedKits_ShouldMarkKitsExported) {
+    auto result = buildModule(R"(
+export kits MoveWindow {
+    Position as pos;
+}
+component Position {}
+func main() {
+    return 0;
+}
+)");
+    ASSERT_TRUE(result.has_value()) << diagnostic::renderDiagnosticBagText(result.error());
+    const ModuleIR &module_ir = result.value();
+    ASSERT_EQ(module_ir.kits.size(), 1u);
+    EXPECT_TRUE(module_ir.kits[0].is_exported);
+}
+
+TEST_F(IRBuilderTest, BuildExportListKits_ShouldMarkKitsExportedRegardlessOrder) {
+    auto before_result = buildModule(R"(
+export {MoveWindow};
+component Position {}
+kits MoveWindow {
+    Position as pos;
+}
+func main() {
+    return 0;
+}
+)");
+    ASSERT_TRUE(before_result.has_value()) << diagnostic::renderDiagnosticBagText(before_result.error());
+    ASSERT_EQ(before_result->kits.size(), 1u);
+    EXPECT_TRUE(before_result->kits[0].is_exported);
+
+    auto after_result = buildModule(R"(
+component Position {}
+kits MoveWindow {
+    Position as pos;
+}
+export {MoveWindow};
+func main() {
+    return 0;
+}
+)");
+    ASSERT_TRUE(after_result.has_value()) << diagnostic::renderDiagnosticBagText(after_result.error());
+    ASSERT_EQ(after_result->kits.size(), 1u);
+    EXPECT_TRUE(after_result->kits[0].is_exported);
+}
+
+TEST_F(IRBuilderTest, BuildComponentDeclAndPromotion_ShouldLowerToComponentMetadata) {
+    auto result = buildModule(R"(
+struct vec { x: int, y: int }
+component Position {}
+component vec as vec_com;
+func main() { return 0; }
+)");
+    ASSERT_TRUE(result.has_value()) << diagnostic::renderDiagnosticBagText(result.error());
+    const ModuleIR &module_ir = result.value();
+    ASSERT_EQ(module_ir.components.size(), 2u);
+
+    const ComponentRecord &direct_component = module_ir.components[0];
+    EXPECT_EQ(module_ir.string_pool[direct_component.component_sid], "Position");
+    EXPECT_FALSE(direct_component.is_struct_promotion);
+
+    const ComponentRecord &promoted_component = module_ir.components[1];
+    EXPECT_EQ(module_ir.string_pool[promoted_component.component_sid], "vec_com");
+    EXPECT_TRUE(promoted_component.is_struct_promotion);
+    EXPECT_EQ(module_ir.string_pool[promoted_component.source_struct_sid], "vec");
+}
+
+TEST_F(IRBuilderTest, BuildExportWrappedAndListComponent_ShouldMarkComponentExported) {
+    auto wrapped_result = buildModule(R"(
+export component Position {}
+func main() { return 0; }
+)");
+    ASSERT_TRUE(wrapped_result.has_value()) << diagnostic::renderDiagnosticBagText(wrapped_result.error());
+    ASSERT_EQ(wrapped_result->components.size(), 1u);
+    EXPECT_TRUE(wrapped_result->components[0].is_exported);
+
+    auto list_result = buildModule(R"(
+component Position {}
+export {Position};
+func main() { return 0; }
+)");
+    ASSERT_TRUE(list_result.has_value()) << diagnostic::renderDiagnosticBagText(list_result.error());
+    ASSERT_EQ(list_result->components.size(), 1u);
+    EXPECT_TRUE(list_result->components[0].is_exported);
+}
+
 } // namespace
 } // namespace niki::ir::test
 

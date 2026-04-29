@@ -102,6 +102,8 @@ struct FuncRecord {
     BlockId entry_block = std::numeric_limits<BlockId>::max();
     // 下一个可分配虚拟寄存器编号（函数内单调递增）。
     RegId next_vreg = 0;
+    // 函数形参数量（用于 runtime OP_CALL 的 argc 校验）。
+    uint32_t arity = 0;
     Span block_span{}; // SPAN: 函数对应的块区间（位于 block 表）。
 };
 //---基本块记录（按函数区间线性存储）---
@@ -126,6 +128,40 @@ struct SymRecord {
     SymKind sym_kind = SymKind::External;
     // 拥有该符号的模块名 id（跨模块诊断与链接用）。
     uint32_t owner_mod_sid = std::numeric_limits<uint32_t>::max();
+    // 是否对外导出。
+    bool is_exported = false;
+};
+//---kits 元数据记录（窗口定义）---
+struct KitsItemRecord {
+    // 窗口别名在字符串池中的 id（如 pos/vel）。
+    uint32_t alias_sid = std::numeric_limits<uint32_t>::max();
+    // 目标 component 名称在字符串池中的 id。
+    uint32_t component_sid = std::numeric_limits<uint32_t>::max();
+    // true=可写窗口（默认）；false=只读窗口（& 前缀）。
+    bool is_mutable = false;
+};
+struct KitsRecord {
+    // kits 名称在字符串池中的 id。
+    uint32_t kits_sid = std::numeric_limits<uint32_t>::max();
+    // 所属模块名在字符串池中的 id。
+    uint32_t owner_mod_sid = std::numeric_limits<uint32_t>::max();
+    // kits_items 扁平区间起点（包含）。
+    uint32_t first_item = 0;
+    // kits_items 条目数量。
+    uint32_t item_count = 0;
+    // 是否对外导出（后续可接 export wall）。
+    bool is_exported = false;
+};
+//---component 元数据记录（ECS 存储身份）---
+struct ComponentRecord {
+    // component 身份名在字符串池中的 id（例如 vec_com）。
+    uint32_t component_sid = std::numeric_limits<uint32_t>::max();
+    // 来源 struct 名在字符串池中的 id；非提升形态时保持 max。
+    uint32_t source_struct_sid = std::numeric_limits<uint32_t>::max();
+    // 所属模块名在字符串池中的 id。
+    uint32_t owner_mod_sid = std::numeric_limits<uint32_t>::max();
+    // true=由 struct 提升而来；false=直接 component 声明。
+    bool is_struct_promotion = false;
     // 是否对外导出。
     bool is_exported = false;
 };
@@ -180,6 +216,12 @@ struct ModuleIR {
     InstTable insts;
     // 模块符号表（导出与链接决议基础数据）。
     std::vector<SymRecord> syms;
+    // 模块内 kits 声明记录。
+    std::vector<KitsRecord> kits;
+    // 模块内 kits 扁平条目表。
+    std::vector<KitsItemRecord> kits_items;
+    // 模块内 component 身份记录。
+    std::vector<ComponentRecord> components;
     bool has_init() const;
     uint32_t intern(const std::string &text);
 };

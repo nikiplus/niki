@@ -1,0 +1,13 @@
+module math {
+    func add() -> int {
+        return 1;
+    }
+    export {add};
+}
+
+func extra() -> int {
+    return 41;
+}
+
+export {extra};
+

@@ -110,6 +110,70 @@ TEST_F(ParserTest, ParseWithCommentsShouldSucceed) {
     EXPECT_NE(astStr.find("(var x = 1)"), std::string::npos);
 }
 
+TEST_F(ParserTest, ParseModuleScopedImportExportShouldSucceed) {
+    // module 主体块内允许出现 import/export（module-scoped）。
+    auto root = parseSource(R"nk(
+module math {
+  import { add as add2 } from lib;
+  export { add2 };
+  func add(a: int, b: int) -> int { return a + b; }
+}
+)nk");
+
+    ASSERT_TRUE(root.isvalid());
+    EXPECT_TRUE(pool.nodes.size() > 0);
+    // 不强行断言 AST 字符串，避免 ASTPrinter 格式变动导致脆弱用例。
+    ASTPrinter printer(pool);
+    std::string astStr = printer.print(root);
+    EXPECT_NE(astStr.find("(module"), std::string::npos);
+    EXPECT_NE(astStr.find("(func add("), std::string::npos);
+}
+
+TEST_F(ParserTest, ParseKitsReadWriteWindowShouldSucceed) {
+    auto root = parseSource(R"nk(
+kits MoveWindow {
+  &Position as pos_ro;
+  Velocity as vel_rw;
+}
+)nk");
+
+    ASSERT_TRUE(root.isvalid());
+    const auto &root_node = pool.getNode(root);
+    ASSERT_EQ(root_node.type, NodeType::ModuleDecl);
+    const auto &module_body = pool.getNode(root_node.payload.module_decl.body);
+    auto decls = pool.get_list(module_body.payload.list.elements);
+    ASSERT_FALSE(decls.empty());
+
+    const auto &kits_decl = pool.getNode(decls.front());
+    ASSERT_EQ(kits_decl.type, NodeType::KitsDecl);
+    const auto &kits_body = pool.getNode(kits_decl.payload.kits_decl.body);
+    auto members = pool.get_list(kits_body.payload.list.elements);
+    ASSERT_EQ(members.size(), 2u);
+    EXPECT_EQ(pool.getNode(members[0]).type, NodeType::ConstDeclStmt); // read -> const
+    EXPECT_EQ(pool.getNode(members[1]).type, NodeType::VarDeclStmt);   // write -> var
+}
+
+TEST_F(ParserTest, ParseComponentPromotionShouldSucceed) {
+    auto root = parseSource(R"nk(
+struct vec {
+  x: int,
+  y: int
+}
+component vec as vec_com;
+)nk");
+
+    ASSERT_TRUE(root.isvalid());
+    const auto &root_node = pool.getNode(root);
+    ASSERT_EQ(root_node.type, NodeType::ModuleDecl);
+    const auto &module_body = pool.getNode(root_node.payload.module_decl.body);
+    auto decls = pool.get_list(module_body.payload.list.elements);
+    ASSERT_EQ(decls.size(), 2u);
+    const auto &component_decl = pool.getNode(decls[1]);
+    ASSERT_EQ(component_decl.type, NodeType::ComponentDecl);
+    EXPECT_TRUE(component_decl.payload.component_decl.is_struct_promotion);
+    EXPECT_FALSE(component_decl.payload.component_decl.body.isvalid());
+}
+
 // 【测试用例 3】解析完整的 test.nk 脚本文件
 TEST_F(ParserTest, ParseFullScript_TestNK) {
     std::string sourceCode = readScriptOrDie("test.nk");

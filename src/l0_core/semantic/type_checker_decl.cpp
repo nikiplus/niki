@@ -17,6 +17,9 @@ void TypeChecker::checkDeclaration(syntax::ASTNodeIndex declIdx) {
     // 统一把“非表达式/非语句”的节点路由到各类声明检查函数。
     const auto &node = currentPool->getNode(declIdx);
     switch (node.type) {
+    case syntax::NodeType::ImportDecl:
+        checkImportDecl(declIdx);
+        break;
     case syntax::NodeType::FunctionDecl:
         checkFunctionDecl(declIdx);
         break;
@@ -79,6 +82,18 @@ void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
     const auto &bodyNode = currentPool->getNode(node.payload.module_decl.body);
     auto declarations = currentPool->get_list(bodyNode.payload.list.elements);
 
+    // module 级组件名索引：供 kits 窗口目标合法性校验使用。
+    moduleComponentNames.clear();
+    for (auto child : declarations) {
+        if (!child.isvalid()) {
+            continue;
+        }
+        const auto &decl = currentPool->getNode(child);
+        if (decl.type == syntax::NodeType::ComponentDecl) {
+            moduleComponentNames.insert(decl.payload.component_decl.name_id);
+        }
+    }
+
     // 第一遍扫描：预声明所有顶层符号 (Two-Pass Compilation 第一步)
     for (auto child : declarations) {
         preDeclareNode(child);
@@ -87,6 +102,37 @@ void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
     // 第二遍扫描：检查具体的函数体和声明细节
     for (auto child : declarations) {
         checkNode(child);
+    }
+}
+
+/**
+ * @brief 检查 import 声明：验证所有被导入的 local name 在可见符号表中存在。
+ * @param nodeIdx ImportDecl 节点索引。
+ */
+void TypeChecker::checkImportDecl(syntax::ASTNodeIndex nodeIdx) {
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    const syntax::ImportDeclData &import_data =
+        currentPool->import_decl_data[node.payload.import_decl.import_decl_index];
+
+    // module-only import：当前语义等价于“不导入具体名字”，无需检查。
+    if (import_data.import_module_only) {
+        return;
+    }
+
+    if (visibleSymbols == nullptr) {
+        reportError(line, column, "Internal error: visible symbols not initialized.");
+        return;
+    }
+
+    // 由于 import_items 存在于 side-table 中且类型为 ImportItem（非 ASTNodeIndex），这里用直接索引遍历。
+    for (uint32_t offset = 0; offset < import_data.item_count; ++offset) {
+        const syntax::ImportItem &item =
+            currentPool->import_items[import_data.first_item_index + offset];
+
+        if (visibleSymbols->tables.find(item.local_name_id) == visibleSymbols->tables.end()) {
+            // 目前 visibleSymbols 只会包含“能用的 local name”，因此缺失即表示导出不满足。
+            reportError(line, column, "Imported symbol not exported.");
+        }
     }
 }
 
@@ -171,14 +217,116 @@ void TypeChecker::checkTypeAliasDecl(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkInterfaceDecl(syntax::ASTNodeIndex nodeIdx) {}
 /** @brief 检查 impl 声明（占位实现）。 */
 void TypeChecker::checkImplDecl(syntax::ASTNodeIndex nodeIdx) {}
-/** @brief 检查 system 声明（占位实现）。 */
-void TypeChecker::checkSystemDecl(syntax::ASTNodeIndex nodeIdx) {}
-/** @brief 检查 component 声明（占位实现）。 */
-void TypeChecker::checkComponentDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 system 声明（当前先建立上下文边界，具体执行语义后续补齐）。 */
+void TypeChecker::checkSystemDecl(syntax::ASTNodeIndex nodeIdx) {
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    bool enclosing_system = inSystemContext;
+    inSystemContext = true;
+
+    if (node.payload.system_decl.body.isvalid()) {
+        checkStatement(node.payload.system_decl.body);
+    }
+
+    inSystemContext = enclosing_system;
+}
+/** @brief 检查 component 声明（直接声明 + struct 提升）。 */
+void TypeChecker::checkComponentDecl(syntax::ASTNodeIndex nodeIdx) {
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    const auto &component_decl = node.payload.component_decl;
+
+    if (component_decl.is_struct_promotion) {
+        if (component_decl.body.isvalid()) {
+            reportError(line, column, "Promoted component must not have body.");
+            return;
+        }
+        if (component_decl.source_struct_name_id == 0) {
+            reportError(line, column, "Promoted component missing source struct name.");
+            return;
+        }
+
+        bool struct_found = false;
+        if (globalSymbols != nullptr) {
+            const auto *sym = globalSymbols->find(component_decl.source_struct_name_id);
+            struct_found = (sym != nullptr && sym->kind == niki::Kind::Struct);
+        }
+        if (!struct_found && visibleSymbols != nullptr) {
+            auto iter = visibleSymbols->tables.find(component_decl.source_struct_name_id);
+            if (iter != visibleSymbols->tables.end() && iter->second.kind == niki::Kind::Struct) {
+                struct_found = true;
+            }
+        }
+        if (!struct_found) {
+            reportError(line, column, "Promoted component source struct not found.");
+        }
+        return;
+    }
+
+    // 直接声明 component 必须具备主体块（字段语义后续细化）。
+    if (!component_decl.body.isvalid()) {
+        reportError(line, column, "Component declaration missing body.");
+    }
+}
 /** @brief 检查 flow 声明（占位实现）。 */
 void TypeChecker::checkFlowDecl(syntax::ASTNodeIndex nodeIdx) {}
-/** @brief 检查 kits 声明（占位实现）。 */
-void TypeChecker::checkKitsDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 kits 声明：建立“数据窗口 alias -> component + 权限”映射。 */
+void TypeChecker::checkKitsDecl(syntax::ASTNodeIndex nodeIdx) {
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    if (!node.payload.kits_decl.body.isvalid()) {
+        reportError(line, column, "Invalid kits body.");
+        return;
+    }
+
+    const auto &body_node = currentPool->getNode(node.payload.kits_decl.body);
+    auto members = currentPool->get_list(body_node.payload.list.elements);
+    // 每个 kits 名称对应一张“alias -> component + mutability”窗口表。
+    auto &window = kitsWindows[node.payload.kits_decl.name_id];
+    window.clear();
+
+    for (auto member_idx : members) {
+        if (!member_idx.isvalid()) {
+            continue;
+        }
+        const auto [member_node, m_line, m_col] = getNodeCtx(member_idx);
+        // Parser 已将“默认可写”映射为 VarDeclStmt，“&只读”映射为 ConstDeclStmt。
+        const bool is_mutable = member_node.type == syntax::NodeType::VarDeclStmt;
+        if (member_node.type != syntax::NodeType::VarDeclStmt && member_node.type != syntax::NodeType::ConstDeclStmt) {
+            reportError(m_line, m_col, "Invalid kits member declaration.");
+            continue;
+        }
+
+        const uint32_t alias_name_id = member_node.payload.var_decl.name_id;
+        const auto type_expr_idx = member_node.payload.var_decl.type_expr;
+        if (member_node.payload.var_decl.init_expr.isvalid()) {
+            reportError(m_line, m_col, "Kits member must not have initializer.");
+            continue;
+        }
+        if (!type_expr_idx.isvalid()) {
+            reportError(m_line, m_col, "Kits member missing component type expression.");
+            continue;
+        }
+        const auto &type_expr_node = currentPool->getNode(type_expr_idx);
+        if (type_expr_node.type != syntax::NodeType::IdentifierExpr) {
+            reportError(m_line, m_col, "Kits component name must be an identifier.");
+            continue;
+        }
+        const uint32_t component_name_id = type_expr_node.payload.identifier.name_id;
+        // kits 只能引用当前 module 内已声明的 component，避免窗口目标悬空。
+        if (moduleComponentNames.find(component_name_id) == moduleComponentNames.end()) {
+            reportError(m_line, m_col, "Kits target must be a component declared in current module.");
+            continue;
+        }
+
+        if (window.find(alias_name_id) != window.end()) {
+            reportError(m_line, m_col, "Duplicate kits alias in same kits scope.");
+            continue;
+        }
+        // alias 在同一 kits 内必须唯一，避免 system 侧名字解析歧义。
+        window.emplace(alias_name_id, KitsWindowEntry{
+                                         .component_name_id = component_name_id,
+                                         .is_mutable = is_mutable,
+                                     });
+    }
+}
 /** @brief 检查 tag 声明（占位实现）。 */
 void TypeChecker::checkTagDecl(syntax::ASTNodeIndex nodeIdx) {}
 /** @brief 检查 taggroup 声明（占位实现）。 */

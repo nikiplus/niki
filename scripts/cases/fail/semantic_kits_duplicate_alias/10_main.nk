@@ -1,0 +1,15 @@
+component Position {
+}
+
+component Velocity {
+}
+
+kits MoveWindow {
+    &Position as pos;
+    Velocity as pos;
+}
+
+func main() -> int {
+    return 0;
+}
+

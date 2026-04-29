@@ -192,9 +192,22 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
         if (name_id == currentPool->ID_STRING)
             return NKType(NKBaseType::String, -1);
 
+        // 1) 先查全局符号表（同模块/已预声明的顶层类型别名/结构体/函数签名）
         if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
-            if (global_sym->kind == niki::Kind::Struct || global_sym->kind == niki::Kind::Function) {
+            if (global_sym->kind == niki::Kind::Struct || global_sym->kind == niki::Kind::Function ||
+                global_sym->kind == niki::Kind::TypeAlias) {
                 return global_sym->type;
+            }
+        }
+
+        // 2) 再查显式导入可见表（用于跨模块类型别名解析）
+        if (visibleSymbols != nullptr) {
+            auto it = visibleSymbols->tables.find(name_id);
+            if (it != visibleSymbols->tables.end()) {
+                const auto &sym = it->second;
+                if (sym.kind == niki::Kind::Struct || sym.kind == niki::Kind::Function || sym.kind == niki::Kind::TypeAlias) {
+                    return sym.type;
+                }
             }
         }
 

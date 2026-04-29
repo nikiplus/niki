@@ -94,6 +94,105 @@ TEST(VerifyIRTest, VRegAndFuncAndSymbolOutOfRange_ShouldBeReported) {
     EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::SymbolRefOutOfRange));
 }
 
+TEST(VerifyIRTest, KitsItemSpanOutOfRange_ShouldBeReported) {
+    ModuleIR module_ir = makeMinimalValidModule();
+    module_ir.kits.push_back(KitsRecord{
+        .kits_sid = 0,
+        .owner_mod_sid = 0,
+        .first_item = 0,
+        .item_count = 1,
+    });
+
+    VerifyReport report = verifyModuleIRFlat(module_ir);
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::KitsItemSpanOutOfRange));
+}
+
+TEST(VerifyIRTest, KitsSidOutOfRange_ShouldBeReported) {
+    ModuleIR module_ir = makeMinimalValidModule();
+    module_ir.kits.push_back(KitsRecord{
+        .kits_sid = 999,
+        .owner_mod_sid = 888,
+        .first_item = 0,
+        .item_count = 0,
+    });
+
+    VerifyReport report = verifyModuleIRFlat(module_ir);
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::KitsNameRefOutOfRange));
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::KitsOwnerModuleRefOutOfRange));
+}
+
+TEST(VerifyIRTest, KitsItemSidOutOfRange_ShouldBeReported) {
+    ModuleIR module_ir = makeMinimalValidModule();
+    module_ir.kits_items.push_back(KitsItemRecord{
+        .alias_sid = 777,
+        .component_sid = 666,
+        .is_mutable = true,
+    });
+    module_ir.kits.push_back(KitsRecord{
+        .kits_sid = 0,
+        .owner_mod_sid = 0,
+        .first_item = 0,
+        .item_count = 1,
+    });
+
+    VerifyReport report = verifyModuleIRFlat(module_ir);
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::KitsAliasRefOutOfRange));
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::KitsComponentRefOutOfRange));
+}
+
+TEST(VerifyIRTest, KitsDuplicateAliasInSameWindow_ShouldBeReported) {
+    ModuleIR module_ir = makeMinimalValidModule();
+    module_ir.string_pool = {"m", "owner", "pos", "Position", "Velocity"};
+    module_ir.kits_items.push_back(KitsItemRecord{
+        .alias_sid = 2,
+        .component_sid = 3,
+        .is_mutable = true,
+    });
+    module_ir.kits_items.push_back(KitsItemRecord{
+        .alias_sid = 2,
+        .component_sid = 4,
+        .is_mutable = false,
+    });
+    module_ir.kits.push_back(KitsRecord{
+        .kits_sid = 0,
+        .owner_mod_sid = 1,
+        .first_item = 0,
+        .item_count = 2,
+    });
+
+    VerifyReport report = verifyModuleIRFlat(module_ir);
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::KitsDuplicateAliasInWindow));
+}
+
+TEST(VerifyIRTest, ComponentSidOutOfRange_ShouldBeReported) {
+    ModuleIR module_ir = makeMinimalValidModule();
+    module_ir.components.push_back(ComponentRecord{
+        .component_sid = 999,
+        .source_struct_sid = std::numeric_limits<uint32_t>::max(),
+        .owner_mod_sid = 888,
+        .is_struct_promotion = false,
+        .is_exported = false,
+    });
+
+    VerifyReport report = verifyModuleIRFlat(module_ir);
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::ComponentNameRefOutOfRange));
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::ComponentOwnerModuleRefOutOfRange));
+}
+
+TEST(VerifyIRTest, ComponentPromotionSourceStructOutOfRange_ShouldBeReported) {
+    ModuleIR module_ir = makeMinimalValidModule();
+    module_ir.components.push_back(ComponentRecord{
+        .component_sid = 0,
+        .source_struct_sid = 777,
+        .owner_mod_sid = 0,
+        .is_struct_promotion = true,
+        .is_exported = false,
+    });
+
+    VerifyReport report = verifyModuleIRFlat(module_ir);
+    EXPECT_TRUE(hasIssueCode(report, VerifyErrorCode::ComponentSourceStructRefOutOfRange));
+}
+
 } // namespace
 } // namespace niki::ir::test
 

@@ -476,6 +476,9 @@ struct SystemDeclPayload {
 struct ComponentDeclPayload {
     uint32_t name_id;
     ASTNodeIndex body;
+    // component 是否由 struct 提升而来：component <struct_name> as <component_name>;
+    uint32_t source_struct_name_id;
+    bool is_struct_promotion;
 };
 
 struct FlowDeclPayload {

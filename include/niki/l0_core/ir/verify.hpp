@@ -52,6 +52,17 @@ enum class VerifyErrorCode : uint16_t {
     BlockRefOutOfRange,
     SymbolRefOutOfRange,
     StringRefOutOfRange,
+    // KITS: kits 元数据结构错误。
+    KitsItemSpanOutOfRange,
+    KitsNameRefOutOfRange,
+    KitsOwnerModuleRefOutOfRange,
+    KitsAliasRefOutOfRange,
+    KitsComponentRefOutOfRange,
+    KitsDuplicateAliasInWindow,
+    // COMPONENT: component 元数据结构错误。
+    ComponentNameRefOutOfRange,
+    ComponentOwnerModuleRefOutOfRange,
+    ComponentSourceStructRefOutOfRange,
     // TABLE: 表结构错误。
     InstColumnsMisaligned
 };

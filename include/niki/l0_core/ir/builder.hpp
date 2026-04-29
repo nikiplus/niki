@@ -4,6 +4,7 @@
 #include "niki/l0_core/semantic/global_compilation.hpp"
 #include <expected>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 /** @builder: AST/语义到 IR 的结构化降级器
@@ -55,6 +56,10 @@ class IRBuilder {
         ModuleIR module;
         // 构建阶段诊断集合。
         diagnostic::DiagnosticBag diags;
+        // 已声明为导出的 kits 名称（module.string_pool sid）。
+        std::unordered_set<uint32_t> exported_kits_name_sids;
+        // 已声明为导出的 component 名称（module.string_pool sid）。
+        std::unordered_set<uint32_t> exported_component_name_sids;
     };
     //---函数级构建上下文---
     struct FuncCtx {
@@ -74,6 +79,8 @@ class IRBuilder {
     bool buildRoot(BuildCtx &bc);
     bool buildTopDecl(BuildCtx &bc, niki::syntax::ASTNodeIndex decl_idx);
     bool buildFuncDecl(BuildCtx &bc, niki::syntax::ASTNodeIndex decl_idx);
+    bool buildKitsDecl(BuildCtx &bc, niki::syntax::ASTNodeIndex decl_idx);
+    bool buildComponentDecl(BuildCtx &bc, niki::syntax::ASTNodeIndex decl_idx);
     //---语句/表达式降解入口---
     bool buildStmt(BuildCtx &bc, FuncCtx &fc, niki::syntax::ASTNodeIndex stmt_idx);
     bool buildExpr(BuildCtx &bc, FuncCtx &fc, niki::syntax::ASTNodeIndex expr_idx, RegId *out);

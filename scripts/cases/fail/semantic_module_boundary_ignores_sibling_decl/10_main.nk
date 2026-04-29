@@ -1,0 +1,6 @@
+import {extra} from provider;
+
+func main() -> int {
+    return extra();
+}
+

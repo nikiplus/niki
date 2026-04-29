@@ -58,8 +58,9 @@ TEST(ScannerTest, AllKWsCoverage) {
         TokenType::KW_FLOW,     TokenType::KW_AWAIT,     TokenType::KW_NOCK,   TokenType::KW_ASYNC,
         TokenType::KW_SYSTEM,   TokenType::KW_COMPONENT, TokenType::KW_TAG,
         TokenType::KW_TAGGROUP, TokenType::KW_EXCLUSIVE, TokenType::KW_SET,    TokenType::KW_UNSET,
-        TokenType::KW_KITS,     TokenType::KW_WITH,      TokenType::KW_READ,   TokenType::KW_WRITE,
-        TokenType::KW_MODULE,   TokenType::KW_STRUCT,    TokenType::KW_ENUM,   TokenType::TOKEN_EOF};
+        TokenType::KW_KITS,     TokenType::KW_WITH,      TokenType::KW_READ,    TokenType::KW_WRITE,
+        TokenType::KW_MODULE,
+        TokenType::KW_STRUCT,   TokenType::KW_ENUM,      TokenType::TOKEN_EOF};
 
     for (auto expected : expectedTokens) {
         Token token = scanner.scanToken();

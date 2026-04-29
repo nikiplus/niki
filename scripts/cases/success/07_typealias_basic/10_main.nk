@@ -1,0 +1,10 @@
+type MyInt = int;
+
+func id(x: MyInt) -> MyInt {
+    return x;
+}
+
+func main() -> int {
+    return 41;
+}
+

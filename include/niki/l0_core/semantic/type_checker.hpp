@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <expected>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 /** @type_checker: 语义一致性与类型约束求解入口
@@ -65,6 +67,17 @@ class TypeChecker {
 
     NKType currentReturnType = NKType::makeUnknown();
     bool inFunction = false;
+    bool inSystemContext = false;
+
+    struct KitsWindowEntry {
+        uint32_t component_name_id = 0;
+        // true: 默认可写窗口项；false: '&' 前缀只读窗口项
+        bool is_mutable = false;
+    };
+    // kits_name_id -> (alias_name_id -> entry)
+    std::unordered_map<uint32_t, std::unordered_map<uint32_t, KitsWindowEntry>> kitsWindows;
+    // 当前 module 内声明的 component 名称集合（用于 kits 窗口目标合法性校验）。
+    std::unordered_set<uint32_t> moduleComponentNames;
 
     //---符号表管理---
     // 一个名字在当前编译时语义里，最少要记录哪些信息，才能完成类型检查 + 作用域管理 +所有权检查？
@@ -146,10 +159,12 @@ class TypeChecker {
     void preDeclareNode(syntax::ASTNodeIndex declIdx);
     void preDeclareFunction(syntax::ASTNodeIndex nodeIdx);
     void preDeclareStruct(syntax::ASTNodeIndex nodeIdx);
+    void preDeclareTypeAlias(syntax::ASTNodeIndex nodeIdx);
 
     // --- 顶层声明 ---
     void checkDeclaration(syntax::ASTNodeIndex declIdx);
     void checkFunctionDecl(syntax::ASTNodeIndex nodeIdx);
+    void checkImportDecl(syntax::ASTNodeIndex nodeIdx);
     void checkInterfaceMethod(syntax::ASTNodeIndex nodeIdx);
     void checkStructDecl(syntax::ASTNodeIndex nodeIdx);
     void checkEnumDecl(syntax::ASTNodeIndex nodeIdx);

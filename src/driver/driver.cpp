@@ -123,6 +123,8 @@ struct DeclLocation {
     uint32_t column = 0;
 };
 
+std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUnit &unit);
+
 std::unordered_map<uint32_t, DeclLocation> collectTopDeclNameLocations(const GlobalCompilationUnit &unit) {
     std::unordered_map<uint32_t, DeclLocation> locations_by_name_id;
     if (!unit.root.isvalid()) {
@@ -132,10 +134,7 @@ std::unordered_map<uint32_t, DeclLocation> collectTopDeclNameLocations(const Glo
     if (root_node.type != syntax::NodeType::ModuleDecl && root_node.type != syntax::NodeType::ProgramRoot) {
         return locations_by_name_id;
     }
-    const syntax::ASTNodeIndex body_index =
-        (root_node.type == syntax::NodeType::ModuleDecl) ? root_node.payload.module_decl.body : unit.root;
-    const syntax::ASTNode &body_node = unit.pool.getNode(body_index);
-    const auto decls = unit.pool.get_list(body_node.payload.list.elements);
+    auto decls = collectTopLevelDecls(unit);
 
     locations_by_name_id.reserve(decls.size());
     for (syntax::ASTNodeIndex decl_idx : decls) {
@@ -169,8 +168,39 @@ std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUn
     if (root_node.type != syntax::NodeType::ModuleDecl && root_node.type != syntax::NodeType::ProgramRoot) {
         return decls;
     }
-    const syntax::ASTNodeIndex body_index =
-        (root_node.type == syntax::NodeType::ModuleDecl) ? root_node.payload.module_decl.body : unit.root;
+
+    // module-boundary MVP：如果文件根（外层 ModuleDecl）里恰好包含一个“primary module”
+    // （即 NodeType::ModuleDecl），则把该 module 的 body 当作扫描范围：
+    // - 用于 Driver 的预声明 / imports / exports / 可见性构建。
+    // 注意：运行期 IRBuilder 是否真正能编译到该 module 内函数，属于后续阶段。
+    syntax::ASTNodeIndex body_index = unit.root;
+    if (root_node.type == syntax::NodeType::ModuleDecl) {
+        const syntax::ASTNode &outer_body_node = unit.pool.getNode(root_node.payload.module_decl.body);
+        auto outer_decls_span = unit.pool.get_list(outer_body_node.payload.list.elements);
+
+        syntax::ASTNodeIndex primary_module_decl_idx = syntax::ASTNodeIndex::invalid();
+        uint32_t module_decl_count = 0;
+        for (syntax::ASTNodeIndex candidate : outer_decls_span) {
+            if (!candidate.isvalid()) {
+                continue;
+            }
+            const syntax::ASTNode &cand_node = unit.pool.getNode(candidate);
+            if (cand_node.type == syntax::NodeType::ModuleDecl) {
+                primary_module_decl_idx = candidate;
+                module_decl_count++;
+            }
+        }
+
+        if (module_decl_count == 1 && primary_module_decl_idx.isvalid()) {
+            const syntax::ASTNode &primary_module = unit.pool.getNode(primary_module_decl_idx);
+            body_index = primary_module.payload.module_decl.body;
+        } else {
+            body_index = root_node.payload.module_decl.body;
+        }
+    } else {
+        body_index = unit.root;
+    }
+
     const syntax::ASTNode &body_node = unit.pool.getNode(body_index);
     auto span = unit.pool.get_list(body_node.payload.list.elements);
     decls.assign(span.begin(), span.end());
@@ -571,8 +601,28 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
         return std::unexpected(std::move(diagnostics));
     }
 
-    const auto &body_node = unit.pool.getNode(root.payload.module_decl.body);
-    auto decls = unit.pool.get_list(body_node.payload.list.elements);
+    // 使用 module-boundary 扫描范围：优先识别“外层 ModuleDecl 里恰好一个 primary module decl”
+    // 并把该 module 的 body 当作顶层声明集合。
+    auto decls = collectTopLevelDecls(unit);
+
+    auto predeclare_typealias_decl = [&](const syntax::ASTNode &typealias_node, uint32_t line, uint32_t column,
+                                         const char *duplicate_msg) {
+        const auto &type_alias = typealias_node.payload.type_alias;
+        semantic::NKType alias_type =
+            resolvePredeclareType(unit, type_alias.type_expr, global_symbols, diagnostics, line, column);
+
+        GlobalSymbol sym{
+            .name_id = type_alias.name_id,
+            .kind = Kind::TypeAlias,
+            .type = alias_type,
+            .owner_module = unit.source_path,
+        };
+
+        if (!global_symbols.insert(std::move(sym))) {
+            diagnostics.error(diagnostic::events::SemanticCode::GenericError, duplicate_msg,
+                              diagnostic::makeSourceSpan(unit.source_path, line, column));
+        }
+    };
 
     for (auto decl_idx : decls) {
         if (!decl_idx.isvalid()) {
@@ -651,6 +701,85 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
                                   "Duplicate top-level symbol (function).",
                                   diagnostic::makeSourceSpan(unit.source_path, line, column));
             }
+            continue;
+        }
+        if (decl.type == syntax::NodeType::ExportDecl) {
+            const auto &export_decl = unit.pool.export_decl_data[decl.payload.export_decl.export_decl_index];
+
+            // wrapped export：把被 export 包裹的声明也纳入 GlobalSymbolTable 预声明，
+            // 以便后续 export wall / import 可见性构建能找到符号类型与签名。
+            if (export_decl.has_wrapped_decl && export_decl.wrapped_decl.isvalid()) {
+                const auto &wrapped_node = unit.pool.getNode(export_decl.wrapped_decl);
+                uint32_t line = unit.pool.locations[decl_idx.index].line;
+                uint32_t column = unit.pool.locations[decl_idx.index].column;
+
+                if (wrapped_node.type == syntax::NodeType::FunctionDecl) {
+                    const auto &func_data = unit.pool.function_data[wrapped_node.payload.func_decl.function_index];
+                    std::vector<semantic::NKType> param_types;
+                    auto params = unit.pool.get_list(func_data.params);
+                    param_types.reserve(params.size());
+                    for (auto param_idx : params) {
+                        const auto &param_node = unit.pool.getNode(param_idx);
+                        auto type_expr_idx = param_node.payload.var_decl.type_expr;
+                        param_types.push_back(resolvePredeclareType(unit, type_expr_idx, global_symbols, diagnostics, line, column));
+                    }
+                    semantic::NKType ret_type = semantic::NKType::makeUnknown();
+                    if (func_data.return_type.isvalid()) {
+                        ret_type = resolvePredeclareType(unit, func_data.return_type, global_symbols, diagnostics, line, column);
+                    }
+                    semantic::FunctionSignature sig{param_types, ret_type};
+                    uint32_t global_sig_id = global_arena.internFuncSig(sig);
+
+                    GlobalSymbol sym{
+                        .name_id = func_data.name_id,
+                        .kind = Kind::Function,
+                        .type = semantic::NKType(semantic::NKBaseType::Function, static_cast<int32_t>(global_sig_id)),
+                        .owner_module = unit.source_path,
+                    };
+                    if (!global_symbols.insert(std::move(sym))) {
+                        diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                          "Duplicate top-level symbol (export wrapped function).",
+                                          diagnostic::makeSourceSpan(unit.source_path, line, column));
+                    }
+                } else if (wrapped_node.type == syntax::NodeType::StructDecl) {
+                    uint32_t struct_index = wrapped_node.payload.struct_decl.struct_index;
+                    const auto &struct_data = unit.pool.struct_data[struct_index];
+                    std::vector<uint32_t> field_name_ids;
+                    std::vector<semantic::NKType> field_types;
+                    auto field_name_nodes = unit.pool.get_list(struct_data.names);
+                    auto field_type_nodes = unit.pool.get_list(struct_data.types);
+                    field_name_ids.reserve(field_name_nodes.size());
+                    field_types.reserve(field_type_nodes.size());
+                    for (auto field_name_idx : field_name_nodes) {
+                        if (!field_name_idx.isvalid()) {
+                            continue;
+                        }
+                        field_name_ids.push_back(unit.pool.getNode(field_name_idx).payload.identifier.name_id);
+                    }
+                    for (auto field_type_idx : field_type_nodes) {
+                        field_types.push_back(
+                            resolvePredeclareType(unit, field_type_idx, global_symbols, diagnostics, line, column));
+                    }
+                    uint32_t global_struct_id = global_arena.internStruct(struct_data.name_id, unit.source_path,
+                                                                          std::move(field_name_ids), std::move(field_types));
+                    GlobalSymbol sym{.name_id = struct_data.name_id,
+                                     .kind = Kind::Struct,
+                                     .type = semantic::NKType::makeObject(static_cast<int32_t>(global_struct_id)),
+                                     .owner_module = unit.source_path};
+                    if (!global_symbols.insert(std::move(sym))) {
+                        diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                          "Duplicate top-level symbol (export wrapped struct).",
+                                          diagnostic::makeSourceSpan(unit.source_path, line, column));
+                    }
+                } else if (wrapped_node.type == syntax::NodeType::TypeAliasDecl) {
+                    predeclare_typealias_decl(wrapped_node, line, column,
+                                              "Duplicate top-level symbol (export wrapped typealias).");
+                }
+            }
+            continue;
+        }
+        if (decl.type == syntax::NodeType::TypeAliasDecl) {
+            predeclare_typealias_decl(decl, line, column, "Duplicate top-level symbol (typealias).");
             continue;
         }
     }
@@ -828,23 +957,72 @@ std::expected<semantic::ModuleExportTable, diagnostic::DiagnosticBag> Driver::bu
                 continue;
             }
             const auto &decl_node = unit.pool.getNode(decl_idx);
-            if (decl_node.type != syntax::NodeType::FunctionDecl) {
-                continue; // MVP: 先支持顶层函数导出
-            }
-            const auto &function_data = unit.pool.function_data[decl_node.payload.func_decl.function_index];
-            const auto *symbol = global_symbols.find(function_data.name_id);
-            if (symbol == nullptr) {
-                diagnostics.error(diagnostic::events::SemanticCode::GenericError,
-                                  "Top-level function symbol missing in export table build.",
-                                  diagnostic::makeSourceSpan(unit.source_path));
+
+            if (decl_node.type != syntax::NodeType::ExportDecl) {
                 continue;
             }
-            module_exports.emplace(function_data.name_id, semantic::SymbolRef{
-                                                            .owner_module_id = module_meta.module_id,
-                                                            .name_id = function_data.name_id,
-                                                            .kind = symbol->kind,
-                                                            .type = symbol->type,
-                                                        });
+
+            const auto &export_decl = unit.pool.export_decl_data[decl_node.payload.export_decl.export_decl_index];
+
+            // 导出闭环：
+            // - brace-list：`export { a as b, ... };`
+            // - wrapped：`export func foo(){...}` / `export struct ...` / `export type ...`
+            if (export_decl.has_wrapped_decl && export_decl.wrapped_decl.isvalid()) {
+                const auto &wrapped_node = unit.pool.getNode(export_decl.wrapped_decl);
+                uint32_t local_name_id = std::numeric_limits<uint32_t>::max();
+
+                if (wrapped_node.type == syntax::NodeType::FunctionDecl) {
+                    const auto &func_data = unit.pool.function_data[wrapped_node.payload.func_decl.function_index];
+                    local_name_id = func_data.name_id;
+                } else if (wrapped_node.type == syntax::NodeType::StructDecl) {
+                    const auto &struct_data = unit.pool.struct_data[wrapped_node.payload.struct_decl.struct_index];
+                    local_name_id = struct_data.name_id;
+                } else if (wrapped_node.type == syntax::NodeType::TypeAliasDecl) {
+                    const auto &type_alias = wrapped_node.payload.type_alias;
+                    local_name_id = type_alias.name_id;
+                }
+
+                if (local_name_id != std::numeric_limits<uint32_t>::max()) {
+                    const auto *symbol = global_symbols.find(local_name_id);
+                    if (symbol != nullptr) {
+                        // wrapped export：外部导出名=本地名（目前没有 as 语法）
+                        module_exports.emplace(local_name_id, semantic::SymbolRef{
+                                                               .owner_module_id = module_meta.module_id,
+                                                               .name_id = local_name_id,
+                                                               .kind = symbol->kind,
+                                                               .type = symbol->type,
+                                                           });
+                    } else {
+                        diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                          "Exported wrapped symbol missing from global symbol table.",
+                                          diagnostic::makeSourceSpan(unit.source_path));
+                    }
+                }
+
+                continue;
+            }
+
+            if (export_decl.item_count == 0) {
+                continue;
+            }
+
+            for (uint32_t offset = 0; offset < export_decl.item_count; ++offset) {
+                const auto &item = unit.pool.export_items[export_decl.first_item_index + offset];
+                const auto *symbol = global_symbols.find(item.local_name_id);
+                if (symbol == nullptr) {
+                    diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                      "Exported symbol missing from global symbol table.",
+                                      diagnostic::makeSourceSpan(unit.source_path));
+                    continue;
+                }
+
+                module_exports.emplace(item.exported_name_id, semantic::SymbolRef{
+                                                                   .owner_module_id = module_meta.module_id,
+                                                                   .name_id = item.exported_name_id,
+                                                                   .kind = symbol->kind,
+                                                                   .type = symbol->type,
+                                                               });
+            }
         }
     }
 
@@ -883,14 +1061,10 @@ std::expected<std::vector<semantic::UnitVisibleSymbols>, diagnostic::DiagnosticB
         for (const auto &binding : module_meta.imports) {
             auto from_module_iter = export_table.table.find(binding.from_module_id);
             if (from_module_iter == export_table.table.end()) {
-                diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Imported module export table missing.",
-                                  diagnostic::makeSourceSpan(unit.source_path));
                 continue;
             }
             auto symbol_iter = from_module_iter->second.find(binding.imported_name_id);
             if (symbol_iter == from_module_iter->second.end()) {
-                diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Imported symbol not exported.",
-                                  diagnostic::makeSourceSpan(unit.source_path));
                 continue;
             }
             auto imported_symbol = symbol_iter->second;

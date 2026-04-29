@@ -1,0 +1,5 @@
+component MissingVec as vec_com;
+
+func main() -> int {
+  return 0;
+}

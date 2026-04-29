@@ -25,6 +25,8 @@ void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
         preDeclareFunction(declIdx);
     } else if (node.type == syntax::NodeType::StructDecl) {
         preDeclareStruct(declIdx);
+    } else if (node.type == syntax::NodeType::TypeAliasDecl) {
+        preDeclareTypeAlias(declIdx);
     }
 }
 
@@ -69,6 +71,23 @@ void TypeChecker::preDeclareFunction(syntax::ASTNodeIndex nodeIdx) {
         return;
     }
     declareSymbol(func_data.name_id, sym->type, line, column);
+}
+
+/**
+ * @brief 预声明类型别名符号到当前语义作用域。
+ * @param nodeIdx TypeAliasDecl 节点索引。
+ */
+void TypeChecker::preDeclareTypeAlias(syntax::ASTNodeIndex nodeIdx) {
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    const uint32_t alias_name_id = node.payload.type_alias.name_id;
+
+    const niki::GlobalSymbol *sym = globalSymbols->find(alias_name_id);
+    if (sym == nullptr || sym->kind != niki::Kind::TypeAlias) {
+        reportError(line, column,
+                    "Top-level type alias missing from global symbol table; ensure predeclare ran before typecheck.");
+        return;
+    }
+    declareSymbol(alias_name_id, sym->type, line, column);
 }
 
 } // namespace niki::semantic
