@@ -113,7 +113,6 @@ class TypeChecker {
     void checkNockStmt(syntax::ASTNodeIndex nodeIdx);
     void checkAttachStmt(syntax::ASTNodeIndex nodeIdx);
     void checkDetachStmt(syntax::ASTNodeIndex nodeIdx);
-    void checkTargetStmt(syntax::ASTNodeIndex nodeIdx);
 
     // --- 顶层声明预声明 (两遍扫描的第一遍) ---
     // 先把可前向引用的符号注册到全局作用域，第二遍再检查函数体和声明细节。

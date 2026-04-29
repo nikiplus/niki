@@ -113,6 +113,5 @@ class Parser {
     ASTNodeIndex parseNockStmt();
     ASTNodeIndex parseAttachStmt();
     ASTNodeIndex parseDetachStmt();
-    ASTNodeIndex parseTargetStmt();
 };
 } // namespace niki::syntax

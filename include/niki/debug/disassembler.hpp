@@ -3,12 +3,12 @@
 #include <cstddef>
 #include <string_view>
 
-// 反编译器，用来把compiler压缩出的字节码反编译回可见的文本格式。
+// 反编译器，用来把 IR lowering 产出的字节码反编译回可见文本格式。
 /*来讲讲我们是怎么反编译的。
 不过在此之前，我们梳理一下整个流程：
-@:源代码(文本文件)->Scanner->std::vector::Token->Parser->AstPool(一颗被拍扁的递归树)->Compiler->Chunk(std::vecter::Opcode/constants/line/column/)
+@:源代码(文本文件)->Scanner->Token流->Parser->AstPool->IRBuilder->ModuleIR->LowerToChunk->Chunk(code/constants/line/column)
 等等？一行文本变来变去，从token流变成ast树，又从树变成opcode流，这不纯脱裤子放屁吗？
-事实上，这两次转化有其必要性，中间的parser~compiler阶段我们成功进行了一次抽象降级，不仅通过搭建ast树保证了语义信息的完整，且使用compiler将其转化为了机器可切实执行的指令流。(具体实现看各文档)
+事实上，这几次转化有其必要性：Parser 保证语义结构完整，IRBuilder/Verify/Lower 则把语义结构稳定降级为可执行指令流。(具体实现见各模块文档)
 闲言少叙，那么已知我们chunk中的四个vector中的数据都是互相隐式映射的，那么按道理来说只要一个偏移值，我们就能找到一个opcode对应的所有数据。
 
             coming offset↓

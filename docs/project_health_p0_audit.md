@@ -1,7 +1,8 @@
 # Niki 项目健康度体检报告（P0）
 
 **文档性质**：工程诊断与优先级建议，与 `MILESTONES.md` 中的 M0～M2 对齐。  
-**更新说明**：首版整理自 2026-04 代码审查；含二次深入核对（VM 指令分发、Driver 流水线、语义层与测试矩阵）。
+**更新说明**：首版整理自 2026-04 代码审查；含二次深入核对（VM 指令分发、Driver 流水线、语义层与测试矩阵）。  
+**迁移注记**：文中部分条目基于旧 `Compiler` 路径描述；当前主链路已迁移为 `IRBuilder -> Verify -> LowerToChunk`。
 
 ---
 
@@ -9,7 +10,7 @@
 
 在引入高级语言特性（异步、借用、插件式扩展等）之前，当前最紧迫的是 **「主路径可信」** 与 **「多文件工程语义闭环」**：
 
-1. **编译器已发射、虚拟机未实现的字节码**会导致「类型过了、能生成 chunk、运行时才炸」——属于最高优先级缺陷类。
+1. **IR 降级路径可生成、虚拟机未实现的字节码**会导致「类型过了、能生成 chunk、运行时才炸」——属于最高优先级缺陷类。
 2. **语义检查按单文件 AST 进行**，跨文件符号对类型系统不可见；与「项目级 Driver + Linker」组合在一起时，会出现「链接/运行可能成立，但语义层不成立」或相反的不一致，需尽早定策略并收口。
 3. **Linker 的字符串池合并与操作数重映射**在头文件中承诺为后续能力，`.cpp` 中仍为占位实现；在依赖「全项目共享 `GlobalInterner`」的前提下可维持 MVP，但必须把**不变量写死并加测试**，否则后续一改链接策略就容易出现隐蔽错误。
 4. **回归测试**当前未覆盖 `TypeChecker` / 端到端 Driver 项目；仅靠单元测试与手工脚本时，上述问题容易反复回归。
@@ -20,10 +21,10 @@
 
 | ID | 领域 | 严重程度 | 简述 |
 |----|------|----------|------|
-| P0-1 | VM / Compiler | **阻断级** | 字符串/对象相等比较等 opcode 已发射，VM 统一走「未实现」分支 |
+| P0-1 | VM / IR Lowering | **阻断级** | 部分 opcode 可由 IR lowering 产出，但 VM 仍走「未实现」分支 |
 | P0-2 | Semantic / Driver | **阻断级** | 每文件独立 `TypeChecker::check`，缺少项目级符号环境，跨文件调用语义与工程模型不一致 |
 | P0-3 | Linker | **高风险** | `mergeStringPools` / `remapChunkOperands` 等为 stub；依赖共享 interner 的隐含契约未用测试锁死 |
-| P0-4 | 语言表面 | **高** | Parser/AST 覆盖面大于 Compiler 已实现子集；大量声明/语句路径为明确「未实现」报错 |
+| P0-4 | 语言表面 | **高** | Parser/AST 覆盖面大于当前 IRBuilder 已实现子集；大量节点路径仍为明确「未实现」报错 |
 | P0-5 | 工程基线 | **高** | `MILESTONES.md` M0：构建、`ctest`、`scripts/test.nk` 端到端需保持可重复绿基线 |
 | P0-6 | 测试矩阵 | **中高** | CMake 未注册语义/类型检查专项测试；无 Driver 级集成测试 |
 | P0-7 | 语义实现细节 | **中** | `Unknown` 操作数在比较运算上被宽松推断为 `Bool`，可能掩盖错误并仍向下编译 |
@@ -32,22 +33,22 @@
 
 ---
 
-## 3. P0-1：Opcode 对齐（Compiler ↔ VM）
+## 3. P0-1：Opcode 对齐（IR Lowering ↔ VM）
 
 ### 现象
 
-`compiler_expression.cpp` 在 `==` / `!=` 上对 `String` 发射 `OP_SEQ` / `OP_SNE`，对其它非数值类型发射 `OP_OEQ` / `OP_ONE`。
+`lower_to_chunk` 在 IR 到字节码映射中会生成一组 VM opcode；其中部分 opcode 在 VM 侧仍处于未完整实现状态。
 
 `vm.cpp` 中上述 opcode 与 `OP_INVOKE`、`OP_GET_PROPERTY`、`OP_SET_PROPERTY`、`OP_METHOD`、`OP_THROW`、`OP_CATCH` 共处于同一分支，统一 `runtime_error("Opcode not implemented yet.")`。
 
 ### 影响
 
 - 合法类型检查下的**字符串比较**等路径可能在运行期直接失败。
-- 与 `MILESTONES.md` M1 中「编译器与 VM opcode 对齐表」「未支持特性明确报错而非静默失败」直接冲突。
+- 与 `MILESTONES.md` M1 中「前后端 opcode 对齐表」「未支持特性明确报错而非静默失败」直接冲突。
 
 ### 建议方向（二选一或组合）
 
-- **实现**：在 VM 中补齐与 `opcode.hpp` 及 Compiler 发射策略一致的语义。
+- **实现**：在 VM 中补齐与 `opcode.hpp` 及 IR lowering 发射策略一致的语义。
 - **收紧**：在语义或编译阶段禁止生成尚未实现的 opcode，并给出稳定 `Diagnostic.code`（避免「能编不能跑」）。
 
 ---
@@ -56,7 +57,7 @@
 
 ### 现象
 
-`driver.cpp` 中每个源文件独立执行：`Scanner` → `Parser` → `TypeChecker::check` → `Compiler::compile`，仅在 `compileAll` 层共享 `GlobalInterner`。
+`driver.cpp` 中每个源文件独立执行：`Scanner` → `Parser` → `TypeChecker::check` → `IRBuilder` → `Verify` → `LowerToChunk`，仅在 `compileAll` 层共享 `GlobalInterner`。
 
 因此**文件 B 无法在类型检查阶段看到文件 A 的顶层符号**，除非未来引入：
 
@@ -95,15 +96,15 @@
 
 ---
 
-## 6. P0-4：语言表面 vs 可实现子集
+## 6. P0-4：语言表面 vs 可实现子集（IRBuilder）
 
 ### 现象（节选）
 
-以下路径在 Compiler 中明确报「未实现」（grep 可复现），包括但不限于：
+以下路径在当前 IRBuilder/Lowering 主链路中仍可能报「未实现」或降级失败（需持续收口），包括但不限于：
 
-- **声明类**：`Interface` / `Enum` / `TypeAlias` / `Impl` / `System` / `Component` / `Flow` / `Kits` / `Tag` / `TagGroup` 等（`compiler_declaration.cpp`）。
-- **语句类**：`Match` / `Nock` / `Attach` / `Detach` / `Target` 等（`compiler_statement.cpp`）。
-- **表达式类**：部分动态属性、`Dispatch`、`Await`、`Borrow`、隐式转换等（`compiler_expression.cpp`）。
+- **声明类**：`Interface` / `Enum` / `TypeAlias` / `Impl` / `System` / `Component` / `Flow` / `Kits` / `Tag` / `TagGroup` 等。
+- **语句类**：`Match` / `Nock` / `Attach` / `Detach` / `Target` 等。
+- **表达式类**：部分动态属性、`Dispatch`、`Await`、`Borrow`、隐式转换等。
 
 ### 影响
 
@@ -128,7 +129,7 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 
 ### 当前 `CMakeLists.txt` 中 `niki_tests` 组成
 
-- `scanner_test` / `parser_test` / `compiler_test` / `linker_test` / `launcher_test`
+- `scanner_test` / `parser_test` / `linker_test` / `launcher_test`
 
 ### 缺口
 
@@ -198,7 +199,7 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 | 诊断规范 | `docs/diagnostic_conventions.md` |
 | Opcode 枚举 | `include/niki/vm/opcode.hpp` |
 | VM 分发 | `src/vm/vm.cpp` |
-| 比较表达式发射 | `src/syntax/compiler_expression.cpp` |
+| IR 降级实现 | `src/l0_core/ir/lower_to_chunk.cpp` |
 | Driver 流水线 | `src/driver/driver.cpp` |
 | Linker MVP 与占位 | `src/linker/linker.cpp` |
 | 语义二元表达式 | `src/semantic/type_checker_expr.cpp` |
@@ -209,3 +210,8 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 ---
 
 *本报告由代码审查生成；若仓库后续提交修改了上述路径行为，请以实际代码为准并更新本节对应描述。*
+
+## Legacy 备注（旧 Compiler 路径）
+
+- 历史上项目存在 `syntax/compiler*` 路径；该路径已从主链路与构建中移除。
+- 本文若仍出现 `Compiler` 术语，均仅表示历史背景，不代表当前实现入口。

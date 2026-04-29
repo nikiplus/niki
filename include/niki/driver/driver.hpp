@@ -11,6 +11,7 @@
 #include "niki/l0_core/vm/value.hpp"
 #include <expected>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace niki::driver {
@@ -42,6 +43,11 @@ class Driver {
                                                                    const DriverOptions &options);
 
   private:
+    struct UnitCompileArtifact {
+        Chunk init_chunk;
+        std::unordered_map<uint32_t, uint32_t> exports;
+    };
+
     // 从目录收集待编译文件，返回已排序路径列表（保证构建顺序稳定）。
     std::vector<std::string> collectNkFiles(const std::string &root_dir, const DriverOptions &options);
 
@@ -54,11 +60,11 @@ class Driver {
     std::expected<semantic::TypeCheckResult, diagnostic::DiagnosticBag> typeCheckUnit(
         GlobalCompilationUnit &unit, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols);
     // 3)单元级字节码编译
-    std::expected<Chunk, diagnostic::DiagnosticBag> compileUnitChunk(const GlobalCompilationUnit &unit,
-                                                                     GlobalTypeArena &global_arena,
-                                                                     GlobalSymbolTable &global_symbols);
+    std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> compileUnitChunk(GlobalCompilationUnit &unit,
+                                                                                    GlobalTypeArena &global_arena,
+                                                                                    GlobalSymbolTable &global_symbols);
     // 4)将编译结果组装为linker：：compileModule
-    linker::CompileModule buildCompileModule(std::string source_path, Chunk chunk);
+    linker::CompileModule buildCompileModule(std::string source_path, UnitCompileArtifact artifact);
     // 单元编译：compile->module（typecheck 由 Pass-3 独立完成）
     std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedUnit(
         GlobalCompilationUnit &unit, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols);

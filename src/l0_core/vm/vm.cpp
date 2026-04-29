@@ -256,7 +256,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
     while (true) {
         VM_RB_(instruction);
         switch (static_cast<OPCODE>(instruction)) {
-            // 各 case：操作数顺序与 opcode.hpp / compiler 发射顺序一致；失败路径统一 return RUNTIME_ERROR。
+            // 各 case：操作数顺序与 opcode.hpp / IR lowering 发射顺序一致；失败路径统一 return RUNTIME_ERROR。
 
         case OPCODE::OP_LOAD_CONST: {
             VM_RB_(targetReg);

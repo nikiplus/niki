@@ -283,4 +283,3 @@ ASTNodeIndex Parser::parseNockStmt() {
 //---组件挂载与卸载---
 ASTNodeIndex Parser::parseAttachStmt() { return ASTNodeIndex{}; }
 ASTNodeIndex Parser::parseDetachStmt() { return ASTNodeIndex{}; }
-ASTNodeIndex Parser::parseTargetStmt() { return ASTNodeIndex{}; }

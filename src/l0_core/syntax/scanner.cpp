@@ -419,8 +419,6 @@ TokenType Scanner::checkIdentifierType() {
             case 'a':
                 if (length == 3)
                     return checkKeyword(2, 1, "g", TokenType::KW_TAG);
-                if (length == 6)
-                    return checkKeyword(2, 4, "rget", TokenType::KW_TARGET);
                 if (length == 8)
                     return checkKeyword(2, 6, "ggroup", TokenType::KW_TAGGROUP);
                 break;

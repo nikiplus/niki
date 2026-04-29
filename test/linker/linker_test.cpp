@@ -38,6 +38,9 @@ TEST(LinkerDiagnosticsTest, DuplicateSymbolProducesDiagnostic) {
     const auto &diagnostics = result.error().all();
     ASSERT_FALSE(diagnostics.empty());
     EXPECT_EQ(diagnostics[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::LinkerCode::DuplicateSymbol));
+    EXPECT_EQ(diagnostics[0].stage, niki::diagnostic::DiagnosticStage::Linker);
+    EXPECT_EQ(diagnostics[0].severity, niki::diagnostic::DiagnosticSeverity::Error);
+    EXPECT_FALSE(diagnostics[0].message.empty());
 }
 
 TEST(LinkerDiagnosticsTest, MissingEntryProducesDiagnostic) {
@@ -53,4 +56,7 @@ TEST(LinkerDiagnosticsTest, MissingEntryProducesDiagnostic) {
     const auto &diagnostics = result.error().all();
     ASSERT_FALSE(diagnostics.empty());
     EXPECT_EQ(diagnostics[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::LinkerCode::EntryNotFound));
+    EXPECT_EQ(diagnostics[0].stage, niki::diagnostic::DiagnosticStage::Linker);
+    EXPECT_EQ(diagnostics[0].severity, niki::diagnostic::DiagnosticSeverity::Error);
+    EXPECT_FALSE(diagnostics[0].message.empty());
 }

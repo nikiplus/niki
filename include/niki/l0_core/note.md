@@ -51,7 +51,7 @@ while（true）{
 }
 
 那么模块拆分就变成了：
-1)扫描（scanner）-> 2)翻译(compiler) -> 3)执行(vm::run)
+1)扫描（scanner）-> 2)语法与语义降级（parser + ir）-> 3)执行(vm::run)
 
 好，那么我们现在可以从这三个模块着手，开始深入。
 

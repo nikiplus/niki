@@ -109,23 +109,34 @@ TEST_F(ParserTest, ParseFullScript_TestNK) {
 
     ASTPrinter printer(pool);
     std::string astStr = printer.print(root);
-
-    // 打印出来让用户能在控制台直观地看到整个 test.nk 的 AST 树
-    std::cout << "\n========== AST Dump for test.nk ==========\n"
-              << astStr << "\n==========================================\n"
-              << std::endl;
+    EXPECT_NE(astStr.find("(module"), std::string::npos);
+    EXPECT_NE(astStr.find("calculate_total"), std::string::npos);
+    EXPECT_NE(astStr.find("main"), std::string::npos);
 }
 
 TEST_F(ParserTest, ParseFullScript_MainNK) {
     std::string sourceCode = readScriptOrDie("main.nk");
     auto root = parseSource(sourceCode);
     ASSERT_TRUE(root.isvalid()) << "Root node is invalid for main.nk";
+
+    ASTPrinter printer(pool);
+    std::string astStr = printer.print(root);
+    EXPECT_NE(astStr.find("(func main("), std::string::npos);
+    EXPECT_NE(astStr.find("a"), std::string::npos);
+    EXPECT_NE(astStr.find("b"), std::string::npos);
 }
 
 TEST_F(ParserTest, ParseFullScript_AllSyntaxOK) {
     std::string sourceCode = readScriptOrDie("all_syntax_ok.nk");
     auto root = parseSource(sourceCode);
     ASSERT_TRUE(root.isvalid()) << "Root node is invalid for all_syntax_ok.nk";
+
+    ASTPrinter printer(pool);
+    std::string astStr = printer.print(root);
+    EXPECT_NE(astStr.find("calculate_total"), std::string::npos);
+    EXPECT_NE(astStr.find("main"), std::string::npos);
+    EXPECT_NE(astStr.find("str1"), std::string::npos);
+    EXPECT_NE(astStr.find("str2"), std::string::npos);
 }
 
 TEST_F(ParserTest, ParseFullScript_FailSemanticCrossFileCallMainNK) {
@@ -133,6 +144,10 @@ TEST_F(ParserTest, ParseFullScript_FailSemanticCrossFileCallMainNK) {
 
     auto root = parseSource(sourceCode);
     ASSERT_TRUE(root.isvalid()) << "Root node is invalid for cases/fail/semantic_01_cross_file_call/10_main.nk";
+
+    ASTPrinter printer(pool);
+    std::string astStr = printer.print(root);
+    EXPECT_NE(astStr.find("(func main("), std::string::npos);
 }
 
 TEST_F(ParserTest, ParseTopLevelVar_ShouldFail) {
@@ -152,6 +167,8 @@ TEST_F(ParserTest, ParseTopLevelVar_ShouldFail) {
     Parser parser(sourceCode, tokens, pool);
     ParseResult result = parser.parse();
     ASSERT_FALSE(result.diagnostics.empty()) << "Top-level var declaration must be rejected.";
+    EXPECT_EQ(result.diagnostics.all()[0].code,
+              niki::diagnostic::codeOf(niki::diagnostic::events::ParserCode::GenericError));
 }
 
 TEST_F(ParserTest, ParseTopLevelExpression_ShouldFail) {
@@ -171,4 +188,6 @@ TEST_F(ParserTest, ParseTopLevelExpression_ShouldFail) {
     Parser parser(sourceCode, tokens, pool);
     ParseResult result = parser.parse();
     ASSERT_FALSE(result.diagnostics.empty()) << "Top-level expression must be rejected.";
+    EXPECT_EQ(result.diagnostics.all()[0].code,
+              niki::diagnostic::codeOf(niki::diagnostic::events::ParserCode::GenericError));
 }

@@ -13,7 +13,7 @@ enum class DiagnosticStage : uint8_t {
     Scanner,
     Parser,
     Semantic,
-    Compiler,
+    IR,
     Linker,
     Launcher,
     Driver,
@@ -58,8 +58,10 @@ enum class SemanticCode : uint8_t {
     GenericError,
 };
 
-enum class CompilerCode : uint8_t {
+enum class IRCode : uint8_t {
     InvalidRoot,
+    VerifyFailed,
+    LowerFailed,
     GenericError,
 };
 
@@ -101,9 +103,9 @@ struct SemanticEvent {
     SourceSpan span;
 };
 
-struct CompilerEvent {
+struct IREvent {
     DiagnosticSeverity severity = DiagnosticSeverity::Error;
-    CompilerCode code = CompilerCode::GenericError;
+    IRCode code = IRCode::GenericError;
     std::string message;
     SourceSpan span;
 };
@@ -129,8 +131,13 @@ struct DriverEvent {
     SourceSpan span;
 };
 
-using Event =
-    std::variant<ScannerEvent, ParserEvent, SemanticEvent, CompilerEvent, LinkerEvent, LauncherEvent, DriverEvent>;
+using Event = std::variant<ScannerEvent,
+                           ParserEvent,
+                           SemanticEvent,
+                           IREvent,
+                           LinkerEvent,
+                           LauncherEvent,
+                           DriverEvent>;
 
 inline Event makeError(ScannerCode code, std::string message, SourceSpan span = {}) {
     return ScannerEvent{DiagnosticSeverity::Error, code, std::move(message), std::move(span)};
@@ -144,8 +151,8 @@ inline Event makeError(SemanticCode code, std::string message, SourceSpan span =
     return SemanticEvent{DiagnosticSeverity::Error, code, std::move(message), std::move(span)};
 }
 
-inline Event makeError(CompilerCode code, std::string message, SourceSpan span = {}) {
-    return CompilerEvent{DiagnosticSeverity::Error, code, std::move(message), std::move(span)};
+inline Event makeError(IRCode code, std::string message, SourceSpan span = {}) {
+    return IREvent{DiagnosticSeverity::Error, code, std::move(message), std::move(span)};
 }
 
 inline Event makeError(LinkerCode code, std::string message, SourceSpan span = {}) {
@@ -172,8 +179,8 @@ inline Event makeWarning(SemanticCode code, std::string message, SourceSpan span
     return SemanticEvent{DiagnosticSeverity::Warning, code, std::move(message), std::move(span)};
 }
 
-inline Event makeWarning(CompilerCode code, std::string message, SourceSpan span = {}) {
-    return CompilerEvent{DiagnosticSeverity::Warning, code, std::move(message), std::move(span)};
+inline Event makeWarning(IRCode code, std::string message, SourceSpan span = {}) {
+    return IREvent{DiagnosticSeverity::Warning, code, std::move(message), std::move(span)};
 }
 
 inline Event makeWarning(LinkerCode code, std::string message, SourceSpan span = {}) {
@@ -200,8 +207,8 @@ inline Event makeInfo(SemanticCode code, std::string message, SourceSpan span = 
     return SemanticEvent{DiagnosticSeverity::Info, code, std::move(message), std::move(span)};
 }
 
-inline Event makeInfo(CompilerCode code, std::string message, SourceSpan span = {}) {
-    return CompilerEvent{DiagnosticSeverity::Info, code, std::move(message), std::move(span)};
+inline Event makeInfo(IRCode code, std::string message, SourceSpan span = {}) {
+    return IREvent{DiagnosticSeverity::Info, code, std::move(message), std::move(span)};
 }
 
 inline Event makeInfo(LinkerCode code, std::string message, SourceSpan span = {}) {
@@ -221,7 +228,7 @@ inline Event makeInfo(DriverCode code, std::string message, SourceSpan span = {}
 std::string_view codeOf(events::ScannerCode code);
 std::string_view codeOf(events::ParserCode code);
 std::string_view codeOf(events::SemanticCode code);
-std::string_view codeOf(events::CompilerCode code);
+std::string_view codeOf(events::IRCode code);
 std::string_view codeOf(events::LinkerCode code);
 std::string_view codeOf(events::LauncherCode code);
 std::string_view codeOf(events::DriverCode code);

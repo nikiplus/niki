@@ -18,4 +18,7 @@ TEST(LauncherDiagnosticsTest, EntryLookupFailureProducesDiagnostic) {
     const auto &diagnostics = result.error().all();
     ASSERT_FALSE(diagnostics.empty());
     EXPECT_EQ(diagnostics[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::LauncherCode::EntryLookupFailed));
+    EXPECT_EQ(diagnostics[0].stage, niki::diagnostic::DiagnosticStage::Launcher);
+    EXPECT_EQ(diagnostics[0].severity, niki::diagnostic::DiagnosticSeverity::Error);
+    EXPECT_FALSE(diagnostics[0].message.empty());
 }

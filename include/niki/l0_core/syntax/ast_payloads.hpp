@@ -65,7 +65,6 @@ enum class NodeType : uint8_t {
     //---组件挂载与卸载---
     AttachStmt, // 挂载语句
     DetachStmt, // 取消挂载语句
-    TargetStmt, // 目标语句 (ECS副作用修改)
 
     /*---顶层声明---*/
     // 通常只出现在文件的最外层，用于定义数据结构和执行单元
@@ -158,8 +157,6 @@ inline std::string_view toString(NodeType type) {
         return "AttachStmt";
     case NodeType::DetachStmt:
         return "DetachStmt";
-    case NodeType::TargetStmt:
-        return "TargetStmt";
     case NodeType::FunctionDecl:
         return "FunctionDecl";
     case NodeType::InterfaceMethod:
@@ -449,11 +446,6 @@ struct AttachStmtPayload {
 struct DetachStmtPayload {
     ASTNodeIndex component;
     ASTNodeIndex target;
-};
-
-struct TargetStmtPayload {
-    ASTNodeIndex targets;
-    ASTNodeIndex body;
 };
 
 struct EnumDeclPayload {

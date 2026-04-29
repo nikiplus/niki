@@ -18,6 +18,7 @@ set(NIKI_L0_CORE_SOURCES
     src/l0_core/ir/builder_expression.cpp
     src/l0_core/ir/builder_statement.cpp
     src/l0_core/ir/builder_declaration.cpp
+    src/l0_core/ir/lower_to_chunk.cpp
     src/l0_core/syntax/global_interner.cpp
     src/l0_core/syntax/scanner.cpp
     src/l0_core/syntax/parse.cpp
@@ -25,11 +26,6 @@ set(NIKI_L0_CORE_SOURCES
     src/l0_core/syntax/parser_expression.cpp
     src/l0_core/syntax/parser_statement.cpp
     src/l0_core/syntax/ast.cpp
-    src/l0_core/syntax/compiler.cpp
-    src/l0_core/syntax/compiler_expression.cpp
-    src/l0_core/syntax/compiler_statement.cpp
-    src/l0_core/syntax/compiler_declaration.cpp
-    src/l0_core/syntax/compiler_pre_decl.cpp
     src/l0_core/semantic/type_checker.cpp
     src/l0_core/semantic/type_checker_expr.cpp
     src/l0_core/semantic/type_checker_stmt.cpp
@@ -110,7 +106,6 @@ enable_testing()
 add_executable(niki_tests 
     test/syntax/scanner_test.cpp
     test/syntax/parser_test.cpp
-    test/syntax/compiler_test.cpp
     test/ir/builder_test.cpp
     test/ir/verify_test.cpp
     test/ir/module_ir_test.cpp

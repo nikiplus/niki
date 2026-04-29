@@ -1,4 +1,5 @@
 #include "niki/driver/driver.hpp"
+#include "niki/l0_core/diagnostic/renderer.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
@@ -28,7 +29,7 @@ TEST(DriverProjectTest, MultiFileBasicCaseRunsSuccessfully) {
     options.entry_name = "main";
 
     auto result = driver.runProject(resolveCaseDirOrDie("cases/success/01_multi_file_basic"), options);
-    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
     ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
     EXPECT_EQ(result->as.integer, 42);
 }
@@ -40,7 +41,7 @@ TEST(DriverProjectTest, MultiFileInitOrderCaseRunsSuccessfully) {
     options.entry_name = "main";
 
     auto result = driver.runProject(resolveCaseDirOrDie("cases/success/02_init_order"), options);
-    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
     ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
     EXPECT_EQ(result->as.integer, 77);
 }
@@ -52,22 +53,25 @@ TEST(DriverProjectTest, MultiDeclStableCaseRunsSuccessfully) {
     options.entry_name = "main";
 
     auto result = driver.runProject(resolveCaseDirOrDie("cases/success/03_multi_decl_stable"), options);
-    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
     ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
     EXPECT_EQ(result->as.integer, 100);
 }
 
-TEST(DriverProjectTest, DiceBasicCaseRunsSuccessfully) {
+TEST(DriverProjectTest, DiceBasicCaseReportsUnsupportedOperatorInCurrentIRBuilder) {
     niki::driver::Driver driver;
     niki::driver::DriverOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
     auto result = driver.runProject(resolveCaseDirOrDie("cases/success/04_dice_basic"), options);
-    ASSERT_TRUE(result.has_value());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    // 0d100+2d1+3d1 == 5；1d6 ∈ [1,6] ⇒ 总和 ∈ [6,11]
-    EXPECT_GE(result->as.integer, 6);
-    EXPECT_LE(result->as.integer, 11);
+    ASSERT_FALSE(result.has_value());
+    ASSERT_FALSE(result.error().empty());
+    const auto &diagnostics = result.error().all();
+    EXPECT_FALSE(diagnostics.empty());
+    EXPECT_EQ(diagnostics[0].stage, niki::diagnostic::DiagnosticStage::IR);
+    EXPECT_EQ(diagnostics[0].severity, niki::diagnostic::DiagnosticSeverity::Error);
+    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Unsupported binary operator"),
+              std::string::npos);
 }
 

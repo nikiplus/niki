@@ -52,6 +52,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         error(bc, "Invalid expression index.", expr_idx);
         return false;
     }
+    setEmitLocation(bc, fc, expr_idx);
     const ASTNode &expr = bc.unit->pool.getNode(expr_idx);
     switch (expr.type) {
     case NodeType::LiteralExpr: {
@@ -124,6 +125,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         if (!buildExpr(bc, fc, left_idx, &left_reg) || !buildExpr(bc, fc, right_idx, &right_reg)) {
             return false;
         }
+        setEmitLocation(bc, fc, expr_idx);
         const InstKind inst_kind = mapBinaryTokenToInst(op);
         if (inst_kind == InstKind::Nop) {
             error(bc, "Unsupported binary operator.", expr_idx);
@@ -140,6 +142,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         if (!buildExpr(bc, fc, expr.payload.unary.operand, &operand_reg)) {
             return false;
         }
+        setEmitLocation(bc, fc, expr_idx);
         const RegId destination_reg = allocVReg(bc, fc);
         if (expr.payload.unary.op == TokenType::SYM_PLUS) {
             emitMoveRegToReg(bc, fc, destination_reg, operand_reg);
@@ -181,8 +184,10 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
             argument_slot_regs.push_back(allocVReg(bc, fc));
         }
         for (size_t argument_index = 0; argument_index < argument_value_regs.size(); ++argument_index) {
+            setEmitLocation(bc, fc, expr_idx);
             emitMoveRegToReg(bc, fc, argument_slot_regs[argument_index], argument_value_regs[argument_index]);
         }
+        setEmitLocation(bc, fc, expr_idx);
         const RegId destination_reg = allocVReg(bc, fc);
         emit(bc, fc, InstKind::Call, ValueKind::VReg, destination_reg, 0, 0, ValueKind::VReg, callee_reg, 0, 0,
              argument_slot_regs.empty() ? ValueKind::Invalid : ValueKind::VReg,
@@ -195,6 +200,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         // ARRAY: 聚合构造降解为 NewArray + PushArray*。
         auto elements = bc.unit->pool.get_list(expr.payload.list.elements);
         const RegId destination_reg = allocVReg(bc, fc);
+        setEmitLocation(bc, fc, expr_idx);
         emit(bc, fc, InstKind::NewArray, ValueKind::VReg, destination_reg, 0, 0, ValueKind::Invalid, 0, 0, 0,
              ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0, static_cast<uint32_t>(elements.size()));
         for (ASTNodeIndex element_idx : elements) {
@@ -202,6 +208,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
             if (!buildExpr(bc, fc, element_idx, &element_reg)) {
                 return false;
             }
+            setEmitLocation(bc, fc, expr_idx);
             emit(bc, fc, InstKind::PushArray, ValueKind::Invalid, 0, 0, 0, ValueKind::VReg, destination_reg, 0, 0,
                  ValueKind::VReg, element_reg, 0, 0, ValueKind::Invalid, 0, 0, 0);
         }
@@ -223,6 +230,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
             return false;
         }
         const RegId destination_reg = allocVReg(bc, fc);
+        setEmitLocation(bc, fc, expr_idx);
         emit(bc, fc, InstKind::NewMap, ValueKind::VReg, destination_reg, 0, 0, ValueKind::Invalid, 0, 0, 0,
              ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0, static_cast<uint32_t>(keys.size()));
         for (size_t pair_index = 0; pair_index < keys.size(); ++pair_index) {
@@ -231,6 +239,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
             if (!buildExpr(bc, fc, keys[pair_index], &key_reg) || !buildExpr(bc, fc, values[pair_index], &value_reg)) {
                 return false;
             }
+            setEmitLocation(bc, fc, expr_idx);
             emit(bc, fc, InstKind::SetMap, ValueKind::Invalid, 0, 0, 0, ValueKind::VReg, destination_reg, 0, 0,
                  ValueKind::VReg, key_reg, 0, 0, ValueKind::VReg, value_reg, 0, 0);
         }
@@ -245,6 +254,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
             !buildExpr(bc, fc, expr.payload.index.index, &index)) {
             return false;
         }
+        setEmitLocation(bc, fc, expr_idx);
         const RegId destination_reg = allocVReg(bc, fc);
         emit(bc, fc, InstKind::GetIndex, ValueKind::VReg, destination_reg, 0, 0, ValueKind::VReg, target, 0, 0,
              ValueKind::VReg, index, 0, 0, ValueKind::Invalid, 0, 0, 0);
@@ -257,6 +267,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         if (!buildExpr(bc, fc, expr.payload.member.object, &object)) {
             return false;
         }
+        setEmitLocation(bc, fc, expr_idx);
         const RegId destination_reg = allocVReg(bc, fc);
         emit(bc, fc, InstKind::GetMember, ValueKind::VReg, destination_reg, 0, 0, ValueKind::VReg, object, 0, 0,
              ValueKind::StringId, expr.payload.member.property_id, 0, 0, ValueKind::Invalid, 0, 0, 0);

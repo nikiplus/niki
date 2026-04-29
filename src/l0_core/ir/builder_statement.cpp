@@ -34,6 +34,7 @@ bool IRBuilder::buildStmt(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex stmt_idx) {
     if (!stmt_idx.isvalid()) {
         return true;
     }
+    setEmitLocation(bc, fc, stmt_idx);
     const ASTNode &stmt = bc.unit->pool.getNode(stmt_idx);
     switch (stmt.type) {
     case NodeType::BlockStmt: {
@@ -65,8 +66,10 @@ bool IRBuilder::buildStmt(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex stmt_idx) {
             if (!buildExpr(bc, fc, stmt.payload.var_decl.init_expr, &init_reg)) {
                 return false;
             }
+            setEmitLocation(bc, fc, stmt_idx);
             emitMoveRegToReg(bc, fc, dst, init_reg);
         } else {
+            setEmitLocation(bc, fc, stmt_idx);
             emit(bc, fc, InstKind::Constant, ValueKind::VReg, dst, 0, 0, ValueKind::Invalid, 0, 0, 0,
                  ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
         }
@@ -89,6 +92,7 @@ bool IRBuilder::buildStmt(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex stmt_idx) {
         if (!buildExpr(bc, fc, stmt.payload.assign_stmt.value, &rhs)) {
             return false;
         }
+        setEmitLocation(bc, fc, stmt_idx);
         if (assign_op == TokenType::SYM_EQUAL) {
             emitMoveRegToReg(bc, fc, it->second, rhs);
             return true;
@@ -110,6 +114,7 @@ bool IRBuilder::buildStmt(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex stmt_idx) {
         if (!buildExpr(bc, fc, stmt.payload.if_stmt.condition, &cond_reg)) {
             return false;
         }
+        setEmitLocation(bc, fc, stmt_idx);
         const BlockId then_block_id = beginBlock(bc, fc, "if.then");
         const BlockId join_block_id = beginBlock(bc, fc, "if.join");
         const bool has_else = stmt.payload.if_stmt.else_branch.isvalid();
@@ -122,6 +127,7 @@ bool IRBuilder::buildStmt(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex stmt_idx) {
         switchBlock(fc, then_block_id);
         bool ok = buildStmt(bc, fc, stmt.payload.if_stmt.then_branch);
         if (!isCurrentBlockTerminated(bc, fc)) {
+            setEmitLocation(bc, fc, stmt_idx);
             emitJumpToBlock(bc, fc, join_block_id);
         }
 
@@ -129,6 +135,7 @@ bool IRBuilder::buildStmt(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex stmt_idx) {
             switchBlock(fc, else_block_id);
             ok = buildStmt(bc, fc, stmt.payload.if_stmt.else_branch) && ok;
             if (!isCurrentBlockTerminated(bc, fc)) {
+                setEmitLocation(bc, fc, stmt_idx);
                 emitJumpToBlock(bc, fc, join_block_id);
             }
         }
@@ -154,14 +161,17 @@ bool IRBuilder::buildStmt(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex stmt_idx) {
             if (!buildExpr(bc, fc, stmt.payload.loop.condition, &cond_reg)) {
                 return false;
             }
+            setEmitLocation(bc, fc, stmt_idx);
             emitBranchOnReg(bc, fc, cond_reg, loop_body_block_id, loop_exit_block_id);
         } else {
+            setEmitLocation(bc, fc, stmt_idx);
             emitJumpToBlock(bc, fc, loop_body_block_id);
         }
 
         switchBlock(fc, loop_body_block_id);
         bool ok = buildStmt(bc, fc, stmt.payload.loop.body);
         if (!isCurrentBlockTerminated(bc, fc)) {
+            setEmitLocation(bc, fc, stmt_idx);
             emitJumpToBlock(bc, fc, loop_condition_block_id);
         }
 
@@ -205,9 +215,11 @@ bool IRBuilder::buildStmt(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex stmt_idx) {
             if (!buildExpr(bc, fc, stmt.payload.return_stmt.expression, &ret)) {
                 return false;
             }
-            emit(bc, fc, InstKind::Return, ValueKind::Invalid, 0, 0, 0, ValueKind::VReg, ret, 0, 0, ValueKind::Invalid, 0, 0,
-                 0, ValueKind::Invalid, 0, 0, 0);
+            setEmitLocation(bc, fc, stmt_idx);
+            emit(bc, fc, InstKind::Return, ValueKind::Invalid, 0, 0, 0, ValueKind::VReg, ret, 0, 0, ValueKind::Invalid,
+                 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
         } else {
+            setEmitLocation(bc, fc, stmt_idx);
             emitReturnInvalid(bc, fc);
         }
         return true;

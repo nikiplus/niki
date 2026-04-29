@@ -39,7 +39,6 @@ union ASTNodePayload {
     ImplicitCastExprPayload implicit_cast;
 
     // --- [syntax.stmt] ---
-    TargetStmtPayload target_stmt;
     ExpressionStmtPayload expr_stmt;
     AssignmentStmtPayload assign_stmt;
     VarDeclStmtPayload var_decl;
@@ -107,7 +106,7 @@ struct ASTPool {
     // --- [syntax.diagnostic] 与 nodes 同下标：行/列（报错、编译回溯）---
     std::vector<TokenLocation> locations;
 
-    // --- [semantic] 与 nodes 同下标：表达式/子表达式的静态类型（TypeChecker 写，Compiler 读）---
+    // --- [semantic] 与 nodes 同下标：表达式/子表达式的静态类型（TypeChecker 写，IRBuilder 读）---
     std::vector<semantic::NKType> node_types;
 
     // --- [syntax + vm] 解析期字面量常量池；AST 内仅存 const_pool_index，避免把 vm::Value 塞进定长节点 ---

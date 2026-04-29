@@ -1,14 +1,11 @@
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/syntax/scanner.hpp"
 #include "niki/l0_core/syntax/token.hpp"
-#include <chrono>
 #include <gtest/gtest.h>
-#include <iostream>
 #include <string>
 #include <vector>
 
 using namespace niki::syntax;
-namespace ch = std::chrono;
 
 TEST(ScannerTest, AllSymbolsCoverage) {
     std::string source =
@@ -48,7 +45,7 @@ TEST(ScannerTest, AllSymbolsCoverage) {
 
 TEST(ScannerTest, AllKWsCoverage) {
     std::string source = "true false if else loop match break continue return var func const int float string bool "
-                         "void any type interface flow await nock async system component target tag taggroup exclusive "
+                         "void any type interface flow await nock async system component tag taggroup exclusive "
                          "set unset kits with read write module struct enum";
     Scanner scanner(source);
 
@@ -59,7 +56,7 @@ TEST(ScannerTest, AllKWsCoverage) {
         TokenType::KW_INT,      TokenType::KW_FLOAT,     TokenType::KW_STRING, TokenType::KW_BOOL,
         TokenType::KW_VOID,     TokenType::KW_ANY,       TokenType::KW_TYPE,   TokenType::KW_INTERFACE,
         TokenType::KW_FLOW,     TokenType::KW_AWAIT,     TokenType::KW_NOCK,   TokenType::KW_ASYNC,
-        TokenType::KW_SYSTEM,   TokenType::KW_COMPONENT, TokenType::KW_TARGET, TokenType::KW_TAG,
+        TokenType::KW_SYSTEM,   TokenType::KW_COMPONENT, TokenType::KW_TAG,
         TokenType::KW_TAGGROUP, TokenType::KW_EXCLUSIVE, TokenType::KW_SET,    TokenType::KW_UNSET,
         TokenType::KW_KITS,     TokenType::KW_WITH,      TokenType::KW_READ,   TokenType::KW_WRITE,
         TokenType::KW_MODULE,   TokenType::KW_STRUCT,    TokenType::KW_ENUM,   TokenType::TOKEN_EOF};
@@ -138,7 +135,7 @@ TEST(ScannerTest, LineAndColumnAccuracy) {
     checkToken(TokenType::TOKEN_EOF, 4, 8);
 }
 
-TEST(ScannerTest, PerformanceTest) {
+TEST(ScannerTest, LargeInputShouldScanToEOFWithoutDiagnostics) {
     std::string source;
     source.reserve(1000000);
     for (int i = 0; i < 10000; i++) {
@@ -146,21 +143,21 @@ TEST(ScannerTest, PerformanceTest) {
         source += "if (x > 50) { return true; }\n";
     }
 
-    auto start_time = ch::high_resolution_clock::now();
     Scanner scanner(source);
     int tokenCount = 0;
+    TokenType terminalToken = TokenType::TOKEN_ERROR;
     while (true) {
         Token token = scanner.scanToken();
         tokenCount++;
         if (token.type == TokenType::TOKEN_EOF || token.type == TokenType::TOKEN_ERROR) {
+            terminalToken = token.type;
             break;
         }
     }
-    auto end_time = ch::high_resolution_clock::now();
-    auto duration = ch::duration_cast<ch::milliseconds>(end_time - start_time);
-
+    auto diagnostics = scanner.takeDiagnostics();
+    EXPECT_EQ(terminalToken, TokenType::TOKEN_EOF);
+    EXPECT_TRUE(diagnostics.empty());
     EXPECT_GT(tokenCount, 100000);
-    std::cout << "[ PERFORMANCE ] Scanned " << tokenCount << " tokens, time cost " << duration.count() << " ms\n";
 }
 
 TEST(ScannerTest, DiceTokenization) {

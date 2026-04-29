@@ -39,8 +39,8 @@ graph LR
 ## 模块间依赖
 
 - 依赖模块
-  - `syntax`（间接）
-    - 消费 Compiler 生成并由 Driver 封装的模块字节码产物。
+  - `ir`（间接）
+    - 消费 IR 降级后并由 Driver 封装的模块产物（`Chunk + exports`）。
   - `diagnostic`
     - 链接阶段错误（重复导出、入口缺失等）统一进入 `DiagnosticBag`。
 - 被依赖模块

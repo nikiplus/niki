@@ -1,6 +1,4 @@
 #include "niki/l0_core/linker/linker.hpp"
-#include "niki/l0_core/vm/object.hpp"
-#include "niki/l0_core/vm/value.hpp"
 #include <cstdint>
 #include <expected>
 #include <string>
@@ -38,33 +36,18 @@ static void collectMergedStringPool(const std::vector<CompileModule> &modules, s
 }
 
 static std::vector<SymbolDef> collectDefinedSymbols(const CompileModule &module) {
-    // 从模块常量池里提取“可定义全局符号”的对象（函数/结构体定义）。
-    // 这一步等价于“模块导出扫描”，后续冲突检查和入口决议都依赖它。
-    // Why:
-    // - 当前 MVP 还没有独立导出段，因此先从常量池对象反射定义信息；
-    // - 后续迁移到 IR-first 后，应优先消费显式符号表而非常量池启发式扫描。
+    // EXPORT_SCAN: 从 CompileModule.exports 读取模块导出符号。
+    // NOTE: 链接阶段只消费显式导出表，不再反射常量池对象。
     std::vector<SymbolDef> symbols;
     const auto &string_pool = module.init_chunk.string_pool;
+    symbols.reserve(module.exports.size());
 
-    for (const auto &constant : module.init_chunk.constants) {
-        if (constant.type != vm::ValueType::Object || constant.as.object == nullptr) {
-            continue;
-        }
-
-        auto *object = static_cast<vm::Object *>(constant.as.object);
-        if (object->type == vm::ObjType::Function) {
-            auto *function_object = static_cast<vm::ObjFunction *>(constant.as.object);
-            std::string symbol_name = (function_object->name_id < string_pool.size())
-                                          ? string_pool[function_object->name_id]
-                                          : ("<id" + std::to_string(function_object->name_id) + ">");
-            symbols.push_back(SymbolDef{function_object->name_id, symbol_name, module.source_path});
-        } else if (object->type == vm::ObjType::StructDef) {
-            auto *struct_definition = static_cast<vm::ObjStructDef *>(constant.as.object);
-            std::string symbol_name = (struct_definition->name_id < string_pool.size())
-                                          ? string_pool[struct_definition->name_id]
-                                          : ("<id" + std::to_string(struct_definition->name_id) + ">");
-            symbols.push_back(SymbolDef{struct_definition->name_id, symbol_name, module.source_path});
-        }
+    for (const auto &[local_symbol_id, exported_symbol_id] : module.exports) {
+        (void)local_symbol_id;
+        std::string symbol_name = (exported_symbol_id < string_pool.size())
+                                      ? string_pool[exported_symbol_id]
+                                      : ("<id" + std::to_string(exported_symbol_id) + ">");
+        symbols.push_back(SymbolDef{exported_symbol_id, std::move(symbol_name), module.source_path});
     }
     return symbols;
 }

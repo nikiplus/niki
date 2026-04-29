@@ -23,7 +23,7 @@
 
 ## 2. 现状问题（重构驱动）
 
-- `syntax::Compiler` 与 VM opcode 发射紧耦合，前后端职责混杂。
+- 历史上 `syntax::Compiler` 与 VM opcode 发射紧耦合，前后端职责混杂（现已下线）。
 - `linker` 当前存在 MVP 占位接口，符号决议仍有隐式假设。
 - 多文件语义（可见性/导出）与链接阶段存在潜在心智分裂风险。
 - 高级能力（模块化、优化、自举）需要中间层承接。
@@ -108,7 +108,7 @@
 
 ---
 
-### 阶段 2：Compiler 双阶段接口改造（2 天）
+### 阶段 2：Driver 切换 IR 主链路（已完成）
 
 #### 目标
 
@@ -116,24 +116,21 @@
 
 #### 涉及文件
 
-- `include/niki/l0_core/syntax/compiler.hpp`
-- `src/l0_core/syntax/compiler.cpp`
-- 可选拆分：
-  - `src/l0_core/syntax/compiler_to_ir.cpp`
-  - `src/l0_core/syntax/compiler_legacy_codegen.cpp`
+- `include/niki/driver/driver.hpp`
+- `src/driver/driver.cpp`
+- `include/niki/l0_core/ir/builder.hpp`
+- `src/l0_core/ir/builder*.cpp`
 
 #### 变更点
 
-- 新增接口：
-  - `buildIR(...) -> expected<ir::ModuleIR, DiagnosticBag>`
-  - `lowerIR(...) -> expected<Chunk, DiagnosticBag>`
-- `compile(...)` 暂时作为包装器调用上述两段
-- 保留临时逃生开关（legacy codegen fallback）
+- 编译主链路统一为：
+  - `typeCheckUnit(...) -> IRBuilder::build(...) -> verifyModuleIRFlat(...) -> lowerModuleToChunk(...)`
+- Driver 直接封装 `CompileModule`，不再保留 legacy compiler fallback
 
 #### 验收
 
-- `compiler_test` 不退化
-- 至少一个核心样例可走 IR 路径成功产出 Chunk
+- `niki_core` 可编译，Driver 主链路仅依赖 IR 管线
+- `syntax/compiler*` 代码与测试已从构建中移除
 
 ---
 

@@ -54,8 +54,8 @@ graph LR
 - 被依赖模块
   - `driver`
     - 调度 Predeclare 与 TypeCheck 阶段。
-  - `syntax`（Compiler 后端）
-    - 读取 `node_types` 与全局语义表，做类型驱动代码生成。
+  - `ir`（IRBuilder）
+    - 读取 `node_types` 与全局语义表，做 AST -> ModuleIR 降解。
 
 ## 关键对象
 

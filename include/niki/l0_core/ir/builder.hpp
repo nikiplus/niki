@@ -23,6 +23,8 @@ class IRBuilder {
     struct FuncCtx {
         FuncId fid = std::numeric_limits<FuncId>::max();
         BlockId cur_bid = std::numeric_limits<BlockId>::max();
+        uint32_t emit_line = 0;
+        uint32_t emit_col = 0;
         std::unordered_map<uint32_t, RegId> local_vreg_by_name_sid;
         std::vector<LoopPatch> loop_stack;
     };
@@ -39,6 +41,7 @@ class IRBuilder {
     FuncId beginFunc(BuildCtx &bc, uint32_t func_name_sid);
     BlockId beginBlock(BuildCtx &bc, FuncCtx &fc, const char *debug_name);
     void switchBlock(FuncCtx &fc, BlockId bid);
+    void setEmitLocation(BuildCtx &bc, FuncCtx &fc, niki::syntax::ASTNodeIndex node_idx);
     RegId allocVReg(BuildCtx &bc, FuncCtx &fc);
     void emit(BuildCtx &bc, FuncCtx &fc, InstKind k, ValueKind dk, uint32_t du32, int64_t di64, uint64_t du64,
               ValueKind ak, uint32_t au32, int64_t ai64, uint64_t au64, ValueKind bk, uint32_t bu32, int64_t bi64,

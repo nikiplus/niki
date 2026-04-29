@@ -3,8 +3,8 @@
 #include <string_view>
 /*一定要注意，虽然token和Opcode中很多枚举非常类似，但实际上二者在职责和维度上完全不在一个层面。
 不要直接在脑海中构建，sym_plus=op_Add的映射关系，前者是符号，后者是实际执行的命令。
-我们一定要明确，符号只有被parser翻译为表达式之后，才真切的成为了compiler能解析的node，
-而经过compiler的再次转译，我们的node才真正变成了可被执行的opcode
+我们一定要明确，符号只有被 parser 组织成 AST 节点之后，才进入 IRBuilder 可处理的语义阶段，
+而经过 IRBuilder + LowerToChunk 的再次降级，我们的节点才真正变成可被执行的 opcode
 */
 namespace niki::syntax {
 enum class TokenType : uint8_t {
@@ -112,7 +112,6 @@ enum class TokenType : uint8_t {
     KW_AS,        // as 别名
     KW_SYSTEM,    // system 系统
     KW_COMPONENT, // component 组件
-    KW_TARGET,    // target 目标
     KW_TAG,       // tag 标签
     KW_TAGGROUP,  // taggroup 标签组
     KW_EXCLUSIVE, // exclusive 互斥修饰符
@@ -323,8 +322,6 @@ inline std::string_view toString(TokenType type) {
         return "KW_SYSTEM";
     case TokenType::KW_COMPONENT:
         return "KW_COMPONENT";
-    case TokenType::KW_TARGET:
-        return "KW_TARGET";
     case TokenType::KW_TAG:
         return "KW_TAG";
     case TokenType::KW_TAGGROUP:

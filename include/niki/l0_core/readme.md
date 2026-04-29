@@ -22,14 +22,14 @@
 graph TD
     D[driver] --> SX[syntax]
     SX --> SM[semantic]
-    SM --> SC[syntax compiler]
-    SC --> LK[linker]
+    SM --> IR[ir pipeline]
+    IR --> LK[linker]
     LK --> RT[runtime]
     RT --> VM[vm]
 
     DG[diagnostic] --> SX
     DG --> SM
-    DG --> SC
+    DG --> IR
     DG --> LK
     DG --> RT
     DG --> VM
@@ -51,11 +51,13 @@ graph LR
     G2 --> TC
     TC --> NT[node_types]
 
-    A --> CP[Compile]
-    NT --> CP
-    G1 --> CP
-    G2 --> CP
-    CP --> CH[Chunk]
+    A --> IRB[IRBuilder]
+    NT --> IRB
+    G1 --> IRB
+    G2 --> IRB
+    IRB --> VRF[Verify]
+    VRF --> LWC[LowerToChunk]
+    LWC --> CH[Chunk]
 
     CH --> CM[CompileModule]
     CM --> L[LinkedProgram]
@@ -74,8 +76,8 @@ graph LR
     SC --> PR[Parser]
     PR --> PD[Predeclare]
     PD --> TC[TypeCheck]
-    TC --> CP[Compile]
-    CP --> LK[Linker]
+    TC --> IRP[IRBuilder + Verify + Lower]
+    IRP --> LK[Linker]
     LK --> RT[Runtime]
     RT --> VM[VM]
     VM --> O[vm::Value]
@@ -145,10 +147,10 @@ graph LR
   - 输入：`ASTPool` + 全局语义表
   - 输出：`ASTPool.node_types`
   - 细节：`semantic/readme.md`
-- Pass-4 Compile
+- Pass-4 Build IR + Lower
   - 输入：`ASTPool` + `node_types` + 全局语义表
-  - 输出：`Chunk` / `CompileModule`
-  - 细节：`syntax/readme.md`
+  - 输出：`ModuleIR` -> `Chunk` / `CompileModule`
+  - 细节：`ir/readme.md`
 - Link + Run
   - 输入：模块集合
   - 输出：`vm::Value`

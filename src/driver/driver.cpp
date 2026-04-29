@@ -1,5 +1,8 @@
 #include "niki/driver/driver.hpp"
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
+#include "niki/l0_core/ir/builder.hpp"
+#include "niki/l0_core/ir/lower_to_chunk.hpp"
+#include "niki/l0_core/ir/verify.hpp"
 #include "niki/l0_core/linker/linker.hpp"
 #include "niki/l0_core/runtime/launcher.hpp"
 #include "niki/l0_core/semantic/global_compilation.hpp"
@@ -9,7 +12,6 @@
 #include "niki/l0_core/semantic/type_checker.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/syntax/ast_payloads.hpp"
-#include "niki/l0_core/syntax/compiler.hpp"
 #include "niki/l0_core/syntax/global_interner.hpp"
 #include "niki/l0_core/syntax/parser.hpp"
 #include "niki/l0_core/syntax/scanner.hpp"
@@ -24,6 +26,7 @@
 #include <expected>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -32,6 +35,167 @@
 
 namespace niki::driver {
 namespace fs = std::filesystem;
+
+namespace {
+
+Chunk makeInitChunkFromLoweredFunctions(const std::vector<vm::ObjFunction *> &lowered_functions,
+                                        const std::vector<std::string> &string_pool) {
+    Chunk init_chunk;
+    init_chunk.string_pool = string_pool;
+    init_chunk.max_register_slots = 1;
+    init_chunk.constants.reserve(lowered_functions.size());
+
+    for (vm::ObjFunction *function_object : lowered_functions) {
+        const uint32_t constant_index = static_cast<uint32_t>(init_chunk.constants.size());
+        init_chunk.constants.push_back(vm::Value::makeObject(function_object));
+        if (constant_index <= std::numeric_limits<uint8_t>::max()) {
+            init_chunk.code.push_back(vm::ToInt(vm::OPCODE::OP_DEFINE_GLOBAL));
+            init_chunk.code.push_back(static_cast<uint8_t>(constant_index));
+            init_chunk.lines.push_back(0);
+            init_chunk.lines.push_back(0);
+            init_chunk.columns.push_back(0);
+            init_chunk.columns.push_back(0);
+        } else {
+            init_chunk.code.push_back(vm::ToInt(vm::OPCODE::OP_DEFINE_GLOBAL_W));
+            init_chunk.code.push_back(static_cast<uint8_t>((constant_index >> 8) & 0xFF));
+            init_chunk.code.push_back(static_cast<uint8_t>(constant_index & 0xFF));
+            init_chunk.lines.push_back(0);
+            init_chunk.lines.push_back(0);
+            init_chunk.lines.push_back(0);
+            init_chunk.columns.push_back(0);
+            init_chunk.columns.push_back(0);
+            init_chunk.columns.push_back(0);
+        }
+    }
+
+    init_chunk.code.push_back(vm::ToInt(vm::OPCODE::OP_RETURN));
+    init_chunk.lines.push_back(0);
+    init_chunk.columns.push_back(0);
+    return init_chunk;
+}
+
+std::unordered_map<uint32_t, uint32_t> collectExportsFromLoweredFunctions(
+    const std::vector<vm::ObjFunction *> &lowered_functions) {
+    std::unordered_map<uint32_t, uint32_t> exports;
+    exports.reserve(lowered_functions.size());
+    for (vm::ObjFunction *function_object : lowered_functions) {
+        if (function_object == nullptr) {
+            continue;
+        }
+        exports[function_object->name_id] = function_object->name_id;
+    }
+    return exports;
+}
+
+std::unordered_map<uint32_t, uint32_t> collectExportsFromUnitTopDecls(const GlobalCompilationUnit &unit) {
+    std::unordered_map<uint32_t, uint32_t> exports;
+    if (!unit.root.isvalid()) {
+        return exports;
+    }
+    const syntax::ASTNode &root_node = unit.pool.getNode(unit.root);
+    if (root_node.type != syntax::NodeType::ModuleDecl && root_node.type != syntax::NodeType::ProgramRoot) {
+        return exports;
+    }
+    const syntax::ASTNodeIndex body_index =
+        (root_node.type == syntax::NodeType::ModuleDecl) ? root_node.payload.module_decl.body : unit.root;
+    const syntax::ASTNode &body_node = unit.pool.getNode(body_index);
+    const auto decls = unit.pool.get_list(body_node.payload.list.elements);
+
+    exports.reserve(decls.size());
+    for (syntax::ASTNodeIndex decl_idx : decls) {
+        if (!decl_idx.isvalid()) {
+            continue;
+        }
+        const syntax::ASTNode &decl_node = unit.pool.getNode(decl_idx);
+        if (decl_node.type == syntax::NodeType::FunctionDecl) {
+            const auto &function_data = unit.pool.function_data[decl_node.payload.func_decl.function_index];
+            exports[function_data.name_id] = function_data.name_id;
+        } else if (decl_node.type == syntax::NodeType::StructDecl) {
+            const auto &struct_data = unit.pool.struct_data[decl_node.payload.struct_decl.struct_index];
+            exports[struct_data.name_id] = struct_data.name_id;
+        }
+    }
+    return exports;
+}
+
+struct DeclLocation {
+    uint32_t line = 0;
+    uint32_t column = 0;
+};
+
+std::unordered_map<uint32_t, DeclLocation> collectTopDeclNameLocations(const GlobalCompilationUnit &unit) {
+    std::unordered_map<uint32_t, DeclLocation> locations_by_name_id;
+    if (!unit.root.isvalid()) {
+        return locations_by_name_id;
+    }
+    const syntax::ASTNode &root_node = unit.pool.getNode(unit.root);
+    if (root_node.type != syntax::NodeType::ModuleDecl && root_node.type != syntax::NodeType::ProgramRoot) {
+        return locations_by_name_id;
+    }
+    const syntax::ASTNodeIndex body_index =
+        (root_node.type == syntax::NodeType::ModuleDecl) ? root_node.payload.module_decl.body : unit.root;
+    const syntax::ASTNode &body_node = unit.pool.getNode(body_index);
+    const auto decls = unit.pool.get_list(body_node.payload.list.elements);
+
+    locations_by_name_id.reserve(decls.size());
+    for (syntax::ASTNodeIndex decl_idx : decls) {
+        if (!decl_idx.isvalid() || decl_idx.index >= unit.pool.locations.size()) {
+            continue;
+        }
+        const syntax::ASTNode &decl_node = unit.pool.getNode(decl_idx);
+        uint32_t name_id = std::numeric_limits<uint32_t>::max();
+        if (decl_node.type == syntax::NodeType::FunctionDecl) {
+            const auto &function_data = unit.pool.function_data[decl_node.payload.func_decl.function_index];
+            name_id = function_data.name_id;
+        } else if (decl_node.type == syntax::NodeType::StructDecl) {
+            const auto &struct_data = unit.pool.struct_data[decl_node.payload.struct_decl.struct_index];
+            name_id = struct_data.name_id;
+        }
+        if (name_id == std::numeric_limits<uint32_t>::max()) {
+            continue;
+        }
+        const auto &loc = unit.pool.locations[decl_idx.index];
+        locations_by_name_id[name_id] = DeclLocation{.line = loc.line, .column = loc.column};
+    }
+    return locations_by_name_id;
+}
+
+diagnostic::SourceSpan buildVerifyIssueSourceSpan(const GlobalCompilationUnit &unit, const ir::ModuleIR &module_ir,
+                                                  const ir::VerifyIssue &issue) {
+    uint32_t line = 0;
+    uint32_t column = 0;
+
+    if (issue.func_idx < module_ir.funcs.size()) {
+        const auto function_decl_locations = collectTopDeclNameLocations(unit);
+        const ir::FuncRecord &function_record = module_ir.funcs[issue.func_idx];
+        auto function_decl_iter = function_decl_locations.find(function_record.func_name_sid);
+        if (function_decl_iter != function_decl_locations.end()) {
+            line = function_decl_iter->second.line;
+            column = function_decl_iter->second.column;
+        }
+
+        if (issue.rel_block_idx < function_record.block_span.count) {
+            const uint32_t absolute_block_index = function_record.block_span.begin + issue.rel_block_idx;
+            if (absolute_block_index < module_ir.blocks.size()) {
+                const ir::BlockRecord &block_record = module_ir.blocks[absolute_block_index];
+                if (issue.inst_idx < block_record.inst_span.count) {
+                    const uint32_t absolute_inst_index = block_record.inst_span.begin + issue.inst_idx;
+                    if (absolute_inst_index < module_ir.insts.size()) {
+                        const uint32_t source_line = module_ir.insts.src_line[absolute_inst_index];
+                        const uint32_t source_col = module_ir.insts.src_col[absolute_inst_index];
+                        if (source_line != 0 || source_col != 0) {
+                            line = source_line;
+                            column = source_col;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return diagnostic::makeSourceSpan(unit.source_path, line, column);
+}
+
+} // namespace
 
 static diagnostic::DiagnosticBag makeDriverError(diagnostic::events::DriverCode code, std::string message,
                                                  std::string file = "") {
@@ -213,46 +377,67 @@ std::expected<semantic::TypeCheckResult, diagnostic::DiagnosticBag> Driver::type
     return result.value();
 };
 // 3)单元级字节码编译
-std::expected<Chunk, diagnostic::DiagnosticBag> Driver::compileUnitChunk(const GlobalCompilationUnit &unit,
-                                                                         GlobalTypeArena &global_arena,
-                                                                         GlobalSymbolTable &global_symbols) {
-    syntax::Compiler compiler;
-    auto result = compiler.compile(unit.pool, unit.root, unit.pool.node_types, Chunk{}, &global_arena, &global_symbols);
-    if (!result.has_value()) {
-        return std::unexpected(std::move(result.error()));
+std::expected<Driver::UnitCompileArtifact, diagnostic::DiagnosticBag> Driver::compileUnitChunk(
+    GlobalCompilationUnit &unit, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols) {
+    (void)global_arena;
+    (void)global_symbols;
+
+    ir::IRBuilder ir_builder;
+    auto ir_result = ir_builder.build(unit);
+    if (!ir_result.has_value()) {
+        return std::unexpected(std::move(ir_result.error()));
     }
-    return result.value();
+
+    ir::VerifyReport verify_report = ir::verifyModuleIRFlat(ir_result.value());
+    if (!verify_report.ok()) {
+        diagnostic::DiagnosticBag diagnostics;
+        for (const auto &issue : verify_report.issues) {
+            std::ostringstream verify_message;
+            verify_message << "IR verify failed"
+                           << " code=" << static_cast<uint16_t>(issue.error_code) << " func_idx=" << issue.func_idx
+                           << " rel_block_idx=" << issue.rel_block_idx << " inst_idx=" << issue.inst_idx
+                           << " message=" << issue.message;
+            diagnostics.error(diagnostic::events::IRCode::VerifyFailed, verify_message.str(),
+                              buildVerifyIssueSourceSpan(unit, ir_result.value(), issue));
+        }
+        return std::unexpected(std::move(diagnostics));
+    }
+
+    auto lower_result = ir::lowerModuleToChunk(ir_result.value());
+    if (!lower_result.has_value()) {
+        diagnostic::DiagnosticBag diagnostics;
+        diagnostics.error(diagnostic::events::IRCode::LowerFailed, "IR lower failed: " + lower_result.error(),
+                          diagnostic::makeSourceSpan(unit.source_path));
+        return std::unexpected(std::move(diagnostics));
+    }
+
+    UnitCompileArtifact artifact;
+    artifact.init_chunk =
+        makeInitChunkFromLoweredFunctions(lower_result.value().functions, ir_result.value().string_pool);
+    artifact.exports = collectExportsFromUnitTopDecls(unit);
+    for (const auto &[symbol_name_id, exported_symbol_id] :
+         collectExportsFromLoweredFunctions(lower_result.value().functions)) {
+        artifact.exports[symbol_name_id] = exported_symbol_id;
+    }
+    return artifact;
 };
 // 4)将编译结果组装为linker：：compileModule
-linker::CompileModule Driver::buildCompileModule(std::string source_path, Chunk chunk) {
+linker::CompileModule Driver::buildCompileModule(std::string source_path, UnitCompileArtifact artifact) {
     linker::CompileModule module;
     module.module_name = fs::path(source_path).stem().string();
     module.source_path = std::move(source_path);
-    module.init_chunk = std::move(chunk);
-
-    for (const auto &constant : module.init_chunk.constants) {
-        if (constant.type != vm::ValueType::Object || constant.as.object == nullptr) {
-            continue;
-        }
-        auto *object = static_cast<vm::Object *>(constant.as.object);
-        if (object->type == vm::ObjType::Function) {
-            auto *function_object = static_cast<vm::ObjFunction *>(constant.as.object);
-            module.exports[function_object->name_id] = function_object->name_id;
-        } else if (object->type == vm::ObjType::StructDef) {
-            auto *struct_def = static_cast<vm::ObjStructDef *>(constant.as.object);
-            module.exports[struct_def->name_id] = struct_def->name_id;
-        }
-    }
+    module.init_chunk = std::move(artifact.init_chunk);
+    module.exports = std::move(artifact.exports);
     return module;
 };
 // 单元编译：compile->module（typecheck 在 Pass-3 完成）
 std::expected<linker::CompileModule, diagnostic::DiagnosticBag> Driver::compileParsedUnit(
     GlobalCompilationUnit &unit, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols) {
-    auto chunk_result = compileUnitChunk(unit, global_arena, global_symbols);
-    if (!chunk_result.has_value()) {
-        return std::unexpected(std::move(chunk_result.error()));
+    auto artifact_result = compileUnitChunk(unit, global_arena, global_symbols);
+    if (!artifact_result.has_value()) {
+        return std::unexpected(std::move(artifact_result.error()));
     }
-    return buildCompileModule(std::move(unit.source_path), std::move(chunk_result.value()));
+    return buildCompileModule(std::move(unit.source_path), std::move(artifact_result.value()));
 };
 
 std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Driver::compileAll(

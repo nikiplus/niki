@@ -6,7 +6,7 @@ namespace niki::vm {
  * @enum OPCODE 指令枚举
  * @details 每个指令对应一个唯一的 opcode
  * @note 指令枚举的 opcode 从 0x00 开始，每个指令占用 1 字节
- * @note [USER] VM & Compiler
+ * @note [USER] VM & IR Lowering
  */
 enum class OPCODE : uint8_t {
     /*---[CalcExpr]运算(四则运算 + 比较运算符 + 逻辑运算符 + 位运算符)---*/

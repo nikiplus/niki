@@ -5,6 +5,32 @@ namespace niki::ir {
 using namespace niki::syntax;
 
 //------------------------------------------------------------------------------
+// ROOT: 顶层节点降解，负责模块根与声明列表分发。
+//------------------------------------------------------------------------------
+bool IRBuilder::buildRoot(BuildCtx &bc) {
+    if (bc.unit == nullptr || !bc.unit->root.isvalid()) {
+        bc.diags.error(diagnostic::events::IRCode::InvalidRoot, "invalid module root",
+                       diagnostic::makeSourceSpan(bc.unit ? bc.unit->source_path : ""));
+        return false;
+    }
+    const ASTNode &root = bc.unit->pool.getNode(bc.unit->root);
+    if (root.type != NodeType::ModuleDecl && root.type != NodeType::ProgramRoot) {
+        bc.diags.error(diagnostic::events::IRCode::InvalidRoot,
+                       "IR builder expects ModuleDecl or ProgramRoot root.",
+                       diagnostic::makeSourceSpan(bc.unit->source_path));
+        return false;
+    }
+    ASTNodeIndex body_idx = (root.type == NodeType::ModuleDecl) ? root.payload.module_decl.body : bc.unit->root;
+    const ASTNode &body = bc.unit->pool.getNode(body_idx);
+    auto decls = bc.unit->pool.get_list(body.payload.list.elements);
+    bool ok = true;
+    for (ASTNodeIndex decl_index : decls) {
+        ok = buildTopDecl(bc, decl_index) && ok;
+    }
+    return ok;
+}
+
+//------------------------------------------------------------------------------
 // DECL_ENTRY: 顶层声明降解入口。
 //------------------------------------------------------------------------------
 bool IRBuilder::buildTopDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
@@ -29,6 +55,7 @@ bool IRBuilder::buildFuncDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
     const BlockId entry = beginBlock(bc, fc, "entry");
     func(bc, fc.fid).entry_block = entry;
     switchBlock(fc, entry);
+    setEmitLocation(bc, fc, decl_idx);
 
     auto param_nodes = bc.unit->pool.get_list(func_data.params);
     for (ASTNodeIndex param_idx : param_nodes) {

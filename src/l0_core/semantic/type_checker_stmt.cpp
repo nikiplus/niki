@@ -53,9 +53,6 @@ void TypeChecker::checkStatement(syntax::ASTNodeIndex stmtIdx) {
     case syntax::NodeType::DetachStmt:
         checkDetachStmt(stmtIdx);
         break;
-    case syntax::NodeType::TargetStmt:
-        checkTargetStmt(stmtIdx);
-        break;
     default:
         break;
     }
@@ -155,6 +152,5 @@ void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
 void TypeChecker::checkNockStmt(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkAttachStmt(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkDetachStmt(syntax::ASTNodeIndex nodeIdx) {}
-void TypeChecker::checkTargetStmt(syntax::ASTNodeIndex nodeIdx) {}
 
 } // namespace niki::semantic

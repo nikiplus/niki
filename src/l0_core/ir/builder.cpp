@@ -17,32 +17,7 @@ std::expected<ModuleIR, diagnostic::DiagnosticBag> IRBuilder::build(GlobalCompil
     if (!buildRoot(bc) || !bc.diags.empty()) {
         return std::unexpected(std::move(bc.diags));
     }
-    bc.module.string_pool = unit.pool.snapshotStringPool();
     return bc.module;
-}
-
-//------------------------------------------------------------------------------
-// ROOT: 顶层节点降解，负责模块根与声明列表分发。
-//------------------------------------------------------------------------------
-bool IRBuilder::buildRoot(BuildCtx &bc) {
-    if (bc.unit == nullptr || !bc.unit->root.isvalid()) {
-        bc.diags.error(diagnostic::events::CompilerCode::InvalidRoot, "invalid module root",
-                       diagnostic::makeSourceSpan(bc.unit ? bc.unit->source_path : ""));
-        return false;
-    }
-    const ASTNode &root = bc.unit->pool.getNode(bc.unit->root);
-    if (root.type != NodeType::ModuleDecl && root.type != NodeType::ProgramRoot) {
-        bc.diags.error(diagnostic::events::CompilerCode::InvalidRoot, "IR builder expects ModuleDecl or ProgramRoot root.",
-                       diagnostic::makeSourceSpan(bc.unit->source_path));
-        return false;
-    }
-    ASTNodeIndex body_idx = (root.type == NodeType::ModuleDecl) ? root.payload.module_decl.body : bc.unit->root;
-    const ASTNode &body = bc.unit->pool.getNode(body_idx);
-    auto decls = bc.unit->pool.get_list(body.payload.list.elements);
-    bool ok = true;
-    for (ASTNodeIndex d : decls)
-        ok = buildTopDecl(bc, d) && ok;
-    return ok;
 }
 
 //------------------------------------------------------------------------------
@@ -75,6 +50,15 @@ BlockId IRBuilder::beginBlock(BuildCtx &bc, FuncCtx &fc, const char *debug_name)
     return b.block_id;
 }
 void IRBuilder::switchBlock(FuncCtx &fc, BlockId bid) { fc.cur_bid = bid; }
+void IRBuilder::setEmitLocation(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex node_idx) {
+    if (bc.unit == nullptr || !node_idx.isvalid() || node_idx.index >= bc.unit->pool.locations.size()) {
+        fc.emit_line = 0;
+        fc.emit_col = 0;
+        return;
+    }
+    fc.emit_line = bc.unit->pool.locations[node_idx.index].line;
+    fc.emit_col = bc.unit->pool.locations[node_idx.index].column;
+}
 RegId IRBuilder::allocVReg(BuildCtx &bc, FuncCtx &fc) {
     FuncRecord &f = func(bc, fc.fid);
     return f.next_vreg++;
@@ -96,7 +80,7 @@ uint32_t IRBuilder::emitInstId(BuildCtx &bc, FuncCtx &fc, InstKind k, ValueKind 
                                uint32_t bu32, int64_t bi64, uint64_t bu64, ValueKind ck, uint32_t cu32, int64_t ci64,
                                uint64_t cu64, uint32_t aux) {
     const uint32_t inst_id = bc.module.insts.push(k, dk, du32, di64, du64, ak, au32, ai64, au64, bk, bu32, bi64, bu64,
-                                                  ck, cu32, ci64, cu64, aux, 0, 0);
+                                                  ck, cu32, ci64, cu64, aux, fc.emit_line, fc.emit_col);
     block(bc, fc.fid, fc.cur_bid).inst_span.count += 1;
     return inst_id;
 }
@@ -109,15 +93,16 @@ void IRBuilder::emitMoveRegToReg(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId d
          ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
 }
 
-void IRBuilder::emitUnaryReg(BuildCtx &build_ctx, FuncCtx &func_ctx, InstKind inst_kind, RegId dst_reg, RegId operand_reg) {
+void IRBuilder::emitUnaryReg(BuildCtx &build_ctx, FuncCtx &func_ctx, InstKind inst_kind, RegId dst_reg,
+                             RegId operand_reg) {
     emit(build_ctx, func_ctx, inst_kind, ValueKind::VReg, dst_reg, 0, 0, ValueKind::VReg, operand_reg, 0, 0,
          ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
 }
 
 void IRBuilder::emitBinaryReg(BuildCtx &build_ctx, FuncCtx &func_ctx, InstKind inst_kind, RegId dst_reg, RegId left_reg,
                               RegId right_reg) {
-    emit(build_ctx, func_ctx, inst_kind, ValueKind::VReg, dst_reg, 0, 0, ValueKind::VReg, left_reg, 0, 0, ValueKind::VReg,
-         right_reg, 0, 0, ValueKind::Invalid, 0, 0, 0);
+    emit(build_ctx, func_ctx, inst_kind, ValueKind::VReg, dst_reg, 0, 0, ValueKind::VReg, left_reg, 0, 0,
+         ValueKind::VReg, right_reg, 0, 0, ValueKind::Invalid, 0, 0, 0);
 }
 
 void IRBuilder::emitJumpToBlock(BuildCtx &build_ctx, FuncCtx &func_ctx, BlockId target_block_id) {
@@ -142,13 +127,13 @@ void IRBuilder::emitConstantI64(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId ds
 }
 
 void IRBuilder::emitConstantBool(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId dst_reg, bool value) {
-    emit(build_ctx, func_ctx, InstKind::Constant, ValueKind::VReg, dst_reg, 0, 0, ValueKind::ImmBool, value ? 1u : 0u, 0, 0,
-         ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
+    emit(build_ctx, func_ctx, InstKind::Constant, ValueKind::VReg, dst_reg, 0, 0, ValueKind::ImmBool, value ? 1u : 0u,
+         0, 0, ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
 }
 
 void IRBuilder::emitConstantF64Bits(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId dst_reg, uint64_t value_bits) {
-    emit(build_ctx, func_ctx, InstKind::Constant, ValueKind::VReg, dst_reg, 0, 0, ValueKind::ImmF64Bits, 0, 0, value_bits,
-         ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
+    emit(build_ctx, func_ctx, InstKind::Constant, ValueKind::VReg, dst_reg, 0, 0, ValueKind::ImmF64Bits, 0, 0,
+         value_bits, ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
 }
 
 void IRBuilder::emitConstantStringId(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId dst_reg, uint32_t string_id) {
@@ -187,7 +172,7 @@ void IRBuilder::error(BuildCtx &bc, const std::string &msg, ASTNodeIndex idx) {
         line = bc.unit->pool.locations[idx.index].line;
         col = bc.unit->pool.locations[idx.index].column;
     }
-    bc.diags.error(diagnostic::events::CompilerCode::GenericError, msg,
+    bc.diags.error(diagnostic::events::IRCode::GenericError, msg,
                    diagnostic::makeSourceSpan(bc.unit ? bc.unit->source_path : "", line, col));
 }
 

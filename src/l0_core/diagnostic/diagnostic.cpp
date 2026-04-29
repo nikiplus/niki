@@ -12,8 +12,10 @@ namespace {
 constexpr std::string_view kScannerInvalidToken = "SCANNER_INVALID_TOKEN";
 constexpr std::string_view kParserGenericError = "PARSER_ERROR";
 constexpr std::string_view kSemanticGenericError = "SEMANTIC_ERROR";
-constexpr std::string_view kCompilerInvalidRoot = "COMPILER_INVALID_ROOT";
-constexpr std::string_view kCompilerGenericError = "COMPILER_ERROR";
+constexpr std::string_view kIRInvalidRoot = "IR_INVALID_ROOT";
+constexpr std::string_view kIRVerifyFailed = "IR_VERIFY_FAILED";
+constexpr std::string_view kIRLowerFailed = "IR_LOWER_FAILED";
+constexpr std::string_view kIRGenericError = "IR_ERROR";
 constexpr std::string_view kLinkerDuplicateSymbol = "LINKER_DUPLICATE_SYMBOL";
 constexpr std::string_view kLinkerMultipleEntry = "LINKER_MULTIPLE_ENTRY";
 constexpr std::string_view kLinkerEntryNotFound = "LINKER_ENTRY_NOT_FOUND";
@@ -56,14 +58,18 @@ std::string_view codeOf(events::SemanticCode code) {
     return kSemanticGenericError;
 }
 
-std::string_view codeOf(events::CompilerCode code) {
+std::string_view codeOf(events::IRCode code) {
     switch (code) {
-    case events::CompilerCode::InvalidRoot:
-        return kCompilerInvalidRoot;
-    case events::CompilerCode::GenericError:
-        return kCompilerGenericError;
+    case events::IRCode::InvalidRoot:
+        return kIRInvalidRoot;
+    case events::IRCode::VerifyFailed:
+        return kIRVerifyFailed;
+    case events::IRCode::LowerFailed:
+        return kIRLowerFailed;
+    case events::IRCode::GenericError:
+        return kIRGenericError;
     }
-    return kCompilerGenericError;
+    return kIRGenericError;
 }
 
 std::string_view codeOf(events::LinkerCode code) {
@@ -111,26 +117,54 @@ void DiagnosticBag::emit(events::Event event) {
         [this](auto &&typed_event) {
             using T = std::decay_t<decltype(typed_event)>;
             if constexpr (std::is_same_v<T, events::ScannerEvent>) {
-                diagnostics_.push_back({DiagnosticStage::Scanner, typed_event.severity, std::string(codeOf(typed_event.code)),
-                                        std::move(typed_event.message), normalizeSpan(std::move(typed_event.span)), {}});
+                diagnostics_.push_back({DiagnosticStage::Scanner,
+                                        typed_event.severity,
+                                        std::string(codeOf(typed_event.code)),
+                                        std::move(typed_event.message),
+                                        normalizeSpan(std::move(typed_event.span)),
+                                        {}});
             } else if constexpr (std::is_same_v<T, events::ParserEvent>) {
-                diagnostics_.push_back({DiagnosticStage::Parser, typed_event.severity, std::string(codeOf(typed_event.code)),
-                                        std::move(typed_event.message), normalizeSpan(std::move(typed_event.span)), {}});
+                diagnostics_.push_back({DiagnosticStage::Parser,
+                                        typed_event.severity,
+                                        std::string(codeOf(typed_event.code)),
+                                        std::move(typed_event.message),
+                                        normalizeSpan(std::move(typed_event.span)),
+                                        {}});
             } else if constexpr (std::is_same_v<T, events::SemanticEvent>) {
-                diagnostics_.push_back({DiagnosticStage::Semantic, typed_event.severity, std::string(codeOf(typed_event.code)),
-                                        std::move(typed_event.message), normalizeSpan(std::move(typed_event.span)), {}});
-            } else if constexpr (std::is_same_v<T, events::CompilerEvent>) {
-                diagnostics_.push_back({DiagnosticStage::Compiler, typed_event.severity, std::string(codeOf(typed_event.code)),
-                                        std::move(typed_event.message), normalizeSpan(std::move(typed_event.span)), {}});
+                diagnostics_.push_back({DiagnosticStage::Semantic,
+                                        typed_event.severity,
+                                        std::string(codeOf(typed_event.code)),
+                                        std::move(typed_event.message),
+                                        normalizeSpan(std::move(typed_event.span)),
+                                        {}});
+            } else if constexpr (std::is_same_v<T, events::IREvent>) {
+                diagnostics_.push_back({DiagnosticStage::IR,
+                                        typed_event.severity,
+                                        std::string(codeOf(typed_event.code)),
+                                        std::move(typed_event.message),
+                                        normalizeSpan(std::move(typed_event.span)),
+                                        {}});
             } else if constexpr (std::is_same_v<T, events::LinkerEvent>) {
-                diagnostics_.push_back({DiagnosticStage::Linker, typed_event.severity, std::string(codeOf(typed_event.code)),
-                                        std::move(typed_event.message), normalizeSpan(std::move(typed_event.span)), {}});
+                diagnostics_.push_back({DiagnosticStage::Linker,
+                                        typed_event.severity,
+                                        std::string(codeOf(typed_event.code)),
+                                        std::move(typed_event.message),
+                                        normalizeSpan(std::move(typed_event.span)),
+                                        {}});
             } else if constexpr (std::is_same_v<T, events::LauncherEvent>) {
-                diagnostics_.push_back({DiagnosticStage::Launcher, typed_event.severity, std::string(codeOf(typed_event.code)),
-                                        std::move(typed_event.message), normalizeSpan(std::move(typed_event.span)), {}});
+                diagnostics_.push_back({DiagnosticStage::Launcher,
+                                        typed_event.severity,
+                                        std::string(codeOf(typed_event.code)),
+                                        std::move(typed_event.message),
+                                        normalizeSpan(std::move(typed_event.span)),
+                                        {}});
             } else if constexpr (std::is_same_v<T, events::DriverEvent>) {
-                diagnostics_.push_back({DiagnosticStage::Driver, typed_event.severity, std::string(codeOf(typed_event.code)),
-                                        std::move(typed_event.message), normalizeSpan(std::move(typed_event.span)), {}});
+                diagnostics_.push_back({DiagnosticStage::Driver,
+                                        typed_event.severity,
+                                        std::string(codeOf(typed_event.code)),
+                                        std::move(typed_event.message),
+                                        normalizeSpan(std::move(typed_event.span)),
+                                        {}});
             }
         },
         std::move(event));
@@ -171,8 +205,8 @@ std::string_view toString(DiagnosticStage stage) {
         return "parser";
     case DiagnosticStage::Semantic:
         return "semantic";
-    case DiagnosticStage::Compiler:
-        return "compiler";
+    case DiagnosticStage::IR:
+        return "ir";
     case DiagnosticStage::Linker:
         return "linker";
     case DiagnosticStage::Launcher:

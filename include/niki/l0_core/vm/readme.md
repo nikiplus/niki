@@ -45,7 +45,7 @@ graph LR
     - VM 运行时错误通过统一诊断通道反馈。
 - 被依赖模块
   - `runtime`：通过 `Launcher` 驱动 VM 执行。
-  - `syntax`（Compiler）
+  - `ir`（lower_to_chunk）
     - 使用 VM 指令与值对象定义生成合法字节码。
 
 ## 阶段接口（对外）

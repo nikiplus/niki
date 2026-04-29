@@ -64,7 +64,7 @@ NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
         break;
     }
 
-    // 将推导出的类型记录到 ASTPool 的旁侧表 node_types 中，供 Compiler 阶段查询
+    // 将推导出的类型记录到 ASTPool 的旁侧表 node_types 中，供 IRBuilder 阶段查询
     currentPool->node_types[exprIdx.index] = resultType;
 
     return resultType;
