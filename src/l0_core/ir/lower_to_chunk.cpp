@@ -256,10 +256,11 @@ std::expected<vm::ObjFunction *, std::string> lowerOneFunction(const ModuleIR &m
     function_object->object_header.type = vm::ObjType::Function;
     function_object->object_header.isMarked = false;
     function_object->name_id = function_record.func_name_sid;
-    if (function_record.arity > std::numeric_limits<uint8_t>::max()) {
-        return std::unexpected("Function arity exceeds VM limit (255).");
+    if (function_record.param_count > std::numeric_limits<uint8_t>::max()) {
+        delete function_object;
+        return std::unexpected("Function parameter count exceeds VM arity limit.");
     }
-    function_object->arity = static_cast<uint8_t>(function_record.arity);
+    function_object->arity = static_cast<uint8_t>(function_record.param_count);
     function_object->max_registers = static_cast<uint16_t>(function_record.next_vreg);
 
     BytecodeWriter writer;
