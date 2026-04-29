@@ -1,0 +1,8 @@
+func helper() {
+    var x = 1; // tail
+    /*
+      multiline
+    */
+    var y = x + 2;
+    return;
+}

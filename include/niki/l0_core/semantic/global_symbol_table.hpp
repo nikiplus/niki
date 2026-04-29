@@ -11,17 +11,19 @@ enum class Kind {
 };
 
 struct GlobalSymbol {
-    uint32_t name_id;
-    Kind kind;
-    semantic::NKType type;    // Function(global_sig_id)/Obj(global_struct_id)
-    std::string owner_module; // source path
+    uint32_t name_id; ///< 符号名 id。
+    Kind kind; ///< 符号种类。
+    semantic::NKType type; ///< 符号类型：Function(sig_id) / Object(struct_id)。
+    std::string owner_module; ///< 所属模块（source path）。
 };
 
 class GlobalSymbolTable {
   public:
-    std::unordered_map<uint32_t, GlobalSymbol> symbol_table;
+    std::unordered_map<uint32_t, GlobalSymbol> symbol_table; ///< name_id -> symbol。
 
-    bool insert(GlobalSymbol sym); // false = duplicate
+    /** @brief 插入全局符号；重名返回 false。 */
+    bool insert(GlobalSymbol sym);
+    /** @brief 按 name_id 查询全局符号。 */
     const GlobalSymbol *find(uint32_t name_id) const;
 };
 

@@ -7,6 +7,7 @@
 而经过 IRBuilder + LowerToChunk 的再次降级，我们的节点才真正变成可被执行的 opcode
 */
 namespace niki::syntax {
+/** @brief 词法 token 类型枚举。 */
 enum class TokenType : uint8_t {
     /*---[symbol]符号---*/
     // 单字符符号
@@ -140,14 +141,15 @@ enum class TokenType : uint8_t {
  * line: token所在的行号
  */
 struct Token {
-    uint32_t start_offset;
-    uint32_t line;
-    uint32_t column;
-    uint16_t length;
-    TokenType type;
+    uint32_t start_offset; ///< token 在源文本中的起始偏移。
+    uint32_t line; ///< token 起始行号（1-based）。
+    uint32_t column; ///< token 起始列号（1-based）。
+    uint16_t length; ///< token 文本长度。
+    TokenType type; ///< token 类型。
 };
 
 // 为方便打印调试信息，我们将上方的token枚举与其语义对应
+/** @brief 将 TokenType 转为调试字符串。 */
 inline std::string_view toString(TokenType type) {
     switch (type) {
     case TokenType::SYM_PAREN_L:

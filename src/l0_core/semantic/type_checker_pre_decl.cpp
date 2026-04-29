@@ -9,6 +9,14 @@ namespace niki::semantic {
 // 两遍扫描第一遍：仅把「已在 GlobalSymbolTable 中的顶层符号」绑定进栈，类型句柄与 Driver 预声明一致
 //（GlobalTypeArena 的 struct / func sig id）。调用方须先 predeclare，否则报错而非回落池内下标。
 
+/**
+ * @brief 预声明分发入口：仅处理可前向引用的顶层声明。
+ * @param declIdx 声明节点索引。
+ */
+/**
+ * @brief 预声明分发入口：仅处理可前向引用的顶层声明。
+ * @param declIdx 声明节点索引。
+ */
 void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
     if (!declIdx.isvalid())
         return;
@@ -20,6 +28,14 @@ void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
     }
 }
 
+/**
+ * @brief 预声明结构体符号到当前语义作用域。
+ * @param nodeIdx StructDecl 节点索引。
+ */
+/**
+ * @brief 预声明结构体符号到当前语义作用域。
+ * @param nodeIdx StructDecl 节点索引。
+ */
 void TypeChecker::preDeclareStruct(syntax::ASTNodeIndex nodeIdx) {
     const auto [node, line, column] = getNodeCtx(nodeIdx);
     uint32_t struct_idx = node.payload.struct_decl.struct_index;
@@ -34,6 +50,14 @@ void TypeChecker::preDeclareStruct(syntax::ASTNodeIndex nodeIdx) {
     declareSymbol(struct_data.name_id, sym->type, line, column);
 }
 
+/**
+ * @brief 预声明函数符号到当前语义作用域。
+ * @param nodeIdx FunctionDecl 节点索引。
+ */
+/**
+ * @brief 预声明函数符号到当前语义作用域。
+ * @param nodeIdx FunctionDecl 节点索引。
+ */
 void TypeChecker::preDeclareFunction(syntax::ASTNodeIndex nodeIdx) {
     const auto [node, line, column] = getNodeCtx(nodeIdx);
     const syntax::FunctionData &func_data = currentPool->function_data[node.payload.func_decl.function_index];

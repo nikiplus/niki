@@ -7,8 +7,13 @@
 #include <vector>
 using namespace niki::syntax;
 
-// 顶层声明入口：仅允许声明关键字；不再接受顶层语句/表达式。
+/**
+ * @brief 解析顶层声明入口，仅接受声明关键字。
+ * @return 声明节点；不合法输入返回 ErrorNode。
+ */
 ASTNodeIndex Parser::parseTopLevelDeclaration() {
+    // DISPATCH_RULE: 顶层语法严格采用“关键字驱动分发”，避免把语句误解析到模块根级别。
+    // 这样可保证后续语义阶段默认“模块根只含声明”这一不变量。
     if (match(TokenType::KW_IMPORT)) {
         return parseImportDecl();
     } else if (match(TokenType::KW_EXPORT)) {
@@ -46,7 +51,10 @@ ASTNodeIndex Parser::parseTopLevelDeclaration() {
     return emitNode(NodeType::ErrorNode, ASTNodePayload{});
 }
 
-// 块内声明入口：优先局部声明（var/const），其余回退语句解析。
+/**
+ * @brief 解析块内声明入口（声明优先，失败回退语句）。
+ * @return 声明或语句节点。
+ */
 ASTNodeIndex Parser::parseDeclaration() {
     if (match(TokenType::KW_IMPORT) || match(TokenType::KW_EXPORT)) {
         errorAtCurrent("import/export declarations are only allowed at top level.");
@@ -88,7 +96,10 @@ ASTNodeIndex Parser::parseDeclaration() {
 }
 
 //---基础声明---
-// 函数声明：读取签名与函数体，参数以 VarDeclStmt 形式写入 FunctionData。
+/**
+ * @brief 解析函数声明。
+ * @return FunctionDecl 节点。
+ */
 ASTNodeIndex Parser::parseFunctionDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -135,6 +146,10 @@ ASTNodeIndex Parser::parseFunctionDecl() {
     payload.func_decl.function_index = astPool.function_data.size() - 1;
     return emitNode(NodeType::FunctionDecl, payload, startToken);
 }
+/**
+ * @brief 解析结构体声明并写入 StructData 旁侧表。
+ * @return StructDecl 节点。
+ */
 ASTNodeIndex Parser::parseStructDecl() {
     // 结构体声明：解析 `name : type` 字段并将 names/types 分离写入 StructData。
     Token startToken = previous;
@@ -180,7 +195,12 @@ ASTNodeIndex Parser::parseStructDecl() {
 
     return emitNode(NodeType::StructDecl, payload, startToken);
 }
+/** @brief 解析枚举声明（占位实现）。 */
 ASTNodeIndex Parser::parseEnumDecl() { return ASTNodeIndex{}; }
+/**
+ * @brief 解析类型别名声明。
+ * @return TypeAliasDecl 节点。
+ */
 ASTNodeIndex Parser::parseTypeAliasDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -193,6 +213,10 @@ ASTNodeIndex Parser::parseTypeAliasDecl() {
     return emitNode(NodeType::TypeAliasDecl, payload, startToken);
 }
 
+/**
+ * @brief 解析接口声明。
+ * @return InterfaceDecl 节点。
+ */
 ASTNodeIndex Parser::parseInterfaceDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -203,6 +227,10 @@ ASTNodeIndex Parser::parseInterfaceDecl() {
     return emitNode(NodeType::InterfaceDecl, payload, startToken);
 }
 
+/**
+ * @brief 解析 impl 声明（target [for trait] + methods）。
+ * @return ImplDecl 节点。
+ */
 ASTNodeIndex Parser::parseImplDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -229,6 +257,10 @@ ASTNodeIndex Parser::parseImplDecl() {
     return emitNode(NodeType::ImplDecl, payload, startToken);
 }
 
+/**
+ * @brief 解析 import 声明（模块导入或命名导入）。
+ * @return ImportDecl 节点。
+ */
 ASTNodeIndex Parser::parseImportDecl() {
     Token startToken = previous; // already consumed 'import'
     ASTNodePayload payload{};
@@ -275,6 +307,10 @@ ASTNodeIndex Parser::parseImportDecl() {
     return emitNode(NodeType::ImportDecl, payload, startToken);
 }
 
+/**
+ * @brief 解析 export 声明（导出列表或包裹声明）。
+ * @return ExportDecl 节点。
+ */
 ASTNodeIndex Parser::parseExportDecl() {
     Token startToken = previous; // already consumed 'export'
     ASTNodePayload payload{};
@@ -346,6 +382,10 @@ ASTNodeIndex Parser::parseExportDecl() {
     return emitNode(NodeType::ExportDecl, payload, startToken);
 }
 //---NIKI特有---
+/**
+ * @brief 解析 module 声明。
+ * @return ModuleDecl 节点。
+ */
 ASTNodeIndex Parser::parseModuleDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -356,6 +396,10 @@ ASTNodeIndex Parser::parseModuleDecl() {
     return emitNode(NodeType::ModuleDecl, payload, startToken);
 }
 
+/**
+ * @brief 解析 system 声明（依赖表达式 + 主体块）。
+ * @return SystemDecl 节点。
+ */
 ASTNodeIndex Parser::parseSystemDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -373,6 +417,10 @@ ASTNodeIndex Parser::parseSystemDecl() {
     return emitNode(NodeType::SystemDecl, payload, startToken);
 }
 
+/**
+ * @brief 解析 component 声明。
+ * @return ComponentDecl 节点。
+ */
 ASTNodeIndex Parser::parseComponentDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -388,6 +436,10 @@ ASTNodeIndex Parser::parseComponentDecl() {
     return emitNode(NodeType::ComponentDecl, payload, startToken);
 }
 
+/**
+ * @brief 解析 flow 声明。
+ * @return FlowDecl 节点。
+ */
 ASTNodeIndex Parser::parseFlowDecl() {
     Token startToken = previous; // 已消费 'flow'
     ASTNodePayload payload{};
@@ -404,6 +456,10 @@ ASTNodeIndex Parser::parseFlowDecl() {
 }
 
 // kits具体实现未敲定，暂且先保留为类似于struct和component的数据格式。
+/**
+ * @brief 解析 kits 声明（当前为占位结构）。
+ * @return KitsDecl 节点。
+ */
 ASTNodeIndex Parser::parseKitsDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -414,6 +470,10 @@ ASTNodeIndex Parser::parseKitsDecl() {
     return emitNode(NodeType::KitsDecl, payload, startToken);
 }
 
+/**
+ * @brief 解析 tag 声明。
+ * @return TagDecl 节点。
+ */
 ASTNodeIndex Parser::parseTagDecl() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -422,4 +482,5 @@ ASTNodeIndex Parser::parseTagDecl() {
     consume(TokenType::SYM_SEMICOLON, "Expected ';' after tag declaration.");
     return emitNode(NodeType::TagDecl, payload, startToken);
 }
+/** @brief 解析 taggroup 声明（占位实现）。 */
 ASTNodeIndex Parser::parseTagGroupDecl() { return ASTNodeIndex{}; }

@@ -6,10 +6,33 @@
 #include <bit>
 #include <vector>
 
+/** @builder_expr_impl: 表达式求值路径降解实现
+ * 这个文件实现表达式层降解，核心任务是回答：
+ * “一个表达式的结果值放在哪个寄存器里，以及为得到这个结果需要发射哪些 IR 指令”。
+ *
+ * 与语句层构建控制流不同，表达式层关注值流：
+ * 字面量物化、标识符解析、运算符映射、调用参数搬运、聚合构造、索引与成员访问。
+ * 每个分支都以 `out_reg` 作为统一出口，使上层语句逻辑只关心“拿到哪个寄存器”，而不关心中间细节。
+ *
+ * 该文件还承担了一部分名字可见性兜底逻辑（局部优先，其次导入/顶层），
+ * 目的是在 IR 层保持最小可执行一致性，并将不可解析情况尽早诊断，而不是延迟到后端执行时报错。
+ *
+ * 字段流说明（核心）：
+ * - 表达式节点 `expr_idx` -> `setEmitLocation`：每次降级先刷新源码位置信息。
+ * - `buildExpr(...)` 递归子调用 -> 子结果寄存器：父表达式按寄存器组合发射新指令。
+ * - 字面量常量池项 -> `emitConstant*`：把值物化到新分配的目的寄存器。
+ * - 标识符名 sid -> 局部表 / 导入与顶层检查：解析失败立即诊断，解析成功产出寄存器。
+ * - `*out_reg`：统一对外输出“本表达式结果寄存器”，供语句层继续消费。
+ */
 namespace niki::ir {
 using namespace niki::syntax;
 
 namespace {
+/**
+ * @brief 将二元/逻辑运算 token 映射到 IR 指令。
+ * @param token_type 运算符 token 类型。
+ * @return InstKind 映射成功返回对应指令，未知返回 InstKind::Nop。
+ */
 InstKind mapBinaryTokenToInst(TokenType token_type) {
     switch (token_type) {
     case TokenType::SYM_PLUS:
@@ -42,18 +65,82 @@ InstKind mapBinaryTokenToInst(TokenType token_type) {
         return InstKind::Nop;
     }
 }
+
+/**
+ * @brief 判断名称是否属于可见的导入项或模块顶层实体。
+ * @param unit 当前编译单元。
+ * @param name_sid 名称字符串 id。
+ * @return true 名称可见（函数/结构体/显式导入）。
+ * @return false 名称不可见或模块根不合法。
+ */
+bool isImportedOrTopLevelName(const GlobalCompilationUnit &unit, uint32_t name_sid) {
+    if (!unit.root.isvalid()) {
+        return false;
+    }
+    const auto &root_node = unit.pool.getNode(unit.root);
+    if (root_node.type != NodeType::ModuleDecl && root_node.type != NodeType::ProgramRoot) {
+        return false;
+    }
+    const ASTNodeIndex body_idx =
+        (root_node.type == NodeType::ModuleDecl) ? root_node.payload.module_decl.body : unit.root;
+    const auto &body_node = unit.pool.getNode(body_idx);
+    auto decls = unit.pool.get_list(body_node.payload.list.elements);
+    for (const ASTNodeIndex decl_idx : decls) {
+        if (!decl_idx.isvalid()) {
+            continue;
+        }
+        const auto &decl = unit.pool.getNode(decl_idx);
+        if (decl.type == NodeType::FunctionDecl) {
+            const auto &func_data = unit.pool.function_data[decl.payload.func_decl.function_index];
+            if (func_data.name_id == name_sid) {
+                return true;
+            }
+        } else if (decl.type == NodeType::StructDecl) {
+            const auto &struct_data = unit.pool.struct_data[decl.payload.struct_decl.struct_index];
+            if (struct_data.name_id == name_sid) {
+                return true;
+            }
+        } else if (decl.type == NodeType::ImportDecl) {
+            const auto &import_decl = unit.pool.import_decl_data[decl.payload.import_decl.import_decl_index];
+            if (import_decl.import_module_only) {
+                continue;
+            }
+            for (uint32_t i = 0; i < import_decl.item_count; ++i) {
+                const auto &item = unit.pool.import_items[import_decl.first_item_index + i];
+                if (item.local_name_id == name_sid) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 } // namespace
 
 //------------------------------------------------------------------------------
 // EXPR_ENTRY: 表达式降解入口，按表达式节点类型分发。
 //------------------------------------------------------------------------------
+/**
+ * @brief 将表达式节点降级为 IR，并返回结果寄存器。
+ * @param bc 构建上下文。
+ * @param fc 函数上下文。
+ * @param expr_idx 表达式节点索引。
+ * @param out_reg 输出寄存器编号。
+ * @return true 表达式降级成功并写入 out_reg。
+ * @return false 节点不支持、常量/操作符非法或引用解析失败。
+ */
 bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegId *out_reg) {
     if (!expr_idx.isvalid()) {
         error(bc, "Invalid expression index.", expr_idx);
         return false;
     }
+
     setEmitLocation(bc, fc, expr_idx);
     const ASTNode &expr = bc.unit->pool.getNode(expr_idx);
+
+    // DISPATCH_RULE:
+    // - 每个分支必须满足“成功时写出 *out_reg，失败时返回 false + 诊断”这一统一契约。
+    // - 复杂表达式先递归求子表达式寄存器，再发射当前层指令。
     switch (expr.type) {
     case NodeType::LiteralExpr: {
         // LITERAL: 字面量物化到新寄存器。
@@ -94,17 +181,27 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         *out_reg = destination_reg;
         return true;
     }
+
     case NodeType::IdentifierExpr: {
-        // IDENT: 当前阶段仅在函数局部寄存器映射中解析标识符。
+        // IDENT: 先查函数局部；否则按全局符号加载（用于跨函数/跨模块引用）。
         const uint32_t name_sid = expr.payload.identifier.name_id;
         auto it = fc.local_vreg_by_name_sid.find(name_sid);
         if (it != fc.local_vreg_by_name_sid.end()) {
             *out_reg = it->second;
             return true;
         }
-        error(bc, "Identifier is unresolved in current function scope.", expr_idx);
-        return false;
+        if (!isImportedOrTopLevelName(*bc.unit, name_sid)) {
+            error(bc, "Identifier is unresolved in current function scope.", expr_idx);
+            return false;
+        }
+        const RegId destination_reg = allocVReg(bc, fc);
+        emit(bc, fc, InstKind::LoadGlobal, ValueKind::VReg, destination_reg, 0, 0, ValueKind::ImmI64,
+             static_cast<uint32_t>(name_sid), static_cast<int64_t>(name_sid), 0,
+             ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
+        *out_reg = destination_reg;
+        return true;
     }
+
     case NodeType::BinaryExpr:
     case NodeType::LogicalExpr: {
         // BINARY: 二元/逻辑表达式统一降解为二元算术指令形态。
@@ -136,6 +233,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         *out_reg = destination_reg;
         return true;
     }
+
     case NodeType::UnaryExpr: {
         // UNARY: 一元+降解为 Move，一元-和!降解为专用 opcode。
         RegId operand_reg = 0;
@@ -157,6 +255,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         *out_reg = destination_reg;
         return true;
     }
+
     case NodeType::CallExpr: {
         // CALL: 调用约定降解。
         // STEP: 先求值 callee 与每个参数表达式。
@@ -177,6 +276,10 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
             }
             argument_value_regs.push_back(argument_value_reg);
         }
+        // 调用约定说明（仅说明一次）：
+        // 1) 参数表达式先各自求值得到 value regs；
+        // 2) 再搬运到连续参数槽位寄存器窗口；
+        // 3) OP_CALL 记录起始槽位 + 参数个数，callee 按窗口读取。
         std::vector<RegId> argument_slot_regs;
         argument_slot_regs.reserve(argument_value_regs.size());
         for (size_t argument_index = 0; argument_index < argument_value_regs.size(); ++argument_index) {
@@ -196,8 +299,9 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         *out_reg = destination_reg;
         return true;
     }
+
     case NodeType::ArrayExpr: {
-        // ARRAY: 聚合构造降解为 NewArray + PushArray*。
+        // ARRAY/MAP 采用同一模板：先创建容器，再逐元素（或键值对）追加写入。
         auto elements = bc.unit->pool.get_list(expr.payload.list.elements);
         const RegId destination_reg = allocVReg(bc, fc);
         setEmitLocation(bc, fc, expr_idx);
@@ -215,8 +319,9 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         *out_reg = destination_reg;
         return true;
     }
+
     case NodeType::MapExpr: {
-        // MAP: 聚合构造降解为 NewMap + SetMap*。
+        // 复用上方“先创建后填充”模板，这里只处理 map 的键值对版本。
         const uint32_t map_idx = expr.payload.map.map_data_index;
         if (map_idx >= bc.unit->pool.map_data.size()) {
             error(bc, "Map expression payload index out of range.", expr_idx);
@@ -246,6 +351,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         *out_reg = destination_reg;
         return true;
     }
+
     case NodeType::IndexExpr: {
         // INDEX_GET: 索引读取降解为 GetIndex(target, index) -> dst。
         RegId target = 0;
@@ -261,6 +367,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         *out_reg = destination_reg;
         return true;
     }
+
     case NodeType::MemberExpr: {
         // MEMBER_GET: 成员读取降解为 GetMember(object, property_id) -> dst。
         RegId object = 0;
@@ -274,6 +381,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
         *out_reg = destination_reg;
         return true;
     }
+
     default:
         error(bc, "Expression node is not supported by current flat IR builder.", expr_idx);
         return false;

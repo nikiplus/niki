@@ -2,6 +2,7 @@
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/semantic/global_symbol_table.hpp"
 #include "niki/l0_core/semantic/global_type_arena.hpp"
+#include "niki/l0_core/semantic/module_semantic.hpp"
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/syntax/ast_payloads.hpp"
@@ -11,6 +12,28 @@
 #include <string>
 #include <vector>
 
+/** @type_checker: 语义一致性与类型约束求解入口
+ * 这个头文件定义了语义阶段最关键的“收口器”：TypeChecker。
+ * Parser 只能保证语法结构合法，无法回答“这个表达式的类型是什么”“这个名字是否可见”“这个赋值是否允许”。
+ * 这些问题必须在语义层统一解决，否则后续 IR 构建只能在不确定前提下工作。
+ *
+ * 从编译原理看，TypeChecker 做的是“带作用域环境的约束验证”：
+ * - 名字解析：标识符要在当前局部作用域、可见符号表或全局符号表中可解析；
+ * - 类型约束：二元/一元/调用等表达式要满足操作数和结果类型规则；
+ * - 控制流约束：return/break/continue 的使用位置必须合法；
+ * - 模块边界：导入可见性与全局预声明结果要一致。
+ *
+ * 从数据流角度，类型检查并不单纯“返回一个结果对象”，它会把推导类型回填到 `ASTPool.node_types`。
+ * 这是一个非常重要的工程决策：后续 IRBuilder 不再重复推导类型，而是消费语义层已经确定的类型标签。
+ * 这种“单一事实来源”能显著减少前后阶段类型分歧。
+ *
+ * 这里之所以显式持有 `GlobalSymbolTable` / `GlobalTypeArena` / `UnitVisibleSymbols`，
+ * 是为了把“单文件局部语义”与“项目级全局语义”接起来。
+ * 没有这三个上下文，跨文件函数、结构体、导入别名等场景将无法稳定判定。
+ *
+ * 总结：type_checker.hpp 描述的是语义阶段的核心契约。
+ * 它把“语法上能写”过滤成“语义上可成立且可继续编译”，为 IR 层提供可信输入边界。
+ */
 namespace niki::semantic {
 
 // 检查结果：成功则返回空，失败则返回错误列表
@@ -28,6 +51,9 @@ class TypeChecker {
                                                                           syntax::ASTNodeIndex root,
                                                                           const GlobalSymbolTable &global_symbols,
                                                                           const GlobalTypeArena &global_arena);
+    std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> check(
+        syntax::ASTPool &pool, syntax::ASTNodeIndex root, const GlobalSymbolTable &global_symbols,
+        const GlobalTypeArena &global_arena, const UnitVisibleSymbols &visible_symbols);
 
   private:
     syntax::ASTPool *currentPool = nullptr;
@@ -35,6 +61,7 @@ class TypeChecker {
 
     const GlobalSymbolTable *globalSymbols = nullptr;
     const GlobalTypeArena *globalArena = nullptr;
+    const UnitVisibleSymbols *visibleSymbols = nullptr;
 
     NKType currentReturnType = NKType::makeUnknown();
     bool inFunction = false;

@@ -23,6 +23,12 @@ using namespace niki::vm;
 
 // --- 对外入口：脚本 chunk / 命名函数 ---
 
+/**
+ * @brief 执行裸 Chunk（脚本入口）。
+ * @param chunk 待执行字节码块。
+ * @param should_print 是否打印顶层返回值。
+ * @return 成功返回结果值，失败返回运行时错误码。
+ */
 std::expected<Value, InterpretResult> VM::executeChunk(const Chunk &chunk, bool should_print) {
     current_string_pool = &chunk.string_pool;
 
@@ -58,6 +64,12 @@ std::expected<Value, InterpretResult> VM::executeChunk(const Chunk &chunk, bool 
     return result;
 }
 
+/**
+ * @brief 执行函数对象入口。
+ * @param function 函数对象。
+ * @param should_print 是否打印顶层返回值。
+ * @return 成功返回结果值，失败返回运行时错误码。
+ */
 std::expected<Value, InterpretResult> VM::executeFunction(ObjFunction *function, bool should_print) {
     if (function == nullptr) {
         return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -79,11 +91,21 @@ std::expected<Value, InterpretResult> VM::executeFunction(ObjFunction *function,
 
 // --- 全局符号查询（供 launcher / 测试）---
 
+/**
+ * @brief 按 name_id 查询全局函数表。
+ * @param id 字符串池 id。
+ * @return 命中返回函数指针，否则 nullptr。
+ */
 ObjFunction *VM::lookupGlobalFunctionById(uint32_t id) {
     auto global_function_iter = globals.find(id);
     return global_function_iter == globals.end() ? nullptr : global_function_iter->second;
 }
 
+/**
+ * @brief 按名字查询全局函数（MVP：线性扫描字符串池）。
+ * @param name 函数名文本。
+ * @return 命中返回函数指针，否则 nullptr。
+ */
 ObjFunction *VM::lookupGlobalFunctionByName(const std::string &name) {
     if (current_string_pool == nullptr) {
         return nullptr;
@@ -98,6 +120,10 @@ ObjFunction *VM::lookupGlobalFunctionByName(const std::string &name) {
 
 // --- 错误报告 ---
 
+/**
+ * @brief 输出运行时错误并打印调用栈。
+ * @param format printf 风格格式串。
+ */
 void VM::runtime_error(const char *format, ...) {
     std::cerr << "Runtime Error:";
     va_list args;
@@ -136,6 +162,11 @@ void VM::runtime_error(const char *format, ...) {
 
 // --- 常量池与指令安全读取 ---
 
+/**
+ * @brief 从当前帧常量池读取值。
+ * @param index 常量索引。
+ * @return 读取成功返回值，越界返回 RUNTIME_ERROR。
+ */
 std::expected<Value, InterpretResult> VM::readConstantByIndex(uint32_t index) {
     if (index >= currentFrame->function->chunk.constants.size()) {
         runtime_error("Constant index out of range: %u", index);
@@ -144,6 +175,11 @@ std::expected<Value, InterpretResult> VM::readConstantByIndex(uint32_t index) {
     return currentFrame->function->chunk.constants[index];
 };
 
+/**
+ * @brief 从当前 ip 读取单字节并前进。
+ * @param byte_out 输出字节。
+ * @return 成功为 true，越界/截断为 false。
+ */
 bool VM::tryReadByte(uint8_t *byte_out) {
     // ip 相对 chunk 尾部的剩余字节数必须 ≥1，否则视为截断或损坏字节码。
     const auto &code = currentFrame->function->chunk.code;
@@ -158,6 +194,11 @@ bool VM::tryReadByte(uint8_t *byte_out) {
     return true;
 }
 
+/**
+ * @brief 从当前 ip 读取大端 16 位立即数并前进。
+ * @param short_out 输出立即数。
+ * @return 成功为 true，越界/截断为 false。
+ */
 bool VM::tryReadShort(uint16_t *short_out) {
     // 大端 uint16：先校验再前进 ip，避免先越界再读 ip[-2]。
     const auto &code = currentFrame->function->chunk.code;
@@ -175,6 +216,11 @@ bool VM::tryReadShort(uint16_t *short_out) {
     return true;
 }
 
+/**
+ * @brief 从当前 ip 向前相对跳转。
+ * @param offset 偏移字节数。
+ * @return 跳转目标合法返回 true，否则 false。
+ */
 bool VM::tryJumpForward(uint16_t offset) {
     // 条件/无条件前向跳转：ip 已指向操作数之后，offset 为相对前移字节数。
     // 这是“显式改写下一条执行地址”的动作，本质对应硬件层面对 PC 的重定向。
@@ -190,6 +236,11 @@ bool VM::tryJumpForward(uint16_t offset) {
     return true;
 }
 
+/**
+ * @brief 从当前 ip 向后相对回跳。
+ * @param offset 偏移字节数。
+ * @return 跳转目标合法返回 true，否则 false。
+ */
 bool VM::tryJumpBackward(uint16_t offset) {
     // OP_LOOP：回跳到循环头，目标不得早于 code 首字节。
     // 循环并非“回到源码再解析”，而是把 ip/PC 直接回写到先前字节码位置。
@@ -206,6 +257,10 @@ bool VM::tryJumpBackward(uint16_t offset) {
 
 // --- 类型守卫：在读取 .as.integer / .as.floating 前校验标签（防损坏 bytecode）---
 
+/**
+ * @brief 校验并解包二元整数操作数。
+ * @return 校验通过返回 true，否则 false。
+ */
 bool VM::requireInt64(Value left, Value right, int64_t *left_integer, int64_t *right_integer) {
     if (left.type != ValueType::Integer || right.type != ValueType::Integer) {
         runtime_error("Operands must be integers.");
@@ -216,6 +271,10 @@ bool VM::requireInt64(Value left, Value right, int64_t *left_integer, int64_t *r
     return true;
 }
 
+/**
+ * @brief 校验并解包二元浮点操作数。
+ * @return 校验通过返回 true，否则 false。
+ */
 bool VM::requireFloat64(Value left, Value right, double *left_float, double *right_float) {
     if (left.type != ValueType::Float || right.type != ValueType::Float) {
         runtime_error("Operands must be floats.");
@@ -226,6 +285,12 @@ bool VM::requireFloat64(Value left, Value right, double *left_float, double *rig
     return true;
 }
 
+/**
+ * @brief 校验并解包单浮点操作数。
+ * @param value 输入值。
+ * @param resolved_float 输出浮点载荷。
+ * @return 校验通过返回 true，否则 false。
+ */
 bool VM::requireFloat64(Value value, double *resolved_float) {
     if (value.type != ValueType::Float) {
         runtime_error("Operand must be a float.");
@@ -238,6 +303,11 @@ bool VM::requireFloat64(Value value, double *resolved_float) {
 // --- 主解释循环 ---
 // VM_RB_(x) / VM_RS_(x)：声明局部操作数并从 ip 读取；失败则 return RUNTIME_ERROR（见文件头说明）。
 
+/**
+ * @brief VM 主解释循环（Fetch-Decode-Execute）。
+ * @param should_print 顶层返回时是否打印结果。
+ * @return 成功返回最终值，失败返回 RUNTIME_ERROR。
+ */
 std::expected<Value, InterpretResult> VM::run(bool should_print) {
 #define VM_RB_(name)                                                                                                   \
     uint8_t name;                                                                                                      \
@@ -284,6 +354,10 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             currentRegisters()[targetReg] = currentRegisters()[srcReg];
             break;
         }
+        // 数值二元运算模式（解释一次）：
+        // 1) 读取 target/left/right 三寄存器；
+        // 2) 通过 requireInt64/requireFloat64 做标签守卫与解包；
+        // 3) 执行算术并写回 target。
         case OPCODE::OP_IADD: {
             VM_RB_(targetReg);
             VM_RB_(leftReg);
@@ -372,6 +446,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
 
+            // DICE 语义：重复 count 次生成 [1, sides] 的离散随机数并累加。
             int64_t total = 0;
             for (int64_t i = 0; i < count; ++i) {
                 total += (static_cast<int64_t>(std::rand()) % sides) + 1;
@@ -459,6 +534,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             currentRegisters()[targetReg] = Value::makeObject(new_str);
             break;
         }
+        // 一元操作模式：读取 src，完成类型守卫，然后写回 target。
         case OPCODE::OP_NEG: {
             VM_RB_(targetReg);
             VM_RB_(srcReg);
@@ -569,6 +645,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
 
+        // 常量装载：直接把语言常量映射为运行时 Value。
         case OPCODE::OP_TRUE: {
             VM_RB_(targetReg);
             currentRegisters()[targetReg] = Value::makeBool(true);
@@ -584,6 +661,10 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             currentRegisters()[targetReg] = Value::makeNil();
             break;
         }
+        // 容器指令模式（解释一次，后续复用）：
+        // 1) 先校验寄存器中对象类型；
+        // 2) 再进行边界/键存在性检查；
+        // 3) 最后写回目标寄存器或原地更新堆对象。
         case OPCODE::OP_NEW_MAP: {
             VM_RB_(targetReg);
             VM_RB_(initial_capacity);
@@ -711,6 +792,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             Value left = currentRegisters()[leftReg];
             Value right = currentRegisters()[rightReg];
 
+            // 逻辑运算沿用语言层 truthy 规则：bool 原值、int 按是否为 0、其余默认 false。
             bool l_bool = false;
             if (left.type == ValueType::Bool)
                 l_bool = left.as.boolean;
@@ -749,6 +831,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             currentRegisters()[targetReg] = Value::makeBool(l_bool || r_bool);
             break;
         }
+        // 比较运算模式（解释一次）：
+        // - 整型/浮点比较分别复用 requireInt64/requireFloat64；
+        // - 比较结果统一写入 Bool。
         // int == int
         case OPCODE::OP_IEQ: {
             VM_RB_(targetReg);
@@ -923,6 +1008,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             currentRegisters()[outReg] = result;
             break;
         }
+        // 控制流跳转模式：读取 offset 后只通过 tryJump* 改写 ip，避免直接裸算指针。
         case OPCODE::OP_JMP: {
             VM_RS_(offset);
             if (!tryJumpForward(offset))
@@ -959,6 +1045,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             VM_RB_(condReg);
             VM_RS_(offset);
 
+            // 与 OP_JZ 对称：保留统一 truthy 规则，避免分支语义在不同 opcode 里漂移。
             bool is_true = false;
 
             if (currentRegisters()[condReg].type == ValueType::Bool) {
@@ -979,6 +1066,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
         }
 
         // --- 全局定义与解析（与 linker 之后 init chunk 配合）---
+        // 全局符号协议：顶层对象仅允许 Function / StructDef，其他对象拒绝写入符号表。
         case OPCODE::OP_DEFINE_GLOBAL: {
             VM_RB_(constIdx);
             auto funcVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
@@ -1068,6 +1156,56 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             break;
         }
 
+        case OPCODE::OP_SET_GLOBAL: {
+            VM_RB_(valueReg);
+            VM_RB_(constIdx);
+            auto nameIdVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
+            if (!nameIdVal.has_value()) {
+                return std::unexpected(nameIdVal.error());
+            }
+            uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
+            Value value = currentRegisters()[valueReg];
+            if (value.type != ValueType::Object || value.as.object == nullptr) {
+                runtime_error("Top-level symbol write expects object value.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            Object *object = static_cast<Object *>(value.as.object);
+            if (object->type == ObjType::StructDef) {
+                global_objects[name_id] = object;
+            } else if (object->type == ObjType::Function) {
+                globals[name_id] = static_cast<ObjFunction *>(static_cast<void *>(object));
+            } else {
+                runtime_error("Top-level symbol write only supports function/struct definitions.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            break;
+        }
+
+        case OPCODE::OP_SET_GLOBAL_W: {
+            VM_RB_(valueReg);
+            VM_RS_(constIdx);
+            auto nameIdVal = readConstantByIndex(static_cast<uint32_t>(constIdx));
+            if (!nameIdVal.has_value()) {
+                return std::unexpected(nameIdVal.error());
+            }
+            uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
+            Value value = currentRegisters()[valueReg];
+            if (value.type != ValueType::Object || value.as.object == nullptr) {
+                runtime_error("Top-level symbol write expects object value.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            Object *object = static_cast<Object *>(value.as.object);
+            if (object->type == ObjType::StructDef) {
+                global_objects[name_id] = object;
+            } else if (object->type == ObjType::Function) {
+                globals[name_id] = static_cast<ObjFunction *>(static_cast<void *>(object));
+            } else {
+                runtime_error("Top-level symbol write only supports function/struct definitions.");
+                return std::unexpected(InterpretResult::RUNTIME_ERROR);
+            }
+            break;
+        }
+
         case OPCODE::OP_NEW_INSTANCE: {
             VM_RB_(outReg);
             VM_RB_(calleeReg);
@@ -1092,6 +1230,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
 
             ObjInstance *instance = allocateInstance(struct_definition);
+            // 按字段序将构造参数复制到实例，保持 lowering 的参数顺序约定。
             for (uint8_t argument_index = 0; argument_index < argc; ++argument_index) {
                 instance->fields[argument_index] = currentRegisters()[argStartReg + argument_index];
             }
@@ -1191,6 +1330,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             // 工业级做法通常是将 Caller 的 outReg 保存在 CallFrame 结构中。
             // 这里我们临时借用一个机制：在 CallFrame 里增加 out_register 字段。
 
+            // 入栈后 currentFrame 切换到被调函数；下一轮循环从新帧 ip 继续取指。
             frames.push_back(CallFrame{.function = callee_function,
                                        .ip = const_cast<uint8_t *>(callee_function->chunk.code.data()),
                                        .base_register = new_base,
@@ -1202,7 +1342,9 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             VM_RB_(targetReg);
             Value val = currentRegisters()[targetReg];
             if (val.type == ValueType::Object && val.as.object != nullptr) {
-                // 根据具体的对象类型，执行彻底的物理销毁
+                // 所有权约定（MVP）：
+                // - 局部新建对象（String/Array/Map/Instance）可在此直接释放；
+                // - 全局注册对象（Function/StructDef）由更高层生命周期管理，不在这里释放。
                 Object *object = static_cast<Object *>(val.as.object);
                 switch (object->type) {
                 case ObjType::Function:
@@ -1213,6 +1355,7 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                     break;
                 case ObjType::Array: {
                     ObjArray *array_object = asArray(val);
+                    // Array 采用“头+元素块”分离布局，释放顺序必须先元素块后对象头。
                     if (array_object->elements != nullptr) {
                         std::free(array_object->elements); // 释放分离的数据块
                     }

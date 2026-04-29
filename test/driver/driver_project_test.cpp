@@ -75,3 +75,28 @@ TEST(DriverProjectTest, DiceBasicCaseReportsUnsupportedOperatorInCurrentIRBuilde
               std::string::npos);
 }
 
+TEST(DriverProjectTest, ExplicitImportCaseRunsSuccessfully) {
+    niki::driver::Driver driver;
+    niki::driver::DriverOptions options;
+    options.recursive_scan = false;
+    options.entry_name = "main";
+
+    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/05_import_explicit"), options);
+    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
+    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
+    EXPECT_EQ(result->as.integer, 42);
+}
+
+TEST(DriverProjectTest, MissingImportedSymbolShouldFailBeforeRuntime) {
+    niki::driver::Driver driver;
+    niki::driver::DriverOptions options;
+    options.recursive_scan = false;
+    options.entry_name = "main";
+
+    auto result = driver.runProject(resolveCaseDirOrDie("cases/fail/semantic_02_import_missing_symbol"), options);
+    ASSERT_FALSE(result.has_value());
+    ASSERT_FALSE(result.error().empty());
+    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Imported symbol not exported."),
+              std::string::npos);
+}
+

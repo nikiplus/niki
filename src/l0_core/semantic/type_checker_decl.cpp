@@ -8,6 +8,10 @@
 
 namespace niki::semantic {
 
+/**
+ * @brief 顶层声明检查分发器。
+ * @param declIdx 声明节点索引。
+ */
 void TypeChecker::checkDeclaration(syntax::ASTNodeIndex declIdx) {
     // 声明分发器：
     // 统一把“非表达式/非语句”的节点路由到各类声明检查函数。
@@ -63,6 +67,10 @@ void TypeChecker::checkDeclaration(syntax::ASTNodeIndex declIdx) {
     }
 }
 
+/**
+ * @brief 检查模块声明主体（Two-Pass：预声明 + 细节检查）。
+ * @param nodeIdx ModuleDecl 节点索引。
+ */
 void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
     // Two-Pass 入口：
     // Pass 1: 预声明顶层符号（函数/结构体等），解决前向引用。
@@ -82,7 +90,12 @@ void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
     }
 }
 
+/** @brief ProgramRoot 入口复用模块检查逻辑。 */
 void TypeChecker::checkProgramRoot(syntax::ASTNodeIndex nodeIdx) { checkModuleDecl(nodeIdx); }
+/**
+ * @brief 检查函数声明（签名/参数作用域/函数体）。
+ * @param nodeIdx FunctionDecl 节点索引。
+ */
 void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
     // 函数检查流程：
     // 1) 提取参数/返回类型
@@ -132,7 +145,12 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
 
     endScope();
 }
+/** @brief 检查接口方法声明（占位实现）。 */
 void TypeChecker::checkInterfaceMethod(syntax::ASTNodeIndex nodeIdx) {}
+/**
+ * @brief 检查结构体声明（字段类型可解析性）。
+ * @param nodeIdx StructDecl 节点索引。
+ */
 void TypeChecker::checkStructDecl(syntax::ASTNodeIndex nodeIdx) {
     // 结构体声明检查：
     // 当前阶段仅校验字段类型标注能被解析（不存在类型会在 resolveTypeAnnotation 报错）。
@@ -145,15 +163,25 @@ void TypeChecker::checkStructDecl(syntax::ASTNodeIndex nodeIdx) {
         resolveTypeAnnotation(types[i]); // 这里会隐式地报错如果类型不存在
     }
 }
+/** @brief 检查枚举声明（占位实现）。 */
 void TypeChecker::checkEnumDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查类型别名声明（占位实现）。 */
 void TypeChecker::checkTypeAliasDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查接口声明（占位实现）。 */
 void TypeChecker::checkInterfaceDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 impl 声明（占位实现）。 */
 void TypeChecker::checkImplDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 system 声明（占位实现）。 */
 void TypeChecker::checkSystemDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 component 声明（占位实现）。 */
 void TypeChecker::checkComponentDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 flow 声明（占位实现）。 */
 void TypeChecker::checkFlowDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 kits 声明（占位实现）。 */
 void TypeChecker::checkKitsDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 tag 声明（占位实现）。 */
 void TypeChecker::checkTagDecl(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 taggroup 声明（占位实现）。 */
 void TypeChecker::checkTagGroupDecl(syntax::ASTNodeIndex nodeIdx) {}
 
 } // namespace niki::semantic

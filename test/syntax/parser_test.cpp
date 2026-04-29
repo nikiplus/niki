@@ -100,6 +100,16 @@ TEST_F(ParserTest, ParseExpression_DiceMixedWithAdd) {
     EXPECT_EQ(astStr, "(module\n  (func test() (block (var x = (+ (d 1 10) (d 1 (+ 1 3)))))))");
 }
 
+TEST_F(ParserTest, ParseWithCommentsShouldSucceed) {
+    auto root = parseSource("func test() { // line\n /* block */ var x = 1; return x; }");
+    ASSERT_TRUE(root.isvalid());
+
+    ASTPrinter printer(pool);
+    std::string astStr = printer.print(root);
+    EXPECT_NE(astStr.find("(func test()"), std::string::npos);
+    EXPECT_NE(astStr.find("(var x = 1)"), std::string::npos);
+}
+
 // 【测试用例 3】解析完整的 test.nk 脚本文件
 TEST_F(ParserTest, ParseFullScript_TestNK) {
     std::string sourceCode = readScriptOrDie("test.nk");

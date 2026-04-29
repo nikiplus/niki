@@ -1,7 +1,7 @@
 # Niki 项目健康度体检报告（P0）
 
 **文档性质**：工程诊断与优先级建议，与 `MILESTONES.md` 中的 M0～M2 对齐。  
-**更新说明**：首版整理自 2026-04 代码审查；含二次深入核对（VM 指令分发、Driver 流水线、语义层与测试矩阵）。  
+**更新说明**：首版整理自 2026-04 代码审查；含二次深入核对（VM 指令分发、Driver 流水线、语义层与测试矩阵）。2026-04-29 已按仓库当前状态复核并修正路径/测试清单。  
 **迁移注记**：文中部分条目基于旧 `Compiler` 路径描述；当前主链路已迁移为 `IRBuilder -> Verify -> LowerToChunk`。
 
 ---
@@ -14,6 +14,12 @@
 2. **语义检查按单文件 AST 进行**，跨文件符号对类型系统不可见；与「项目级 Driver + Linker」组合在一起时，会出现「链接/运行可能成立，但语义层不成立」或相反的不一致，需尽早定策略并收口。
 3. **Linker 的字符串池合并与操作数重映射**在头文件中承诺为后续能力，`.cpp` 中仍为占位实现；在依赖「全项目共享 `GlobalInterner`」的前提下可维持 MVP，但必须把**不变量写死并加测试**，否则后续一改链接策略就容易出现隐蔽错误。
 4. **回归测试**当前未覆盖 `TypeChecker` / 端到端 Driver 项目；仅靠单元测试与手工脚本时，上述问题容易反复回归。
+
+### 2026-04-29 现状快照
+
+- `cmake --build build` 可通过（当前工作区状态下实测）。
+- `ctest --test-dir build --output-on-failure` 为 **36/36 通过**。
+- 代码仍存在若干架构级 P0 问题（本报告 P0-1 ～ P0-3），但工程基线处于可回归状态。
 
 ---
 
@@ -129,7 +135,7 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 
 ### 当前 `CMakeLists.txt` 中 `niki_tests` 组成
 
-- `scanner_test` / `parser_test` / `linker_test` / `launcher_test`
+- `scanner_test` / `parser_test` / `builder_test` / `verify_test` / `module_ir_test` / `driver_project_test` / `linker_test` / `launcher_test`
 
 ### 缺口
 
@@ -197,13 +203,13 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 |------|------|
 | 里程碑与验收 | `MILESTONES.md` |
 | 诊断规范 | `docs/diagnostic_conventions.md` |
-| Opcode 枚举 | `include/niki/vm/opcode.hpp` |
-| VM 分发 | `src/vm/vm.cpp` |
+| Opcode 枚举 | `include/niki/l0_core/vm/opcode.hpp` |
+| VM 分发 | `src/l0_core/vm/vm.cpp` |
 | IR 降级实现 | `src/l0_core/ir/lower_to_chunk.cpp` |
 | Driver 流水线 | `src/driver/driver.cpp` |
-| Linker MVP 与占位 | `src/linker/linker.cpp` |
-| 语义二元表达式 | `src/semantic/type_checker_expr.cpp` |
-| 启动与入口 | `src/runtime/launcher.cpp` |
+| Linker MVP 与占位 | `src/l0_core/linker/linker.cpp` |
+| 语义二元表达式 | `src/l0_core/semantic/type_checker_expr.cpp` |
+| 启动与入口 | `src/l0_core/runtime/launcher.cpp` |
 | 测试注册 | `CMakeLists.txt` |
 | 跨文件语义用例（脚本） | `scripts/cases/fail/semantic_01_cross_file_call/` |
 

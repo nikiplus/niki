@@ -9,6 +9,11 @@
 
 namespace niki::semantic {
 
+/**
+ * @brief 表达式检查分发入口，并将结果回填到 ASTPool::node_types。
+ * @param exprIdx 表达式节点索引。
+ * @return 推导类型。
+ */
 NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
     // 入口：分发到 checkXXXExpr，并将结果类型回填 node_types。
     auto [node, line, column] = getNodeCtx(exprIdx);
@@ -72,6 +77,7 @@ NKType TypeChecker::checkExpression(syntax::ASTNodeIndex exprIdx) {
 
 // ... [Existing implementations] ...
 
+/** @brief 检查字面量表达式并返回基础类型。 */
 NKType TypeChecker::checkLiteralExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
     switch (node.payload.literal.literal_type) {
@@ -89,6 +95,7 @@ NKType TypeChecker::checkLiteralExpr(syntax::ASTNodeIndex nodeIdx) {
     }
 }
 
+/** @brief 检查标识符表达式并解析其符号类型。 */
 NKType TypeChecker::checkIdentifierExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
@@ -97,6 +104,11 @@ NKType TypeChecker::checkIdentifierExpr(syntax::ASTNodeIndex nodeIdx) {
     return type;
 }
 
+/**
+ * @brief 检查二元表达式（算术/比较/位运算/拼接/骰子）。
+ * @param nodeIdx BinaryExpr 节点索引。
+ * @return 推导类型（含错误恢复兜底类型）。
+ */
 NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
     // 二元检查：先求左右类型，再按运算符做约束校验与错误恢复。
     auto [node, line, column] = getNodeCtx(nodeIdx);
@@ -189,6 +201,7 @@ NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
     }
 }
 
+/** @brief 检查数组字面量表达式。 */
 NKType TypeChecker::checkArrayExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
     auto elements = currentPool->get_list(node.payload.list.elements);
@@ -215,6 +228,7 @@ NKType TypeChecker::checkArrayExpr(syntax::ASTNodeIndex nodeIdx) {
     return NKType(NKBaseType::Array, -1);
 }
 
+/** @brief 检查映射字面量表达式。 */
 NKType TypeChecker::checkMapExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
     const auto &map_data = currentPool->map_data[node.payload.map.map_data_index];
@@ -244,6 +258,7 @@ NKType TypeChecker::checkMapExpr(syntax::ASTNodeIndex nodeIdx) {
     return NKType(NKBaseType::Map, -1);
 }
 
+/** @brief 检查索引表达式。 */
 NKType TypeChecker::checkIndexExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
 
@@ -265,6 +280,7 @@ NKType TypeChecker::checkIndexExpr(syntax::ASTNodeIndex nodeIdx) {
     return NKType::makeUnknown();
 }
 
+/** @brief 检查逻辑表达式并返回 Bool。 */
 NKType TypeChecker::checkLogicalExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
     NKType leftType = checkExpression(node.payload.logical.left);
@@ -278,6 +294,7 @@ NKType TypeChecker::checkLogicalExpr(syntax::ASTNodeIndex nodeIdx) {
     return NKType::makeBool();
 }
 
+/** @brief 检查一元表达式。 */
 NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
     NKType opType = checkExpression(node.payload.unary.operand);
@@ -304,6 +321,11 @@ NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) {
         return NKType::makeUnknown();
     }
 }
+/**
+ * @brief 检查函数调用或结构体构造调用。
+ * @param nodeIdx CallExpr 节点索引。
+ * @return 调用返回类型。
+ */
 NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
     // 调用检查：区分 Function/Object 两条路径，校验参数个数与类型匹配。
     auto [node, line, column] = getNodeCtx(nodeIdx);
@@ -373,6 +395,7 @@ NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
     return sig->return_type;
 }
 
+/** @brief 检查成员访问表达式。 */
 NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) {
     // 成员检查：对象必须是 struct/object，并按字段名回查字段类型。
     auto [node, line, column] = getNodeCtx(nodeIdx);
@@ -408,10 +431,15 @@ NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) {
     reportError(line, column, "Struct does not have this field.");
     return NKType::makeUnknown();
 }
+/** @brief 检查 dispatch 表达式（占位实现）。 */
 NKType TypeChecker::checkDispatchExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+/** @brief 检查 await 表达式（占位实现）。 */
 NKType TypeChecker::checkAwaitExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+/** @brief 检查 borrow 表达式（占位实现）。 */
 NKType TypeChecker::checkBorrowExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+/** @brief 检查 wildcard 表达式（占位实现）。 */
 NKType TypeChecker::checkWildcardExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
+/** @brief 检查隐式转换表达式（占位实现）。 */
 NKType TypeChecker::checkImplicitCastExpr(syntax::ASTNodeIndex nodeIdx) { return NKType::makeUnknown(); }
 
 } // namespace niki::semantic

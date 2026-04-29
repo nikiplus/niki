@@ -7,24 +7,48 @@
 #include <span>
 #include <string_view>
 
+/** @parser: Token 流到 AST 的结构化构建器
+ * 这个头文件定义了解析阶段的核心契约：把 scanner 产出的 token 序列组织成 AST。
+ * 与 scanner 的“字符切分”不同，parser 关心的是语法结构关系：表达式优先级、语句边界、声明层级。
+ *
+ * 这里采用 Pratt + 递归下降的混合策略并非偶然：
+ * - Pratt 适合表达式优先级解析，能以统一框架处理中缀/前缀/后缀操作；
+ * - 递归下降适合语句与顶层声明，分支可读性高、错误恢复点更可控。
+ * 这种组合通常能在复杂度、可维护性与性能之间取得稳定平衡。
+ *
+ * `ParseResult` 里同时返回 root 与 diagnostics，说明解析阶段并不追求“遇错即停”的理想化模型，
+ * 而是追求“尽可能恢复并继续前进”的工程模型。`panicMode + synchronize` 就是这种错误恢复策略的实现边界。
+ *
+ * 另一个关键约束是 AST 内存归属：Parser 不自行分配节点，而是写入外部注入的 ASTPool。
+ * 这能统一节点生命周期管理，保证旁侧表（位置、类型回填）与节点主表保持索引对齐。
+ *
+ * 总结：parser.hpp 描述的是从线性 token 到层次 AST 的组织协议，
+ * 它是语法前端的结构分水岭，也为后续语义检查提供唯一可信的树形输入。
+ */
 // 我们将解析器分为两部分实现，第一部分为表达式解析器，该部分我们使用普拉特解析算法，
 //  第二部分为语句解析器&顶层声明，该部分我们手写递归下降来保证性能。
 // 在此之前，我们需要定义一个parser类，来链接表达式解析器和语句/顶层声明解析器。
 namespace niki::syntax {
 
 struct ParseResult {
-    ASTNodeIndex root = ASTNodeIndex::invalid();
-    niki::diagnostic::DiagnosticBag diagnostics;
+    ASTNodeIndex root = ASTNodeIndex::invalid(); ///< 解析得到的根节点索引。
+    niki::diagnostic::DiagnosticBag diagnostics; ///< 解析阶段诊断集合。
 };
 
 class Parser {
   public:
-    // 严禁 Parser 自行分配内存，必须由数据池（astpool） 注入内存池
+    /**
+     * @brief 构造 Parser。
+     * @param source 源代码文本视图。
+     * @param tokens 词法分析输出 token 序列。
+     * @param pool AST 存储池（外部注入）。
+     * @param source_path 源文件路径（诊断用）。
+     */
     Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool, std::string_view source_path = "");
-    // 解析总入口：
-    // 1) 驱动 token 游标向前消费
-    // 2) 组织顶层声明为 ProgramRoot
-    // 3) 在 ASTPool 中落盘节点并返回根索引
+    /**
+     * @brief 解析总入口。
+     * @return 解析根节点与诊断信息。
+     */
     ParseResult parse();
 
   private:
@@ -47,23 +71,31 @@ class Parser {
     //---Token 游标控制---
     // 这组函数构成 Parser 的“输入门面”，所有语法分支都依赖它们推进 token 流。
     // 约束：只有这组方法可以修改 tokenIndex/current/previous，避免状态失真。
+    /** @brief 推进 token 游标并更新 current/previous。 */
     void advance();
+    /** @brief 断言当前 token 类型并前进，否则报错。 */
     void consume(TokenType type, const char *message);
+    /** @brief 判断当前 token 是否为给定类型。 */
     bool check(TokenType type) const;
+    /** @brief 若匹配则前进并返回 true。 */
     bool match(TokenType type);
+    /** @brief 判断是否到达指定结束 token。 */
     bool isAtEnd(TokenType type);
 
     //---AST 节点生成器---
     // 所有 parser 子流程最终都通过 emitNode 写入 ASTPool，
     // 以保证位置信息、payload 与节点类型的写入路径统一。
     // 这里我们传入一个空token，用来进行长函数定位
+    /** @brief 写入 AST 节点与位置旁侧表。 */
     ASTNodeIndex emitNode(NodeType type, const ASTNodePayload &payload,
                           Token startToken = Token(0, 0, 0, 0, TokenType::TOKEN_EOF));
 
     //---错误处理---
     // errorAtCurrent: 记录当前 token 的语法错误并拉起 panic 模式。
     // synchronize:    扫描到下一个同步点（如分号/块边界）后恢复解析。
+    /** @brief 在当前 token 上报语法错误并拉起 panic 模式。 */
     void errorAtCurrent(const char *message); // 处理parse阶段遇到的错误信息
+    /** @brief 快进到同步点以恢复解析。 */
     void synchronize();
 
     // 下面的各类解析方法我就不在这里做介绍和解释了，我们到实际的实现里面再讨论。

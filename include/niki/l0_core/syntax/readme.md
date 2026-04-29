@@ -16,7 +16,7 @@
 graph LR
     MOD_DRIVER[driver]
     MOD_SEMANTIC[semantic]
-    MOD_VM[vm]
+    MOD_IR[ir]
     MOD_DIAG[diagnostic]
 
     subgraph SXM[syntax module]
@@ -28,11 +28,11 @@ graph LR
     MOD_DRIVER -->|IN: source text| STAGE_SCAN
     STAGE_PARSE -->|OUT: ASTPool + root| MOD_SEMANTIC
     MOD_SEMANTIC -->|IN: node_types + global tables| MOD_DRIVER
-    MOD_DRIVER -->|IR pipeline: builder/verify/lower| MOD_VM
+    MOD_DRIVER -->|IR pipeline: builder/verify/lower| MOD_IR
 
     STAGE_SCAN -->|OUT: scanner diagnostics| MOD_DIAG
     STAGE_PARSE -->|OUT: parser diagnostics| MOD_DIAG
-    MOD_DRIVER -->|OUT: ir diagnostics| MOD_DIAG
+    MOD_IR -->|OUT: ir diagnostics| MOD_DIAG
 ```
 
 ## 数据边界
@@ -50,6 +50,8 @@ graph LR
 - 被依赖模块
   - `driver`：调用扫描与解析阶段。
   - `semantic`：读取 `ASTPool` 进行类型检查。
+  - `ir`（间接）
+    - 通过 `driver` 消费语法阶段产出的 AST 与语义回填结果。
 
 ## 关键设计
 

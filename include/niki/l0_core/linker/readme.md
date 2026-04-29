@@ -65,3 +65,10 @@ graph LR
 
 - `linker/linker.hpp`
 - `src/l0_core/linker/linker.cpp`
+
+## 当前实现结构（2026-04）
+
+- `linker` 由 `driver` 在项目级编译完成后统一调度。
+- 输入为多个 `CompileModule`，输出单一 `LinkedProgram` 给 `runtime`。
+- 链接失败统一以 `DiagnosticBag` 返回，不产生部分可执行产物。
+- 当前链接职责聚焦符号解析与入口决议，不承担语义类型校验。

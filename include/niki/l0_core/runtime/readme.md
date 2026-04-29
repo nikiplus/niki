@@ -68,3 +68,10 @@ graph LR
 
 - `runtime/launcher.hpp`
 - `src/l0_core/runtime/launcher.cpp`
+
+## 当前实现结构（2026-04）
+
+- `runtime` 作为执行编排层，不直接参与编译与链接。
+- 启动顺序固定为：`Load LinkedProgram -> Run init chunks -> Invoke entry`。
+- 运行阶段错误在本层汇总为 `DiagnosticBag`，并返回给 `driver`。
+- 实际指令解释执行由 `vm` 承担，`runtime` 只负责装载与调度。

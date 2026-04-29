@@ -1,0 +1,7 @@
+func main() {
+    // line comment
+    /* block
+       comment */
+    var a: int = 1;
+    return;
+}

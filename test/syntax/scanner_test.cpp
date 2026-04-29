@@ -182,3 +182,32 @@ TEST(ScannerTest, DiceTokenization) {
         EXPECT_EQ(scanner.scanToken().type, TokenType::TOKEN_EOF);
     }
 }
+
+TEST(ScannerTest, CommentTokenization) {
+    std::string source = "// line comment\n/* block\ncomment */ var x = 1;";
+    Scanner scanner(source);
+
+    EXPECT_EQ(scanner.scanToken().type, TokenType::COMMENT);
+    EXPECT_EQ(scanner.scanToken().type, TokenType::COMMENT);
+    EXPECT_EQ(scanner.scanToken().type, TokenType::KW_VAR);
+    EXPECT_EQ(scanner.scanToken().type, TokenType::IDENTIFIER);
+    EXPECT_EQ(scanner.scanToken().type, TokenType::SYM_EQUAL);
+    EXPECT_EQ(scanner.scanToken().type, TokenType::LITERAL_INT);
+    EXPECT_EQ(scanner.scanToken().type, TokenType::SYM_SEMICOLON);
+    EXPECT_EQ(scanner.scanToken().type, TokenType::TOKEN_EOF);
+
+    auto diagnostics = scanner.takeDiagnostics();
+    EXPECT_TRUE(diagnostics.empty());
+}
+
+TEST(ScannerTest, UnterminatedBlockCommentShouldReportDiagnostic) {
+    std::string source = "/* unterminated";
+    Scanner scanner(source);
+
+    EXPECT_EQ(scanner.scanToken().type, TokenType::COMMENT);
+    EXPECT_EQ(scanner.scanToken().type, TokenType::TOKEN_EOF);
+
+    auto diagnostics = scanner.takeDiagnostics();
+    ASSERT_FALSE(diagnostics.empty());
+    EXPECT_EQ(diagnostics.all()[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::ScannerCode::InvalidToken));
+}

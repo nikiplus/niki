@@ -74,3 +74,10 @@ graph LR
 - `src/l0_core/diagnostic/diagnostic.cpp`
 - `diagnostic/renderer.hpp`
 - `src/l0_core/diagnostic/renderer.cpp`
+
+## 当前实现结构（2026-04）
+
+- `diagnostic` 作为跨阶段基础设施模块独立存在，不参与编译语义决策。
+- 各阶段统一按“事件 -> 诊断包”上报，最终由 `renderer` 输出可读文本。
+- 诊断聚合遵循“阶段内收集、Driver 级合并”的组织方式。
+- 错误码映射集中在本模块维护，保证 Scanner/Parser/Semantic/Linker/Runtime/VM 的口径一致。

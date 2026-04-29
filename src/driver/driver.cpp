@@ -160,6 +160,23 @@ std::unordered_map<uint32_t, DeclLocation> collectTopDeclNameLocations(const Glo
     return locations_by_name_id;
 }
 
+std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUnit &unit) {
+    std::vector<syntax::ASTNodeIndex> decls;
+    if (!unit.root.isvalid()) {
+        return decls;
+    }
+    const syntax::ASTNode &root_node = unit.pool.getNode(unit.root);
+    if (root_node.type != syntax::NodeType::ModuleDecl && root_node.type != syntax::NodeType::ProgramRoot) {
+        return decls;
+    }
+    const syntax::ASTNodeIndex body_index =
+        (root_node.type == syntax::NodeType::ModuleDecl) ? root_node.payload.module_decl.body : unit.root;
+    const syntax::ASTNode &body_node = unit.pool.getNode(body_index);
+    auto span = unit.pool.get_list(body_node.payload.list.elements);
+    decls.assign(span.begin(), span.end());
+    return decls;
+}
+
 diagnostic::SourceSpan buildVerifyIssueSourceSpan(const GlobalCompilationUnit &unit, const ir::ModuleIR &module_ir,
                                                   const ir::VerifyIssue &issue) {
     uint32_t line = 0;
@@ -376,6 +393,23 @@ std::expected<semantic::TypeCheckResult, diagnostic::DiagnosticBag> Driver::type
 
     return result.value();
 };
+
+std::expected<semantic::TypeCheckResult, diagnostic::DiagnosticBag> typeCheckUnitWithVisibleSymbols(
+    GlobalCompilationUnit &unit, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols,
+    const semantic::UnitVisibleSymbols &visible_symbols) {
+    semantic::TypeChecker checker;
+    auto result = checker.check(unit.pool, unit.root, global_symbols, global_arena, visible_symbols);
+    if (!result.has_value()) {
+        return std::unexpected(std::move(result.error()));
+    }
+    if (unit.pool.node_types.size() != unit.pool.nodes.size()) {
+        diagnostic::DiagnosticBag bag;
+        bag.error(diagnostic::events::SemanticCode::GenericError, "Type table size mismatch after type check.",
+                  diagnostic::makeSourceSpan(unit.source_path));
+        return std::unexpected(std::move(bag));
+    }
+    return result.value();
+}
 // 3)单元级字节码编译
 std::expected<Driver::UnitCompileArtifact, diagnostic::DiagnosticBag> Driver::compileUnitChunk(
     GlobalCompilationUnit &unit, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols) {
@@ -478,9 +512,23 @@ std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Dri
     if (!diagnostics.empty()) {
         return std::unexpected(std::move(diagnostics));
     }
+    // Pass-2.5: 构建最小模块语义上下文（同模块可见 + 显式导入可见）。
+    semantic::ModuleRegistry module_registry;
+    semantic::ModuleExportTable module_exports;
+    std::vector<semantic::UnitVisibleSymbols> visible_per_unit;
+    auto semantic_context_result =
+        buildModuleSemanticContext(units, global_symbols, module_registry, module_exports, visible_per_unit);
+    if (!semantic_context_result.has_value()) {
+        diagnostics.merge(std::move(semantic_context_result.error()));
+    }
+    if (!diagnostics.empty()) {
+        return std::unexpected(std::move(diagnostics));
+    }
     // Pass-3: 在共享全局符号环境下做 typecheck
-    for (auto &unit : units) {
-        auto type_check_result = typeCheckUnit(unit, global_arena, global_symbols);
+    for (size_t unit_idx = 0; unit_idx < units.size(); ++unit_idx) {
+        auto &unit = units[unit_idx];
+        auto type_check_result =
+            typeCheckUnitWithVisibleSymbols(unit, global_arena, global_symbols, visible_per_unit[unit_idx]);
         if (!type_check_result.has_value()) {
             diagnostics.merge(std::move(type_check_result.error()));
         }
@@ -669,13 +717,34 @@ std::expected<vm::Value, diagnostic::DiagnosticBag> Driver::runProject(const std
 std::expected<void, diagnostic::DiagnosticBag> Driver::buildModuleSemanticContext(
     const std::vector<GlobalCompilationUnit> &units, const GlobalSymbolTable &global_symbols,
     semantic::ModuleRegistry &out_regisry, semantic::ModuleExportTable &out_exports,
-    std::vector<semantic::UnitVisibleSymbols> &out_visible_per_unit) {};
+    std::vector<semantic::UnitVisibleSymbols> &out_visible_per_unit) {
+    auto registry = collectModuleRegistry(units);
+    if (!registry.has_value()) {
+        return std::unexpected(std::move(registry.error()));
+    }
+
+    auto export_table = buildModuleExportTable(units, registry.value(), global_symbols);
+    if (!export_table.has_value()) {
+        return std::unexpected(std::move(export_table.error()));
+    }
+
+    auto visible_per_unit = resolveVisibleSymbols(units, registry.value(), export_table.value(), global_symbols);
+    if (!visible_per_unit.has_value()) {
+        return std::unexpected(std::move(visible_per_unit.error()));
+    }
+
+    out_regisry = std::move(registry.value());
+    out_exports = std::move(export_table.value());
+    out_visible_per_unit = std::move(visible_per_unit.value());
+    return {};
+};
 
 // 子步骤
 std::expected<semantic::ModuleRegistry, diagnostic::DiagnosticBag> Driver::collectModuleRegistry(
     const std::vector<GlobalCompilationUnit> &units) {
     diagnostic::DiagnosticBag diagnostics;
     semantic::ModuleRegistry registry{};
+    std::unordered_map<uint32_t, uint32_t> module_name_id_to_module_id;
 
     registry.modules.reserve(units.size());
 
@@ -687,14 +756,152 @@ std::expected<semantic::ModuleRegistry, diagnostic::DiagnosticBag> Driver::colle
                               diagnostic::makeSourceSpan(unit.source_path));
             continue;
         }
+
+        semantic::ModuleMeta meta{};
+        meta.module_id = static_cast<uint32_t>(unit_idx);
+        meta.source_path = unit.source_path;
+        meta.unit_index = unit_idx;
+        registry.module_id_to_meta_index.emplace(meta.module_id, registry.modules.size());
+        registry.modules.push_back(std::move(meta));
+
+        const auto file_stem = fs::path(unit.source_path).stem().string();
+        if (unit.pool.interner != nullptr) {
+            auto module_name_id = unit.pool.interner->find(file_stem);
+            if (module_name_id.has_value()) {
+                module_name_id_to_module_id[*module_name_id] = static_cast<uint32_t>(unit_idx);
+            }
+        }
     }
+
+    for (size_t unit_idx = 0; unit_idx < units.size(); ++unit_idx) {
+        auto &module_meta = registry.modules[unit_idx];
+        const auto &unit = units[unit_idx];
+        for (const auto decl_idx : collectTopLevelDecls(unit)) {
+            if (!decl_idx.isvalid()) {
+                continue;
+            }
+            const auto &decl_node = unit.pool.getNode(decl_idx);
+            if (decl_node.type != syntax::NodeType::ImportDecl) {
+                continue;
+            }
+            const auto &import_decl = unit.pool.import_decl_data[decl_node.payload.import_decl.import_decl_index];
+            auto imported_module_iter = module_name_id_to_module_id.find(import_decl.module_name_id);
+            if (imported_module_iter == module_name_id_to_module_id.end()) {
+                diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Imported module not found.",
+                                  diagnostic::makeSourceSpan(unit.source_path));
+                continue;
+            }
+            const uint32_t from_module_id = imported_module_iter->second;
+            if (import_decl.import_module_only) {
+                continue;
+            }
+            for (uint32_t offset = 0; offset < import_decl.item_count; ++offset) {
+                const auto &item = unit.pool.import_items[import_decl.first_item_index + offset];
+                module_meta.imports.push_back(semantic::ImportBinding{
+                    .from_module_id = from_module_id,
+                    .imported_name_id = item.imported_name_id,
+                    .local_name_id = item.local_name_id,
+                });
+            }
+        }
+    }
+
+    if (!diagnostics.empty()) {
+        return std::unexpected(std::move(diagnostics));
+    }
+    return registry;
 };
 
 std::expected<semantic::ModuleExportTable, diagnostic::DiagnosticBag> Driver::buildModuleExportTable(
     const std::vector<GlobalCompilationUnit> &units, const semantic::ModuleRegistry &registry,
-    const GlobalSymbolTable &global_symbols) {};
+    const GlobalSymbolTable &global_symbols) {
+    diagnostic::DiagnosticBag diagnostics;
+
+    semantic::ModuleExportTable export_table{};
+    for (size_t unit_idx = 0; unit_idx < units.size(); ++unit_idx) {
+        const auto &unit = units[unit_idx];
+        const auto &module_meta = registry.modules[unit_idx];
+        auto &module_exports = export_table.table[module_meta.module_id];
+
+        for (const auto decl_idx : collectTopLevelDecls(unit)) {
+            if (!decl_idx.isvalid()) {
+                continue;
+            }
+            const auto &decl_node = unit.pool.getNode(decl_idx);
+            if (decl_node.type != syntax::NodeType::FunctionDecl) {
+                continue; // MVP: 先支持顶层函数导出
+            }
+            const auto &function_data = unit.pool.function_data[decl_node.payload.func_decl.function_index];
+            const auto *symbol = global_symbols.find(function_data.name_id);
+            if (symbol == nullptr) {
+                diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                  "Top-level function symbol missing in export table build.",
+                                  diagnostic::makeSourceSpan(unit.source_path));
+                continue;
+            }
+            module_exports.emplace(function_data.name_id, semantic::SymbolRef{
+                                                            .owner_module_id = module_meta.module_id,
+                                                            .name_id = function_data.name_id,
+                                                            .kind = symbol->kind,
+                                                            .type = symbol->type,
+                                                        });
+        }
+    }
+
+    if (!diagnostics.empty()) {
+        return std::unexpected(std::move(diagnostics));
+    }
+    return export_table;
+};
 
 std::expected<std::vector<semantic::UnitVisibleSymbols>, diagnostic::DiagnosticBag> Driver::resolveVisibleSymbols(
     const std::vector<GlobalCompilationUnit> &units, const semantic::ModuleRegistry &registry,
-    const semantic::ModuleExportTable &export_table, const GlobalSymbolTable &global_symbols) {};
+    const semantic::ModuleExportTable &export_table, const GlobalSymbolTable &global_symbols) {
+    diagnostic::DiagnosticBag diagnostics;
+    std::vector<semantic::UnitVisibleSymbols> visible_per_unit;
+    visible_per_unit.resize(units.size());
+
+    for (size_t unit_idx = 0; unit_idx < units.size(); ++unit_idx) {
+        const auto &unit = units[unit_idx];
+        const auto &module_meta = registry.modules[unit_idx];
+        auto &visible = visible_per_unit[unit_idx].tables;
+
+        // 同模块可见：该模块声明的全局符号。
+        for (const auto &[name_id, symbol] : global_symbols.symbol_table) {
+            if (symbol.owner_module != unit.source_path) {
+                continue;
+            }
+            visible.insert_or_assign(name_id, semantic::SymbolRef{
+                                                  .owner_module_id = module_meta.module_id,
+                                                  .name_id = name_id,
+                                                  .kind = symbol.kind,
+                                                  .type = symbol.type,
+                                              });
+        }
+
+        // 显式导入可见：import {a as b} from mod
+        for (const auto &binding : module_meta.imports) {
+            auto from_module_iter = export_table.table.find(binding.from_module_id);
+            if (from_module_iter == export_table.table.end()) {
+                diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Imported module export table missing.",
+                                  diagnostic::makeSourceSpan(unit.source_path));
+                continue;
+            }
+            auto symbol_iter = from_module_iter->second.find(binding.imported_name_id);
+            if (symbol_iter == from_module_iter->second.end()) {
+                diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Imported symbol not exported.",
+                                  diagnostic::makeSourceSpan(unit.source_path));
+                continue;
+            }
+            auto imported_symbol = symbol_iter->second;
+            imported_symbol.name_id = binding.local_name_id; // alias 后的本地名
+            visible.insert_or_assign(binding.local_name_id, imported_symbol);
+        }
+    }
+
+    if (!diagnostics.empty()) {
+        return std::unexpected(std::move(diagnostics));
+    }
+    return visible_per_unit;
+};
 } // namespace niki::driver

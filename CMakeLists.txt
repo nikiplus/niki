@@ -109,6 +109,7 @@ add_executable(niki_tests
     test/ir/builder_test.cpp
     test/ir/verify_test.cpp
     test/ir/module_ir_test.cpp
+    test/ir/lower_to_chunk_test.cpp
     test/driver/driver_project_test.cpp
     test/linker/linker_test.cpp
     test/runtime/launcher_test.cpp

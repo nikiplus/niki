@@ -4,6 +4,10 @@
 
 namespace niki {
 
+/**
+ * @brief 注册结构体信息到全局类型池。
+ * @return 结构体 id（若完全相同则返回已存在 id）。
+ */
 uint32_t GlobalTypeArena::internStruct(uint32_t name_id, std::string owner_module, std::vector<uint32_t> field_name_ids,
                                        std::vector<semantic::NKType> field_types) {
     for (uint32_t i = 0; i < structs_.size(); ++i) {
@@ -19,6 +23,7 @@ uint32_t GlobalTypeArena::internStruct(uint32_t name_id, std::string owner_modul
     return static_cast<uint32_t>(structs_.size() - 1);
 }
 
+/** @brief 注册函数签名到全局类型池。 */
 uint32_t GlobalTypeArena::internFuncSig(const semantic::FunctionSignature &sig) {
     for (uint32_t i = 0; i < func_sigs_.size(); ++i) {
         if (func_sigs_[i] == sig) {
@@ -29,6 +34,7 @@ uint32_t GlobalTypeArena::internFuncSig(const semantic::FunctionSignature &sig) 
     return static_cast<uint32_t>(func_sigs_.size() - 1);
 }
 
+/** @brief 通过 id 查询函数签名。 */
 const semantic::FunctionSignature *GlobalTypeArena::findFuncSig(uint32_t id) const {
     if (id >= func_sigs_.size()) {
         return nullptr;
@@ -36,6 +42,7 @@ const semantic::FunctionSignature *GlobalTypeArena::findFuncSig(uint32_t id) con
     return &func_sigs_[id];
 }
 
+/** @brief 通过 id 查询结构体信息。 */
 const GlobalTypeArena::StructInfo *GlobalTypeArena::findStruct(uint32_t id) const {
     if (id >= structs_.size()) {
         return nullptr;

@@ -2,16 +2,16 @@
 #include "niki/l0_core/syntax/parser.hpp"
 #include "niki/l0_core/syntax/parser_precedence.hpp"
 #include "niki/l0_core/syntax/token.hpp"
-#include <cmath>
-#include <iostream>
 #include <span>
-#include <string>
 #include <string_view>
 #include <vector>
 
 using namespace niki::syntax;
 
-// 语句解析入口：按关键字分发；未命中时回退表达式语句。
+/**
+ * @brief 语句分发入口：按关键字路由，未命中则回退表达式语句。
+ * @return 语句节点。
+ */
 ASTNodeIndex Parser::parseStatement() {
     if (match(TokenType::SYM_BRACE_L)) {
         return parseBlockStmt();
@@ -36,7 +36,10 @@ ASTNodeIndex Parser::parseStatement() {
     return parseExpressionStmt();
 }
 
-// 表达式语句（含赋值拦截）：先解析表达式，再在 `=` 族命中时改写为 AssignmentStmt。
+/**
+ * @brief 解析表达式语句，并在赋值操作符命中时改写为 AssignmentStmt。
+ * @return ExpressionStmt 或 AssignmentStmt。
+ */
 ASTNodeIndex Parser::parseExpressionStmt() {
     Token startToken = current;
 
@@ -58,6 +61,9 @@ ASTNodeIndex Parser::parseExpressionStmt() {
       因此，我们应记录的OP应以previous而非current。
       之所以这样做，是因为，我们的一些局部解析当中，需要“往前看一位”而不破坏整体指针位置。
     */
+    // ASSIGNMENT_INTERCEPT:
+    // 表达式先按普通 Pratt 解析；若后继命中赋值族运算符，则“回写改形”为 AssignmentStmt。
+    // 该策略让赋值语句无需单独前缀关键字，同时保持与表达式语法复用同一左值解析路径。
     if (match(TokenType::SYM_EQUAL) || match(TokenType::SYM_BIT_AND_EQUAL) || match(TokenType::SYM_BIT_OR_EQUAL) ||
         match(TokenType::SYM_BIT_XOR_EQUAL) || match(TokenType::SYM_PLUS_EQUAL) || match(TokenType::SYM_MINUS_EQUAL) ||
         match(TokenType::SYM_STAR_EQUAL) || match(TokenType::SYM_SLASH_EQUAL) || match(TokenType::SYM_MOD_EQUAL)) {
@@ -80,7 +86,10 @@ ASTNodeIndex Parser::parseExpressionStmt() {
 // parseAssignmentStmt无需存在，因为我们已在parseExpressionStmt中完成了对赋值语句的拦截。
 // 事实上，由于赋值语句没有专门的开头关键字，因此我们实际上也是无法仅通过开头关键字判断一段字符是否是赋值语句，只有当左值token被解析完毕后，来到第二个toke，我们看到其为任意赋值语句时
 // 才能将其作为赋值语句返回。
-// 变量声明：支持 `var name [:Type] [= init];`。
+/**
+ * @brief 解析 var 声明语句。
+ * @return VarDeclStmt 节点。
+ */
 ASTNodeIndex Parser::parseVarDeclStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -103,7 +112,10 @@ ASTNodeIndex Parser::parseVarDeclStmt() {
 
     return emitNode(NodeType::VarDeclStmt, payload, startToken);
 };
-// 我们使用vardeclpayload来承载const——因为它们是一样的
+/**
+ * @brief 解析 const 声明语句。
+ * @return ConstDeclStmt 节点。
+ */
 ASTNodeIndex Parser::parseConstDeclStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -123,7 +135,10 @@ ASTNodeIndex Parser::parseConstDeclStmt() {
     return emitNode(NodeType::ConstDeclStmt, payload, startToken);
 };
 
-// 代码块：循环消费 declaration，直到 `}` 或 EOF。
+/**
+ * @brief 解析代码块，循环消费 declaration 直到 `}` 或 EOF。
+ * @return BlockStmt 节点。
+ */
 ASTNodeIndex Parser::parseBlockStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -138,6 +153,10 @@ ASTNodeIndex Parser::parseBlockStmt() {
     return emitNode(NodeType::BlockStmt, payload, startToken);
 };
 //---控制流
+/**
+ * @brief 解析 if/else 语句。
+ * @return IfStmt 节点。
+ */
 ASTNodeIndex Parser::parseIfStmt() {
     Token startToken = previous;
 
@@ -187,8 +206,10 @@ ASTNodeIndex Parser::parseLoopStmt() {
     return emitNode(NodeType::LoopStmt, payload, startToken);
 }
 
-// match case 解析器：
-// 支持 `case p1, p2 => stmt`，其中 `_` 会被编码为 WildcardExpr。
+/**
+ * @brief 解析单个 match case 分支。
+ * @return MatchCaseStmt 节点。
+ */
 ASTNodeIndex Parser::parseMatchCaseStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -210,8 +231,10 @@ ASTNodeIndex Parser::parseMatchCaseStmt() {
     return emitNode(NodeType::MatchCaseStmt, payload, startToken);
 }
 
-// match 主体解析器：
-// 负责目标表达式、case 列表与边界 token 的完整闭合校验。
+/**
+ * @brief 解析 match 主体。
+ * @return MatchStmt 节点。
+ */
 ASTNodeIndex Parser::parseMatchStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -237,6 +260,7 @@ ASTNodeIndex Parser::parseMatchStmt() {
     return emitNode(NodeType::MatchStmt, payload, startToken);
 }
 //---跳转中断---
+/** @brief 解析 continue 语句。 */
 ASTNodeIndex Parser::parseContinueStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -244,6 +268,7 @@ ASTNodeIndex Parser::parseContinueStmt() {
     return emitNode(NodeType::ContinueStmt, payload, startToken);
 };
 
+/** @brief 解析 break 语句。 */
 ASTNodeIndex Parser::parseBreakStmt() {
     Token startToken = previous;
     ASTNodePayload payload{}; // 零负载！
@@ -251,6 +276,10 @@ ASTNodeIndex Parser::parseBreakStmt() {
     return emitNode(NodeType::BreakStmt, payload, startToken);
 };
 
+/**
+ * @brief 解析 return 语句（支持空返回）。
+ * @return ReturnStmt 节点。
+ */
 ASTNodeIndex Parser::parseReturnStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -265,6 +294,10 @@ ASTNodeIndex Parser::parseReturnStmt() {
     return emitNode(NodeType::ReturnStmt, payload, startToken);
 }
 
+/**
+ * @brief 解析 nock 语句（可带间隔表达式）。
+ * @return NockStmt 节点。
+ */
 ASTNodeIndex Parser::parseNockStmt() {
     Token startToken = previous;
     ASTNodePayload payload{};
@@ -281,5 +314,7 @@ ASTNodeIndex Parser::parseNockStmt() {
     return emitNode(NodeType::NockStmt, payload, startToken);
 }
 //---组件挂载与卸载---
+/** @brief 解析 attach 语句（占位实现）。 */
 ASTNodeIndex Parser::parseAttachStmt() { return ASTNodeIndex{}; }
+/** @brief 解析 detach 语句（占位实现）。 */
 ASTNodeIndex Parser::parseDetachStmt() { return ASTNodeIndex{}; }

@@ -102,3 +102,11 @@ graph LR
   - `src/l0_core/semantic/type_checker_decl.cpp`
   - `src/l0_core/semantic/type_checker_stmt.cpp`
   - `src/l0_core/semantic/type_checker_expr.cpp`
+
+## 当前实现结构（2026-04）
+
+- 语义阶段采用“两段式”组织：
+  - `Predeclare(all units) -> TypeCheck(per unit)`
+- `Predeclare` 负责全局符号与类型实体建表，不参与表达式求型。
+- `TypeCheck` 在共享全局语义上下文中回填 `ASTPool.node_types`。
+- `ir` 仅消费语义结果，不在本模块重复执行类型推导。

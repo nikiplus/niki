@@ -4,6 +4,10 @@
 
 namespace niki::semantic {
 
+/**
+ * @brief 语句检查分发入口。
+ * @param stmtIdx 语句节点索引。
+ */
 void TypeChecker::checkStatement(syntax::ASTNodeIndex stmtIdx) {
     // 语句检查入口：路由到对应 checkXXXStmt。
     const auto &node = getNodeCtx(stmtIdx).node;
@@ -58,11 +62,13 @@ void TypeChecker::checkStatement(syntax::ASTNodeIndex stmtIdx) {
     }
 }
 
+/** @brief 检查表达式语句。 */
 void TypeChecker::checkExpressionStmt(syntax::ASTNodeIndex nodeIdx) {
     auto &node = getNodeCtx(nodeIdx).node;
     checkExpression(node.payload.expr_stmt.expression);
 }
 
+/** @brief 检查赋值语句。 */
 void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
     // 赋值检查：左右类型均已知且不相等时报错。
     auto [node, line, column] = getNodeCtx(nodeIdx);
@@ -75,6 +81,7 @@ void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
     }
 }
 
+/** @brief 检查变量声明语句。 */
 void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
     // 变量声明：解析标注/初始化类型，校验一致性并注册最终符号类型。
     auto [node, line, column] = getNodeCtx(nodeIdx);
@@ -101,6 +108,7 @@ void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
     declareSymbol(node.payload.var_decl.name_id, finalType, line, column);
 }
 
+/** @brief 检查代码块语句并管理作用域。 */
 void TypeChecker::checkBlockStmt(syntax::ASTNodeIndex nodeIdx) {
     // 块作用域：beginScope -> statements -> endScope。
     const auto &node = getNodeCtx(nodeIdx).node;
@@ -112,6 +120,7 @@ void TypeChecker::checkBlockStmt(syntax::ASTNodeIndex nodeIdx) {
     endScope(); // 出门解锁
 }
 
+/** @brief 检查 if 语句。 */
 void TypeChecker::checkIfStmt(syntax::ASTNodeIndex nodeIdx) {
     const auto &node = getNodeCtx(nodeIdx).node;
     checkExpression(node.payload.if_stmt.condition);
@@ -121,12 +130,19 @@ void TypeChecker::checkIfStmt(syntax::ASTNodeIndex nodeIdx) {
     }
 }
 
+/** @brief 检查常量声明语句（复用变量声明检查）。 */
 void TypeChecker::checkConstDeclStmt(syntax::ASTNodeIndex nodeIdx) { checkVarDeclStmt(nodeIdx); }
+/** @brief 检查 loop 语句（占位实现）。 */
 void TypeChecker::checkLoopStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 match 语句（占位实现）。 */
 void TypeChecker::checkMatchStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 match case 语句（占位实现）。 */
 void TypeChecker::checkMatchCaseStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 continue 语句（占位实现）。 */
 void TypeChecker::checkContinueStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 break 语句（占位实现）。 */
 void TypeChecker::checkBreakStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 return 语句。 */
 void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
     const auto [node, line, column] = getNodeCtx(nodeIdx);
     // 1. 检查有没有表达式（比如 `return;` 还是 `return 10;`）
@@ -149,8 +165,11 @@ void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
                         std::to_string((int)exprType.getBase()));
     }
 }
+/** @brief 检查 nock 语句（占位实现）。 */
 void TypeChecker::checkNockStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 attach 语句（占位实现）。 */
 void TypeChecker::checkAttachStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 detach 语句（占位实现）。 */
 void TypeChecker::checkDetachStmt(syntax::ASTNodeIndex nodeIdx) {}
 
 } // namespace niki::semantic

@@ -7,6 +7,10 @@
 
 namespace niki::semantic {
 
+/**
+ * @brief 旧版入口（无全局语义上下文）已禁用。
+ * @return 始终返回错误，提示调用方使用带全局上下文的重载。
+ */
 std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(syntax::ASTPool &pool,
                                                                                    syntax::ASTNodeIndex root) {
     niki::diagnostic::DiagnosticBag diagnostics;
@@ -15,6 +19,14 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
     return std::unexpected(std::move(diagnostics));
 }
 
+/**
+ * @brief 类型检查入口（带全局符号表/类型池）。
+ * @param pool AST 池。
+ * @param root 根节点索引。
+ * @param global_symbols 全局符号表。
+ * @param global_arena 全局类型池。
+ * @return 成功返回空结果，失败返回诊断集合。
+ */
 std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(
     syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::GlobalSymbolTable &global_symbols,
     const niki::GlobalTypeArena &global_arena) {
@@ -26,6 +38,7 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
 
     globalSymbols = &global_symbols;
     globalArena = &global_arena;
+    visibleSymbols = nullptr;
 
     // 1. node_types 已经在 ASTPool 分配时预填充了 Unknown，
     // 我们不需要再做初始化操作，直接开始遍历覆盖它即可。
@@ -36,6 +49,7 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
     currentPool = nullptr;
     globalSymbols = nullptr;
     globalArena = nullptr;
+    visibleSymbols = nullptr;
 
     if (!diagnostics.empty()) {
         return std::unexpected(std::move(diagnostics));
@@ -44,6 +58,36 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
     return TypeCheckResult{};
 }
 
+/**
+ * @brief 类型检查入口（带单元可见符号上下文）。
+ */
+std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(
+    syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::GlobalSymbolTable &global_symbols,
+    const niki::GlobalTypeArena &global_arena, const UnitVisibleSymbols &visible_symbols) {
+    currentPool = &pool;
+    diagnostics = niki::diagnostic::DiagnosticBag{};
+    symbols.clear();
+    currentDepth = 0;
+    inFunction = false;
+
+    globalSymbols = &global_symbols;
+    globalArena = &global_arena;
+    visibleSymbols = &visible_symbols;
+
+    checkNode(root);
+
+    currentPool = nullptr;
+    globalSymbols = nullptr;
+    globalArena = nullptr;
+    visibleSymbols = nullptr;
+
+    if (!diagnostics.empty()) {
+        return std::unexpected(std::move(diagnostics));
+    }
+    return TypeCheckResult{};
+}
+
+/** @brief 结束当前作用域并回收本层局部符号。 */
 void TypeChecker::endScope() {
     // 【作用域退出（栈回退）】
     // 当遇到 } 或者执行完一个代码块时调用。
@@ -56,6 +100,14 @@ void TypeChecker::endScope() {
     currentDepth--;
 }
 
+/**
+ * @brief 在当前作用域声明符号。
+ * @param name_id 符号名 id。
+ * @param type 符号类型。
+ * @param line 行号。
+ * @param column 列号。
+ * @param is_owned 是否拥有所有权。
+ */
 void TypeChecker::declareSymbol(uint32_t name_id, NKType type, uint32_t line, uint32_t column, bool is_owned) {
     // 【变量声明登记】
     // 当遇到 var a = 10; 这样的语句时调用。
@@ -76,6 +128,9 @@ void TypeChecker::declareSymbol(uint32_t name_id, NKType type, uint32_t line, ui
     symbols.push_back({name_id, type, currentDepth, is_owned, false});
 }
 
+/**
+ * @brief 解析符号类型（局部 -> 全局 -> 可见导入）。
+ */
 NKType TypeChecker::resolveSymbol(uint32_t name_id, uint32_t line, uint32_t column) {
     // 从栈顶（从后往前）开始查
     for (int i = static_cast<int>(symbols.size()) - 1; i >= 0; i--) {
@@ -87,11 +142,18 @@ NKType TypeChecker::resolveSymbol(uint32_t name_id, uint32_t line, uint32_t colu
     if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
         return global_sym->type;
     }
+    if (visibleSymbols != nullptr) {
+        auto it = visibleSymbols->tables.find(name_id);
+        if (it != visibleSymbols->tables.end()) {
+            return it->second.type;
+        }
+    }
 
     reportError(line, column, "Undeclared variable.");
     return NKType::makeUnknown();
 }
 
+/** @brief 解析类型标注节点为 NKType。 */
 NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
     if (!typeNodeIdx.isvalid()) {
         return NKType::makeUnknown();
@@ -145,11 +207,17 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
     return NKType::makeUnknown();
 };
 
+/** @brief 上报语义错误。 */
 void TypeChecker::reportError(uint32_t line, uint32_t column, const std::string &message) {
     diagnostics.error(niki::diagnostic::events::SemanticCode::GenericError, message,
                       niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
 }
 
+/**
+ * @brief 语义总分发：表达式/语句/声明三路。
+ * @param nodeIdx 节点索引。
+ * @return 若为表达式则返回其类型，否则返回 Unknown。
+ */
 NKType TypeChecker::checkNode(syntax::ASTNodeIndex nodeIdx) {
     if (!nodeIdx.isvalid())
         return NKType::makeUnknown();

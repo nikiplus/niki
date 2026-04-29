@@ -123,10 +123,11 @@ using namespace niki::syntax;
 【装配完毕】
 */
 
-// Pratt 主调度器：
-// 1) 先消费一个前缀 token 产出 left
-// 2) 再按“当前优先级 < 下一个运算符优先级”循环拼接中缀节点
-// 3) 循环停止时，left 就是当前子表达式的完整 AST
+/**
+ * @brief Pratt 主调度器：先前缀、再中缀循环绑定。
+ * @param precedence 当前调用层的优先级门槛。
+ * @return 子表达式根节点。
+ */
 ASTNodeIndex Parser::parseExpression(Precedence precedence) {
     advance();
     ASTNodeIndex left = parsePrefix(previous.type);
@@ -137,9 +138,11 @@ ASTNodeIndex Parser::parseExpression(Precedence precedence) {
     return left;
 };
 
-// 前缀处理器：
-// 负责字面量、标识符、类型字面量、一元运算、括号与容器字面量。
-// 设计约束：只构造“当前 token 可独立决定”的节点，不处理中缀绑定。
+/**
+ * @brief 前缀处理器：字面量/标识符/一元/括号/容器字面量。
+ * @param type 前缀 token 类型。
+ * @return 前缀表达式节点。
+ */
 ASTNodeIndex Parser::parsePrefix(TokenType type) {
     ASTNodePayload payload{};
     Token startToken = previous;
@@ -280,12 +283,19 @@ ASTNodeIndex Parser::parsePrefix(TokenType type) {
     }
 };
 
-// 中缀/后缀处理器：
-// 入参 left 是已解析完成的左侧表达式，本函数负责补齐右侧并拼装新节点。
-// 包含算术、逻辑、调用、索引、成员访问等所有需要“绑定 left”的语法形态。
+/**
+ * @brief 中缀/后缀处理器：在既有 left 基础上继续绑定右侧。
+ * @param type 当前中缀/后缀 token 类型。
+ * @param left 已解析的左表达式。
+ * @return 组合后的表达式节点。
+ */
 ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     ASTNodePayload payload{};
     Token startToken = previous;
+    // INFIX_PATTERN:
+    // - 算术/比较/位运算：读取自身优先级后递归 parseExpression(precedence) 生成 right；
+    // - 调用/索引/成员访问：作为后缀结构直接绑定 left；
+    // 统一由本函数完成“left 继续生长”的节点拼装。
     switch (type) {
     case TokenType::SYM_PLUS:
     case TokenType::SYM_MINUS:
@@ -356,8 +366,11 @@ ASTNodeIndex Parser::parseInfix(TokenType type, ASTNodeIndex left) {
     }
 };
 
-// 优先级查询表：
-// 统一维护 token -> precedence 映射，避免在 parseInfix/parseExpression 中散落硬编码。
+/**
+ * @brief 查询 token 对应的 Pratt 优先级。
+ * @param type token 类型。
+ * @return 对应优先级，未知返回 None。
+ */
 Precedence Parser::getPrecedence(TokenType type) const {
     // 统一维护 token -> precedence 映射，Pratt 循环只依赖这张表决策是否继续绑定。
     switch (type) {

@@ -13,6 +13,13 @@
 */
 using namespace niki::syntax;
 
+/**
+ * @brief 构造 Parser 并初始化 token 游标状态。
+ * @param source 源代码文本视图。
+ * @param tokens 词法阶段输出的 token 序列。
+ * @param pool AST 持有池（外部注入，Parser 不拥有其生命周期）。
+ * @param source_path 源文件路径（用于诊断）。
+ */
 Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &pool, std::string_view source_path)
     : source(source), sourcePath(source_path), tokens(tokens), astPool(pool), tokenIndex(0) {
     // 在这里，我们进行了一次估算，平均每2~3个token产生一个ast节点。
@@ -31,6 +38,10 @@ Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &
     advance();
 };
 
+/**
+ * @brief 解析总入口：将顶层声明组织为 ModuleDecl 根节点。
+ * @return AST 根节点索引与本阶段诊断信息。
+ */
 ParseResult Parser::parse() {
     niki::debug::debug("parser", "start parse, token_count={}", tokens.size());
     // 创建一个临时数组以收集所有顶层声明（顶层语句已禁用）
@@ -58,6 +69,9 @@ ParseResult Parser::parse() {
 //---游标控制---
 // 注意我们这个不断变化的haderror，其控制着恐慌模式的开启和关闭。
 // 在恐慌模式下，游标会将当前正在扫描的token视为错误，并不断将其跳过，直至跳过整个句段并最终返回一个正确的token——否则我们的代码要么不断报错，要么错误的将语句/表达式级联到一起表达。
+/**
+ * @brief 推进一个 token，并跳过 TOKEN_ERROR（同时记录词法错误）。
+ */
 void Parser::advance() {
     previous = current; // 记住上一个token，给parsePrefix和parseInfix用。
 
@@ -72,15 +86,25 @@ void Parser::advance() {
             // 如果越界，强制制造一个eof
             current = Token{0, 0, 0, 0, TokenType::TOKEN_EOF};
         }
-        // 若token为错误（无法识别或错误字符），指针持续向前推进，直至能够返回一个正确的token
-        if (current.type != TokenType::TOKEN_ERROR) {
-            break;
+        // 注释 token 对语法层不可见，直接跳过。
+        if (current.type == TokenType::COMMENT) {
+            continue;
         }
-        // 报告词法错误
-        errorAtCurrent("Invalid lexical token.");
+        // 若token为错误（无法识别或错误字符），指针持续向前推进，直至能够返回一个正确的token
+        if (current.type == TokenType::TOKEN_ERROR) {
+            // 报告词法错误
+            errorAtCurrent("Invalid lexical token.");
+            continue;
+        }
+        break;
     }
 };
 
+/**
+ * @brief 断言当前 token 类型并前进，否则记录语法错误。
+ * @param type 期望 token 类型。
+ * @param message 失败时的错误信息。
+ */
 void Parser::consume(TokenType type, const char *message) {
     if (current.type == type) {
         advance();
@@ -90,8 +114,14 @@ void Parser::consume(TokenType type, const char *message) {
 };
 
 // 获取当前token类型
+/** @brief 检查当前 token 是否为指定类型。 */
 bool Parser::check(TokenType type) const { return current.type == type; };
 // 获取当前token类型，若匹配，则向前推进指针。
+/**
+ * @brief 若当前 token 匹配给定类型则前进并返回 true。
+ * @param type 目标 token 类型。
+ * @return 匹配成功返回 true，否则 false。
+ */
 bool Parser::match(TokenType type) {
     if (!check(type))
         return false;
@@ -99,9 +129,17 @@ bool Parser::match(TokenType type) {
     return true;
 };
 
+/** @brief 判断当前 token 是否等于指定结束类型。 */
 bool Parser::isAtEnd(TokenType type) { return current.type == type; };
 
 //---AST节点生成器---
+/**
+ * @brief 将节点写入 ASTPool，并同步写入位置与类型旁侧表。
+ * @param type 节点类型。
+ * @param payload 节点载荷。
+ * @param startToken 可选起始 token（长节点用于精确定位）。
+ * @return 新节点索引。
+ */
 ASTNodeIndex Parser::emitNode(NodeType type, const ASTNodePayload &payload, Token startToken) {
     /*我们首先通过一套类型体操获取将传入的astnode 的位置。
     在这一步进行时，我们的astpool上还未传入我们要传的astnode，简单图例如下。
@@ -134,6 +172,10 @@ ASTNodeIndex Parser::emitNode(NodeType type, const ASTNodePayload &payload, Toke
 };
 
 //---错误处理---
+/**
+ * @brief 在当前 token 上报语法错误并进入 panicMode。
+ * @param message 错误消息。
+ */
 void Parser::errorAtCurrent(const char *message) {
     if (panicMode)
         return;
@@ -143,6 +185,9 @@ void Parser::errorAtCurrent(const char *message) {
                                                        current.type != TokenType::TOKEN_EOF ? current.length : 0));
     hadError = true;
 };
+/**
+ * @brief 恐慌模式恢复：快进到下一个同步点后继续解析。
+ */
 void Parser::synchronize() {
     // 退出恐慌模式
     panicMode = false;

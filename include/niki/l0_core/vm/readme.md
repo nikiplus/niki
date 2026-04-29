@@ -13,7 +13,7 @@
 ```mermaid
 graph LR
     MOD_RUNTIME[runtime]
-    MOD_SYNTAX[syntax]
+    MOD_IR[ir]
     MOD_DIAG[diagnostic]
 
     subgraph VMM[vm module]
@@ -25,7 +25,7 @@ graph LR
     end
 
     MOD_RUNTIME -->|IN: Chunk / ObjFunction| STAGE_FETCH
-    MOD_SYNTAX -->|IN: opcode/value/object conventions| STAGE_EXECUTE
+    MOD_IR -->|IN: opcode/value/object conventions| STAGE_EXECUTE
     STAGE_EXECUTE -->|OUT: Value / InterpretResult| MOD_RUNTIME
     STAGE_EXECUTE -->|OUT: runtime error context| MOD_DIAG
 ```
@@ -70,3 +70,10 @@ graph LR
 - `vm/opcode.hpp`
 - `vm/value.hpp`
 - `vm/object.hpp`
+
+## 当前实现结构（2026-04）
+
+- `vm` 为唯一字节码执行引擎，运行输入来自 `runtime` 装载后的入口。
+- 指令与值对象约定由 `ir/lower_to_chunk` 对齐并产出执行所需 `Chunk`。
+- 本层失败语义以 `InterpretResult` 表达，上层再映射到统一诊断体系。
+- 执行循环保持 `Fetch -> Decode -> Execute -> State update` 闭环模型。

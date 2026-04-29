@@ -10,6 +10,7 @@
 ## 子模块文档
 
 - `l0_core/syntax/readme.md`
+- `l0_core/ir/readme.md`
 - `l0_core/semantic/readme.md`
 - `l0_core/linker/readme.md`
 - `l0_core/runtime/readme.md`
@@ -132,6 +133,15 @@ graph LR
     ST --> FD
     EX --> RES[Value / InterpretResult]
 ```
+
+## 当前实现结构（2026-04）
+
+- 编译主链路以 IR 管线为唯一实现路径：
+  - `Scanner -> Parser -> Predeclare -> TypeCheck -> IRBuilder -> Verify -> LowerToChunk -> Linker -> Launcher -> VM`
+- `syntax` 只负责前端（Token/AST），不再承担字节码生成。
+- `ir` 负责中间表示构建、校验与降级到 `vm::Chunk`。
+- `linker + runtime + vm` 负责装载与执行阶段。
+- `diagnostic` 作为跨阶段统一诊断通道。
 
 ## 阶段索引
 

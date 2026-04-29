@@ -1,0 +1,5 @@
+import {add} from math;
+
+func main() {
+    return add();
+}

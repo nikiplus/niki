@@ -2,6 +2,17 @@
 #include <cstdint>
 
 namespace niki::vm {
+/*
+ * opcode.hpp —— 虚拟机指令编码总表。
+ *
+ * 该枚举同时承担三层协议角色：
+ * 1) lowering 发射目标：IR 指令会映射为这里定义的 opcode；
+ * 2) VM 解码入口：run() 通过 switch(opcode) 分发执行；
+ * 3) 能力治理基线：opcode_capobility.hpp 基于本枚举定义可运行子集。
+ *
+ * 枚举中的 START/END 哨兵不仅用于文档分组，也用于 constexpr 分类函数，
+ * 使“指令归类判断”保持 O(1) 区间比较而非分散的手工集合判断。
+ */
 /** @brief 指令集
  * @enum OPCODE 指令枚举
  * @details 每个指令对应一个唯一的 opcode
@@ -110,11 +121,13 @@ enum class OPCODE : uint8_t {
     /*---[DataExpr]数据操作（局部变量等）---*/
     _DATA_START, // 数据操作指令开始
     __VAR_START, // 变量操作指令开始
-    // [GlobalVarExpr]全局变量与函数池
-    OP_DEFINE_GLOBAL,   // 定义全局函数 (操作数: constIdx)
-    OP_DEFINE_GLOBAL_W, // 新增
-    OP_GET_GLOBAL,      // 获取全局函数 (操作数: targetReg, constIdx)
-    OP_GET_GLOBAL_W,    // 新增
+    // [TopLevelSymbolExpr]顶层符号注册表（函数/结构体定义，不是语言级全局变量）
+    OP_DEFINE_GLOBAL,   // 定义顶层符号 (操作数: constIdx)
+    OP_DEFINE_GLOBAL_W, // 宽索引版本
+    OP_GET_GLOBAL,      // 读取顶层符号 (操作数: targetReg, constIdx)
+    OP_GET_GLOBAL_W,    // 宽索引版本
+    OP_SET_GLOBAL,      // 写入顶层符号 (操作数: valueReg, constIdx)
+    OP_SET_GLOBAL_W,    // 宽索引版本
     OP_NEW_INSTANCE,    // [新增] 实例化结构体 (操作数: targetReg, calleeReg, argStartReg, argCount)
     OP_GET_FIELD,       // [新增] 极速字段访问 (操作数: targetReg, instanceReg, fieldIndex)
     OP_SET_FIELD,       // [新增] 极速字段写入 (操作数: instanceReg, fieldIndex, valueReg)
@@ -149,69 +162,72 @@ enum class OPCODE : uint8_t {
 }; // namespace niki::vm
 
 /*---辅助函数区---*/
-// 将 OPCODE 转换为 uint8_t
+/** @brief 将 OPCODE 转为底层字节编码。 */
 constexpr uint8_t ToInt(OPCODE op) noexcept { return static_cast<uint8_t>(op); }
 
 /*---是否为运算指令---*/
+/** @brief 判断是否为运算类指令。 */
 constexpr bool IsCalcOP(OPCODE op) noexcept { return op >= OPCODE::_CALC_START && op <= OPCODE::_CALC_END; }
-// 是否为二元运算指令
+/** @brief 判断是否为二元运算指令。 */
 constexpr bool IsBinaryOP(OPCODE op) noexcept { return op >= OPCODE::__BINARY_START && op <= OPCODE::__BINARY_END; }
-// 是否为四则运算指令
+/** @brief 判断是否为四则运算指令。 */
 constexpr bool IsArithOP(OPCODE op) noexcept { return op >= OPCODE::___ARITH_START && op <= OPCODE::___ARITH_END; }
-// 是否为整数四则运算指令
+/** @brief 判断是否为整数四则运算指令。 */
 constexpr bool IsIntArithOP(OPCODE op) noexcept {
     return op >= OPCODE::____INT_ARITH_START && op <= OPCODE::____INT_ARITH_END;
 }
-// 是否为浮点四则运算指令
+/** @brief 判断是否为浮点四则运算指令。 */
 constexpr bool IsFloatArithOP(OPCODE op) noexcept {
     return op >= OPCODE::____FLOAT_ARITH_START && op <= OPCODE::____FLOAT_ARITH_END;
 }
 
-// 是否为比较运算符指令
+/** @brief 判断是否为比较类指令。 */
 constexpr bool IsCmpOP(OPCODE op) noexcept { return op >= OPCODE::___CMP_START && op <= OPCODE::___CMP_END; }
-// 是否为整数比较指令
+/** @brief 判断是否为整数比较指令。 */
 constexpr bool IsIntCmpOP(OPCODE op) noexcept {
     return op >= OPCODE::____INT_CMP_START && op <= OPCODE::____INT_CMP_END;
 }
-// 是否为浮点比较指令
+/** @brief 判断是否为浮点比较指令。 */
 constexpr bool IsFloatCmpOP(OPCODE op) noexcept {
     return op >= OPCODE::____FLOAT_CMP_START && op <= OPCODE::____FLOAT_CMP_END;
 }
-// 是否为字符串比较指令
+/** @brief 判断是否为字符串比较指令。 */
 constexpr bool IsStringCmpOP(OPCODE op) noexcept {
     return op >= OPCODE::____STRING_CMP_START && op <= OPCODE::____STRING_CMP_END;
 }
-// 是否为对象比较指令
+/** @brief 判断是否为对象比较指令。 */
 constexpr bool IsObjCmpOP(OPCODE op) noexcept {
     return op >= OPCODE::____OBJ_CMP_START && op <= OPCODE::____OBJ_CMP_END;
 }
-// 是否为逻辑运算符指令
+/** @brief 判断是否为逻辑运算指令。 */
 constexpr bool IsLogicOP(OPCODE op) noexcept {
     return (op >= OPCODE::___LOGIC_START && op <= OPCODE::___LOGIC_END) || op == OPCODE::OP_NOT;
 }
-// 是否为位运算符指令
+/** @brief 判断是否为位运算指令。 */
 constexpr bool IsBitOP(OPCODE op) noexcept {
     return (op >= OPCODE::___BIT_START && op <= OPCODE::___BIT_END) || op == OPCODE::OP_BIT_NOT;
 }
-// 是否为一元运算指令
+/** @brief 判断是否为一元运算指令。 */
 constexpr bool IsUnaryOP(OPCODE op) noexcept { return op >= OPCODE::__UNARY_START && op <= OPCODE::__UNARY_END; }
-// 是否为取负运算符指令
+/** @brief 判断是否为整型取负指令。 */
 constexpr bool IsNegOP(OPCODE op) noexcept { return op == OPCODE::OP_NEG; }
 
 /*---是否为控制流指令---*/
+/** @brief 判断是否为控制流指令。 */
 constexpr bool IsCtrlOP(OPCODE op) noexcept { return op >= OPCODE::_CTRL_START && op <= OPCODE::_CTRL_END; }
-// 是否为跳转指令
+/** @brief 判断是否为跳转指令。 */
 constexpr bool IsJmpOP(OPCODE op) noexcept { return op >= OPCODE::__JMP_START && op <= OPCODE::__JMP_END; }
-// 是否为调用函数指令
+/** @brief 判断是否为调用相关指令。 */
 constexpr bool IsCallOP(OPCODE op) noexcept { return op >= OPCODE::__CALL_START && op <= OPCODE::__CALL_END; }
 
 /*---是否为数据操作指令---*/
+/** @brief 判断是否为数据操作指令。 */
 constexpr bool IsDataOP(OPCODE op) noexcept { return op >= OPCODE::_DATA_START && op <= OPCODE::_DATA_END; }
-// 是否为变量操作指令
+/** @brief 判断是否为变量/符号操作指令。 */
 constexpr bool IsVarOP(OPCODE op) noexcept { return op >= OPCODE::__VAR_START && op <= OPCODE::__VAR_END; }
-// 是否为复杂数据结构指令
+/** @brief 判断是否为复杂数据结构指令。 */
 constexpr bool IsDSOP(OPCODE op) noexcept { return op >= OPCODE::__DS_START && op <= OPCODE::__DS_END; }
-// 是否为常用数据操作指令
+/** @brief 判断是否为数据装载/搬运指令。 */
 constexpr bool IsDataCtrlOP(OPCODE op) noexcept {
     return op >= OPCODE::__DATA_CTRL_START && op <= OPCODE::__DATA_CTRL_END;
 }

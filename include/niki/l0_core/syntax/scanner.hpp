@@ -42,12 +42,23 @@ class Scanner {
      *当然，!只读!本身也有其缺点，即，当“被只读”对象被删除时，其指向的内存空间也会被释放，而如果scanner还在使用这个内存空间，就会导致程序崩溃。
      *不过在我们当前使用情境下，由于scanner只是对源字符串进行扫描，而不会对其进行修改，因此我们可以放心的使用string_view，而不用担心内存泄漏的问题。
      */
-    Scanner(std::string_view source, std::string_view source_path = ""); // 返回一个Scanner对象
-    Token scanToken(); // 核心API，每次调用产出一个token，也是我们的主扫描函数。
+    /**
+     * @brief 构造扫描器。
+     * @param source 源代码文本视图。
+     * @param source_path 源文件路径（诊断用）。
+     */
+    Scanner(std::string_view source, std::string_view source_path = "");
+    /**
+     * @brief 扫描下一个 token。
+     * @return token（错误时返回 TOKEN_ERROR 并写入 diagnostics）。
+     */
+    Token scanToken();
     // scanner扫描后所产出的token 并不在这里存储，而是存在global_compilation.hpp中。
 
     // 统一错误日志输出
+    /** @brief 是否存在扫描阶段错误。 */
     bool hasDiagnostics() const { return diagnostics.hasErrors(); }
+    /** @brief 取出诊断并转移所有权。 */
     niki::diagnostic::DiagnosticBag takeDiagnostics();
 
     // 在这补充一点知识，什么是有限状态机？
@@ -77,11 +88,16 @@ class Scanner {
     /** @section 扫描辅助函数(判断是否到达源字符串末尾，移动游标，查看当前字符等) */
     // 为什么要有这些辅助函数呢？
     // 事实上，绝大多数辅助函数，都是从主扫描函数中提取出的，经常会用到的方法。在实际代码中看了就能明白。
-    bool isAtEnd();            // 是否到达源字符串末尾
-    char advance();            // 移动游标并返回当前字符
-    char peek();               // 查看当前字符但不移动游标
-    char peekNext();           // 查看下一个字符但不移动游标
-    bool match(char expected); // 匹配当前字符并移动游标
+    /** @brief 是否到达源字符串末尾。 */
+    bool isAtEnd();
+    /** @brief 移动游标并返回当前字符。 */
+    char advance();
+    /** @brief 查看当前字符但不移动游标。 */
+    char peek();
+    /** @brief 查看下一个字符但不移动游标。 */
+    char peekNext();
+    /** @brief 匹配当前字符并移动游标。 */
+    bool match(char expected);
 
     // 代码的本质是文本文件，因此scanner的扫描也只是对文本文件中的语句和符号进行判断，再将之拆分成Token
     // scanner在进行扫描时，对于字符需要进行如下几种类型的判断↓
@@ -94,10 +110,12 @@ class Scanner {
     // 这三个函数主要是用于辅助主扫描器进行初步的字符判断的。
     // 这里的c通常通过 advance()或peek()来获取到当前的源代码字符——>如source[current]
     // c = source[current];
-    bool isAlpha(char c); // 是否为字母->@bool: 返回的是（真1/假0）
-    bool isDigit(char c); // 是否为数字
-    void
-    skipWhitespace(); // 跳过空白字符->我们上面已说明了，除字母，数字和标识符外其它的字符都是“无用字符”，跳过即可。->void->无返回值
+    /** @brief 判断字符是否为字母或下划线。 */
+    bool isAlpha(char c);
+    /** @brief 判断字符是否为数字。 */
+    bool isDigit(char c);
+    /** @brief 跳过空白与注释。 */
+    void skipWhitespace();
 
     /** @section 判断标识符 */
     /**
@@ -134,16 +152,24 @@ class Scanner {
      */
     // (source)数据注入以下三个函数↓
     // 详细解释我会放在具体函数实现中，可按住ctrl+点击函数名查看
-    TokenType checkKeyword(int startOffset, int length, const char *rest, TokenType type); // 检查是否为关键词
-    TokenType checkIdentifierType();                                                       // 检查是否为标识符
-    Token makeIdentifierToken();                                                           // 构造标识符token
-    Token makeNumberToken();                                                               // 构造数字token
-    Token makeCharToken();                                                                 // 构造字符token
-    Token makeStringToken();                                                               // 构造字符串token
+    /** @brief 关键字尾串匹配。 */
+    TokenType checkKeyword(int startOffset, int length, const char *rest, TokenType type);
+    /** @brief 判定标识符是否为关键字。 */
+    TokenType checkIdentifierType();
+    /** @brief 构造标识符/关键字 token。 */
+    Token makeIdentifierToken();
+    /** @brief 构造数字字面量 token。 */
+    Token makeNumberToken();
+    /** @brief 构造字符字面量 token。 */
+    Token makeCharToken();
+    /** @brief 构造字符串字面量 token。 */
+    Token makeStringToken();
 
     /*具体的TOKEN构造函数*/
-    Token makeToken(TokenType type); // 构造token
-    Token errorToken();              // 构造错误token->无需返回错误信息，错误信息在parse阶段抛出
+    /** @brief 按当前词素边界构造 token。 */
+    Token makeToken(TokenType type);
+    /** @brief 构造错误 token 并写入诊断。 */
+    Token errorToken();
     niki::diagnostic::DiagnosticBag diagnostics;
 
     // 具体的扫描逻辑

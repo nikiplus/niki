@@ -46,6 +46,10 @@
 
 using namespace niki::syntax;
 
+/**
+ * @brief 构造 ASTPool，并固定内置类型名 id。
+ * @param shared_interner Driver 共享字符串驻留表。
+ */
 ASTPool::ASTPool(GlobalInterner &shared_interner) : interner(&shared_interner) {
     ID_INT = interner->intern("int");
     ID_FLOAT = interner->intern("float");
@@ -53,12 +57,22 @@ ASTPool::ASTPool(GlobalInterner &shared_interner) : interner(&shared_interner) {
     ID_STRING = interner->intern("string");
 }
 
+/**
+ * @brief 将 ASTListIndex 映射为只读 span 视图。
+ * @param list_info 列表切片信息。
+ * @return 对应元素切片；非法或空列表返回空 span。
+ */
 std::span<const ASTNodeIndex> ASTPool::get_list(ASTListIndex list_info) const {
     if (!list_info.isvalid() || list_info.length == 0) {
         return {};
     }
     return {lists_elements.data() + list_info.start_index, list_info.length};
 }
+/**
+ * @brief 分配空节点，并同步追加 location/type 旁侧表记录。
+ * @param type 节点类型。
+ * @return 新节点索引。
+ */
 ASTNodeIndex ASTPool::allocateNode(NodeType type) {
     uint32_t index = static_cast<uint32_t>(nodes.size());
     nodes.push_back(ASTNode{type, {}});
@@ -67,6 +81,11 @@ ASTNodeIndex ASTPool::allocateNode(NodeType type) {
     return ASTNodeIndex{index};
 };
 // 调用ASTListIndex，装载指定区域的astnode，并返回对应的astlist切片。
+/**
+ * @brief 将节点列表写入扁平区并返回切片描述。
+ * @param elements 待写入元素序列。
+ * @return 列表切片索引。
+ */
 ASTListIndex ASTPool::allocateList(std::span<const ASTNodeIndex> elements) {
     uint32_t start_index = static_cast<uint32_t>(lists_elements.size());
     // 这里之所以不使用for循环，而是使用std::vector::insert,是因为insert方法会预先计算elements的大小，使vector只需进行一次内存再分配即可容纳所有元素。
@@ -75,11 +94,13 @@ ASTListIndex ASTPool::allocateList(std::span<const ASTNodeIndex> elements) {
     return ASTListIndex{start_index, static_cast<uint32_t>(elements.size())};
 };
 //---辅助函数---
+/** @brief 追加常量到常量池并返回索引。 */
 uint32_t ASTPool::addConstant(vm::Value value) {
     uint32_t index = static_cast<uint32_t>(constants.size());
     constants.push_back(value);
     return index;
 };
+/** @brief 清空 AST 结构数据（共享 interner 保留）。 */
 void ASTPool::clear() {
     source_path.clear();
     nodes.clear();
@@ -95,6 +116,11 @@ void ASTPool::clear() {
 
     // 注意：共享字符串池由 GlobalInterner 持有，clear() 仅重置 AST 结构数据；ID_INT 等仍有效。
 };
+/**
+ * @brief 获取可写 AST 节点引用。
+ * @param index 节点索引。
+ * @return 对应节点引用；非法索引时中止进程。
+ */
 ASTNode &ASTPool::getNode(ASTNodeIndex index) {
     if (!index.isvalid() || index >= nodes.size()) {
         std::fprintf(stderr, "ASTNodeIndex is invalid or out of bounds.\n");
@@ -102,6 +128,11 @@ ASTNode &ASTPool::getNode(ASTNodeIndex index) {
     }
     return nodes[index.index];
 }
+/**
+ * @brief 获取只读 AST 节点引用。
+ * @param index 节点索引。
+ * @return 对应节点引用；非法索引时中止进程。
+ */
 const ASTNode &ASTPool::getNode(ASTNodeIndex index) const {
     if (!index.isvalid() || index >= nodes.size()) {
         std::fprintf(stderr, "ASTNodeIndex is invalid or out of bounds.\n");
@@ -110,6 +141,11 @@ const ASTNode &ASTPool::getNode(ASTNodeIndex index) const {
     return nodes[index.index];
 }
 
+/**
+ * @brief 将字符串驻留到共享 interner。
+ * @param str 输入字符串视图。
+ * @return 对应字符串 id。
+ */
 uint32_t ASTPool::internString(std::string_view str) {
     if (interner == nullptr) {
         std::fprintf(stderr, "ASTPool interner is not initialized.\n");
@@ -118,6 +154,11 @@ uint32_t ASTPool::internString(std::string_view str) {
     return interner->intern(str);
 };
 
+/**
+ * @brief 通过 id 反查字符串。
+ * @param id 字符串 id。
+ * @return 对应字符串引用。
+ */
 const std::string &ASTPool::getStringId(uint32_t id) const {
     if (interner == nullptr) {
         std::fprintf(stderr, "ASTPool interner is not initialized.\n");
@@ -126,6 +167,7 @@ const std::string &ASTPool::getStringId(uint32_t id) const {
     return interner->get(id);
 }
 
+/** @brief 导出当前字符串池快照。 */
 std::vector<std::string> ASTPool::snapshotStringPool() const {
     if (interner == nullptr) {
         std::fprintf(stderr, "ASTPool interner is not initialized.\n");

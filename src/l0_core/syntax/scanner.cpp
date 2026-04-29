@@ -10,6 +10,11 @@
 
 namespace niki::syntax {
 
+/**
+ * @brief 构造 Scanner 并初始化扫描游标。
+ * @param source 源代码文本视图。
+ * @param source_path 源文件路径（用于诊断）。
+ */
 Scanner::Scanner(std::string_view source, std::string_view source_path) : source(source), sourcePath(source_path) {
     start = 0;
     current = 0;
@@ -21,6 +26,10 @@ Scanner::Scanner(std::string_view source, std::string_view source_path) : source
  *要输出什么很明显，函数的返回值就是Token。
  *而要输入的则是源代码，那我们之前在头文件中是如何获取源代码的呢？
  *通过Scanner的构造函数，将源代码传入Scanner中。
+ */
+/**
+ * @brief 扫描并返回下一个 token。
+ * @return 正常返回词法 token；无法识别时返回 TOKEN_ERROR（并写入 diagnostics）。
  */
 Token Scanner::scanToken() {
     // 扫描主流程：跳过空白 -> 锁定起点 -> 识别 token -> 回传位置信息。
@@ -84,6 +93,38 @@ Token Scanner::scanToken() {
     case '*':
         return makeToken(match('=') ? TokenType::SYM_STAR_EQUAL : TokenType::SYM_STAR);
     case '/':
+        if (match('/')) {
+            while (peek() != '\n' && !isAtEnd()) {
+                advance();
+            }
+            return makeToken(TokenType::COMMENT);
+        }
+        if (match('*')) {
+            bool terminated = false;
+            while (!isAtEnd()) {
+                if (peek() == '\n') {
+                    line++;
+                    advance();
+                    lineStart = current;
+                    continue;
+                }
+                if (peek() == '*' && peekNext() == '/') {
+                    advance();
+                    advance();
+                    terminated = true;
+                    break;
+                }
+                advance();
+            }
+            if (!terminated) {
+                diagnostics.error(niki::diagnostic::events::ScannerCode::InvalidToken,
+                                  "Unterminated block comment.",
+                                  niki::diagnostic::makeSourceSpan(std::string(sourcePath), line,
+                                                                   static_cast<uint16_t>(start - lineStart + 1),
+                                                                   static_cast<uint16_t>(current - start)));
+            }
+            return makeToken(TokenType::COMMENT);
+        }
         if (match('=')) {
             return makeToken(TokenType::SYM_SLASH_EQUAL);
         }
@@ -157,8 +198,13 @@ Token Scanner::scanToken() {
 
 /** @section 扫描辅助函数(判断是否到达源字符串末尾，移动游标，查看当前字符等) */
 // 想要让主函数能获知当前是个什么个状态，指针指到了哪里，我们就需要一系列辅助函数来进行辅助。
+/** @brief 判断扫描游标是否到达源文本末尾。 */
 bool Scanner::isAtEnd() { return current >= source.size(); };
 // 返回当前字符并移动游标->之前我们在scanner开头有讲，代码是从左往右执行的，因此我们下面这段代码是先”返回“，再”移动“
+/**
+ * @brief 读取当前字符并前进游标。
+ * @return 读取到的字符；末尾返回 0。
+ */
 char Scanner::advance() {
     if (isAtEnd())
         return false;
@@ -166,6 +212,10 @@ char Scanner::advance() {
 };
 /** @note 注意这个”++“!它的意思是current += 1，是有副作用的，会对current指针的位置产生改动的*/
 // 查看当前字符但不移动游标
+/**
+ * @brief 查看当前字符但不前进游标。
+ * @return 当前字符；末尾返回 0。
+ */
 char Scanner::peek() {
     // 进行检查，防止peek到不存在的字符串->这会导致bug！
     if (isAtEnd())
@@ -173,6 +223,10 @@ char Scanner::peek() {
     return source[current];
 };
 // 查看下一个字符但不移动游标
+/**
+ * @brief 查看下一个字符但不前进游标。
+ * @return 下一个字符；越界返回 0。
+ */
 char Scanner::peekNext() {
     // 看看到头了没
     if (isAtEnd())
@@ -186,6 +240,11 @@ char Scanner::peekNext() {
     /** @note 这里的 current[1] 只是向前看一个位置，current 指针本身不会被修改（无副作用）*/
 }; // [副作用]这个概念很重要，建议去深入了解一下。
 // 匹配当前字符并移动游标
+/**
+ * @brief 条件匹配当前字符，命中则前进游标。
+ * @param expected 期望字符。
+ * @return 命中返回 true，否则 false。
+ */
 bool Scanner::match(char expected) {
     if (isAtEnd())
         return false;
@@ -196,8 +255,13 @@ bool Scanner::match(char expected) {
 }; // 匹配当前字符并移动游标
 
 /** @section 判断辅助函数(数字，字母，空格等) */
+/** @brief 判断字符是否为字母或下划线。 */
 bool Scanner::isAlpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_'); }
+/** @brief 判断字符是否为数字。 */
 bool Scanner::isDigit(char c) { return c >= '0' && c <= '9'; }
+/**
+ * @brief 跳过空白与注释，并维护行列信息。
+ */
 void Scanner::skipWhitespace() {
     // 空白与注释清洗器：持续吞掉无关字符，直到遇到有效 token 起点。
     while (true) {
@@ -215,35 +279,6 @@ void Scanner::skipWhitespace() {
             lineStart = current;
             break;
 
-        case '/':
-            if (peekNext() == '/') { // 单行注释，扫描器扫描到换行符就晓得要开始下一段了
-                // 注意：这里不要处理 \n。因为外层的 while(true) 会在下一轮循环中
-                // 遇到 \n，并交给外层的 case '\n': 去统一处理 line 和 lineStart！
-                while (peek() != '\n' && !isAtEnd()) {
-                    advance();
-                }
-            } else if (peekNext() == '*') {
-                // 多行注释
-                advance(); // 吃掉‘/’
-                advance(); // 吃掉‘*’
-                while (!isAtEnd()) {
-                    if (peek() == '\n') {
-                        line++;
-                        advance();           // 吃掉换行符
-                        lineStart = current; // 必须更新行首指针！
-                    } else if (peek() == '*' && peekNext() == '/') {
-                        advance(); // 吃掉‘*’
-                        advance(); // 吃掉‘/’
-                        break;
-                    } else {
-                        advance(); // 吃掉其他字符
-                    }
-                }
-            } else {
-                return;
-            }
-            break;
-
         default:
             return;
         }
@@ -252,6 +287,14 @@ void Scanner::skipWhitespace() {
 
 /** @section 判断标识符 */
 // 检查是否为关键词。如果是，返回对应的 TokenType；否则返回普通的 IDENTIFIER。
+/**
+ * @brief 在已扫描标识符上做关键字尾串匹配。
+ * @param startOffset 从词素起点开始的偏移。
+ * @param length 待比较长度。
+ * @param rest 待比较文本。
+ * @param type 命中时返回的关键字 token 类型。
+ * @return 命中返回关键字类型，否则 IDENTIFIER。
+ */
 TokenType Scanner::checkKeyword(int startOffset, int length, const char *rest, TokenType type) {
     if (this->current - this->start == startOffset + length &&
         source.compare(this->start + startOffset, length, rest) == 0) {
@@ -261,6 +304,10 @@ TokenType Scanner::checkKeyword(int startOffset, int length, const char *rest, T
 }
 
 // 检查是否为标识符
+/**
+ * @brief 根据词素内容判定是关键字还是普通标识符。
+ * @return 对应 token 类型。
+ */
 TokenType Scanner::checkIdentifierType() {
     int length = static_cast<int>(current - start);
     char c0 = source[start]; // 获取首字母
@@ -453,6 +500,7 @@ TokenType Scanner::checkIdentifierType() {
 };
 
 // 构造标识符token
+/** @brief 扫描并构造标识符或关键字 token。 */
 Token Scanner::makeIdentifierToken() {
     while (isAlpha(peek()) || isDigit(peek())) {
         advance();
@@ -460,6 +508,7 @@ Token Scanner::makeIdentifierToken() {
     return makeToken(checkIdentifierType());
 };
 // 构造数字token
+/** @brief 扫描并构造整型或浮点字面量 token。 */
 Token Scanner::makeNumberToken() {
     // 默认是整数
     TokenType type = TokenType::LITERAL_INT;
@@ -481,6 +530,7 @@ Token Scanner::makeNumberToken() {
     }
     return makeToken(type);
 };
+/** @brief 扫描并构造字符字面量 token。 */
 Token Scanner::makeCharToken() {
     if (isAtEnd()) {
         return errorToken();
@@ -493,6 +543,7 @@ Token Scanner::makeCharToken() {
     advance();
     return makeToken(TokenType::LITERAL_CHAR);
 };
+/** @brief 扫描并构造字符串字面量 token。 */
 Token Scanner::makeStringToken() {
     while (peek() != '"' && !isAtEnd()) {
         if (peek() == '\n') {
@@ -510,6 +561,11 @@ Token Scanner::makeStringToken() {
 };
 
 /*具体的TOKEN构造函数*/
+/**
+ * @brief 以当前 [start, current) 区间构造 token。
+ * @param type token 类型。
+ * @return 生成的 token。
+ */
 Token Scanner::makeToken(TokenType type) {
     Token token;
     token.type = type;
@@ -522,6 +578,10 @@ Token Scanner::makeToken(TokenType type) {
 }; // 构造token
 
 // 构造错误token->会返回一段错误信息哦
+/**
+ * @brief 构造 TOKEN_ERROR 并写入诊断。
+ * @return 错误 token。
+ */
 Token Scanner::errorToken() {
     Token token;
     token.type = TokenType::TOKEN_ERROR;
@@ -534,5 +594,6 @@ Token Scanner::errorToken() {
     return token;
 };
 
+/** @brief 取出扫描阶段诊断并转移所有权。 */
 niki::diagnostic::DiagnosticBag Scanner::takeDiagnostics() { return std::move(diagnostics); }
 } // namespace niki::syntax
