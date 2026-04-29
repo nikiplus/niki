@@ -99,6 +99,7 @@ bool IRBuilder::buildFuncDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
 
     // PARAM_BIND: 形参名绑定到本函数局部寄存器表。
     auto param_nodes = bc.unit->pool.get_list(func_data.params);
+    func(bc, fc.fid).param_count = static_cast<uint32_t>(param_nodes.size());
     for (ASTNodeIndex param_idx : param_nodes) {
         if (!param_idx.isvalid()) {
             continue;

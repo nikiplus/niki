@@ -1,0 +1,8 @@
+import {addOne} from lib;
+
+func main()
+{
+    var a = 10;
+    var b = addOne(a);
+    return b;
+}

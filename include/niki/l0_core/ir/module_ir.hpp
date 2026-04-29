@@ -100,6 +100,7 @@ struct FuncRecord {
     uint32_t src_sid = std::numeric_limits<uint32_t>::max();
     // 入口基本块（函数内相对 block id）。
     BlockId entry_block = std::numeric_limits<BlockId>::max();
+    uint32_t param_count = 0;
     // 下一个可分配虚拟寄存器编号（函数内单调递增）。
     RegId next_vreg = 0;
     Span block_span{}; // SPAN: 函数对应的块区间（位于 block 表）。

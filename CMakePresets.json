@@ -11,12 +11,39 @@
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "VCPKG_TARGET_TRIPLET": "x64-windows"
             }
+        },
+        {
+            "name": "vs2022-local",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/build-vs",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/.tools/vcpkg/scripts/buildsystems/vcpkg.cmake",
+                "CMAKE_CXX_STANDARD": "23",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "VCPKG_TARGET_TRIPLET": "x64-windows"
+            }
         }
     ],
-     "buildPresets": [
-    {
-      "name": "default",
-      "configurePreset": "default"
-       }
+    "buildPresets": [
+        {
+            "name": "default",
+            "configurePreset": "default"
+        },
+        {
+            "name": "vs2022-local-debug",
+            "configurePreset": "vs2022-local",
+            "configuration": "Debug"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "vs2022-local-debug",
+            "configurePreset": "vs2022-local",
+            "configuration": "Debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
     ]
 }
