@@ -63,6 +63,11 @@ enum class VerifyErrorCode : uint16_t {
     ComponentNameRefOutOfRange,
     ComponentOwnerModuleRefOutOfRange,
     ComponentSourceStructRefOutOfRange,
+    // SYMBOL: 符号表结构错误。
+    SymbolNameRefOutOfRange,
+    SymbolOwnerModuleRefOutOfRange,
+    SymbolIdMismatch,
+    DuplicateExportedSymbolName,
     // TABLE: 表结构错误。
     InstColumnsMisaligned
 };

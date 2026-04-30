@@ -66,6 +66,12 @@ graph LR
 - `verifyModuleIRFlat`：IR 一致性校验入口
 - `lowerModuleToChunk`：IR 到字节码的降级入口
 
+## 导出语义约定
+
+- `ModuleIR::syms` 是导出状态的唯一真相源（`SymRecord::is_exported`）。
+- `func/struct/kits/component` 等声明是否导出，统一通过 `syms` 判定。
+- 具体声明记录（如 `KitsRecord`、`ComponentRecord`）不再持有独立导出位，避免状态漂移。
+
 ## 阶段接口（对外）
 
 - Build

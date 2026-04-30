@@ -18,6 +18,7 @@ set(NIKI_L0_CORE_SOURCES
     src/l0_core/ir/builder_expression.cpp
     src/l0_core/ir/builder_statement.cpp
     src/l0_core/ir/builder_declaration.cpp
+    src/l0_core/ir/extensions.cpp
     src/l0_core/ir/lower_to_chunk.cpp
     src/l0_core/syntax/global_interner.cpp
     src/l0_core/syntax/scanner.cpp
@@ -30,6 +31,7 @@ set(NIKI_L0_CORE_SOURCES
     src/l0_core/semantic/type_checker_expr.cpp
     src/l0_core/semantic/type_checker_stmt.cpp
     src/l0_core/semantic/type_checker_decl.cpp
+    src/l0_core/semantic/extensions.cpp
     src/l0_core/semantic/type_checker_pre_decl.cpp
     src/l0_core/semantic/global_symbol_table.cpp
     src/l0_core/semantic/global_type_arena.cpp
@@ -66,7 +68,13 @@ set(NIKI_L5_REPLAY_SOURCES
 )
 
 set(NIKI_APP_SOURCES
-    src/driver/driver.cpp
+    src/meta/precompile/parse_stage.cpp
+    src/meta/precompile/predeclare_stage.cpp
+    src/meta/precompile/module_context_stage.cpp
+    src/meta/orchestrator/compiler_orchestrator.cpp
+    src/meta/orchestrator/compile_pipeline.cpp
+    src/meta/project/project_linker.cpp
+    src/meta/runtime_host/runtime_host.cpp
     src/debug/logger.cpp
     src/debug/diagnostic_logger.cpp
 )
@@ -113,6 +121,7 @@ add_executable(niki_tests
     test/driver/driver_project_test.cpp
     test/linker/linker_test.cpp
     test/runtime/launcher_test.cpp
+    test/l1_domain/domain_split_test.cpp
 )
 
 # 注意 GTest::gtest_main 的大小写
@@ -124,3 +133,12 @@ target_link_libraries(niki_tests PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(niki_tests)
+
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_custom_target(check_layer_boundaries
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_layer_boundaries.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Check physical layer boundary includes"
+    )
+endif()

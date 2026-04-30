@@ -56,10 +56,8 @@ class IRBuilder {
         ModuleIR module;
         // 构建阶段诊断集合。
         diagnostic::DiagnosticBag diags;
-        // 已声明为导出的 kits 名称（module.string_pool sid）。
-        std::unordered_set<uint32_t> exported_kits_name_sids;
-        // 已声明为导出的 component 名称（module.string_pool sid）。
-        std::unordered_set<uint32_t> exported_component_name_sids;
+        // 已声明为导出的符号名称（module.string_pool sid，跨 func/struct/kits/component 统一处理）。
+        std::unordered_set<uint32_t> exported_name_sids;
     };
     //---函数级构建上下文---
     struct FuncCtx {

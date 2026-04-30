@@ -1,4 +1,4 @@
-#include "niki/driver/driver.hpp"
+#include "niki/meta/orchestrator/compiler_orchestrator.hpp"
 #include "niki/l0_core/diagnostic/renderer.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include <filesystem>
@@ -23,8 +23,8 @@ std::string resolveCaseDirOrDie(const std::string &relative_case_path) {
 } // namespace
 
 TEST(DriverProjectTest, MultiFileBasicCaseRunsSuccessfully) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -35,8 +35,8 @@ TEST(DriverProjectTest, MultiFileBasicCaseRunsSuccessfully) {
 }
 
 TEST(DriverProjectTest, MultiFileInitOrderCaseRunsSuccessfully) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -47,8 +47,8 @@ TEST(DriverProjectTest, MultiFileInitOrderCaseRunsSuccessfully) {
 }
 
 TEST(DriverProjectTest, MultiDeclStableCaseRunsSuccessfully) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -59,8 +59,8 @@ TEST(DriverProjectTest, MultiDeclStableCaseRunsSuccessfully) {
 }
 
 TEST(DriverProjectTest, DiceBasicCaseReportsUnsupportedOperatorInCurrentIRBuilder) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -76,8 +76,8 @@ TEST(DriverProjectTest, DiceBasicCaseReportsUnsupportedOperatorInCurrentIRBuilde
 }
 
 TEST(DriverProjectTest, ExplicitImportCaseRunsSuccessfully) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -88,8 +88,8 @@ TEST(DriverProjectTest, ExplicitImportCaseRunsSuccessfully) {
 }
 
 TEST(DriverProjectTest, MissingImportedSymbolShouldFailBeforeRuntime) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -101,8 +101,8 @@ TEST(DriverProjectTest, MissingImportedSymbolShouldFailBeforeRuntime) {
 }
 
 TEST(DriverProjectTest, ModuleScopedImportMissingSymbolShouldFailBeforeRuntime) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -115,8 +115,8 @@ TEST(DriverProjectTest, ModuleScopedImportMissingSymbolShouldFailBeforeRuntime) 
 }
 
 TEST(DriverProjectTest, TypeAliasBasicCaseRunsSuccessfully) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -127,8 +127,8 @@ TEST(DriverProjectTest, TypeAliasBasicCaseRunsSuccessfully) {
 }
 
 TEST(DriverProjectTest, FunctionArityCaseRunsSuccessfully) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -139,8 +139,8 @@ TEST(DriverProjectTest, FunctionArityCaseRunsSuccessfully) {
 }
 
 TEST(DriverProjectTest, ComponentPromotionCaseRunsSuccessfully) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -151,8 +151,8 @@ TEST(DriverProjectTest, ComponentPromotionCaseRunsSuccessfully) {
 }
 
 TEST(DriverProjectTest, ComponentPromotionMissingStructShouldFailBeforeRuntime) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -165,8 +165,8 @@ TEST(DriverProjectTest, ComponentPromotionMissingStructShouldFailBeforeRuntime) 
 }
 
 TEST(DriverProjectTest, ComponentMultiPromotionCaseRunsSuccessfully) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -177,8 +177,8 @@ TEST(DriverProjectTest, ComponentMultiPromotionCaseRunsSuccessfully) {
 }
 
 TEST(DriverProjectTest, ModuleNameMismatchShouldFailDuringImportResolution) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -190,8 +190,8 @@ TEST(DriverProjectTest, ModuleNameMismatchShouldFailDuringImportResolution) {
 }
 
 TEST(DriverProjectTest, ModuleBoundaryMayIgnoreSiblingTopLevelDecls) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -204,8 +204,8 @@ TEST(DriverProjectTest, ModuleBoundaryMayIgnoreSiblingTopLevelDecls) {
 }
 
 TEST(DriverProjectTest, KitsDuplicateAliasShouldFailBeforeRuntime) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 
@@ -217,8 +217,8 @@ TEST(DriverProjectTest, KitsDuplicateAliasShouldFailBeforeRuntime) {
 }
 
 TEST(DriverProjectTest, KitsUnknownComponentShouldFailBeforeRuntime) {
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator driver;
+    niki::meta::orchestrator::OrchestratorOptions options;
     options.recursive_scan = false;
     options.entry_name = "main";
 

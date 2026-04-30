@@ -72,3 +72,4 @@ graph LR
 - 输入为多个 `CompileModule`，输出单一 `LinkedProgram` 给 `runtime`。
 - 链接失败统一以 `DiagnosticBag` 返回，不产生部分可执行产物。
 - 当前链接职责聚焦符号解析与入口决议，不承担语义类型校验。
+- 模块语义与可见性扩展愿景见：`docs/architecture/module_link_feature_vision.md`。

@@ -1,4 +1,5 @@
 #include "niki/l0_core/semantic/nktype.hpp"
+#include "niki/l0_core/semantic/extensions.hpp"
 #include "niki/l0_core/semantic/type_checker.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include <cstddef>
@@ -45,22 +46,40 @@ void TypeChecker::checkDeclaration(syntax::ASTNodeIndex declIdx) {
         checkModuleDecl(declIdx);
         break;
     case syntax::NodeType::SystemDecl:
-        checkSystemDecl(declIdx);
+        if (auto domain_handler = getDomainSemanticDeclHandler(); domain_handler == nullptr ||
+                                                                !domain_handler(*this, declIdx)) {
+            checkSystemDecl(declIdx);
+        }
         break;
     case syntax::NodeType::ComponentDecl:
-        checkComponentDecl(declIdx);
+        if (auto domain_handler = getDomainSemanticDeclHandler(); domain_handler == nullptr ||
+                                                                !domain_handler(*this, declIdx)) {
+            checkComponentDecl(declIdx);
+        }
         break;
     case syntax::NodeType::FlowDecl:
-        checkFlowDecl(declIdx);
+        if (auto domain_handler = getDomainSemanticDeclHandler(); domain_handler == nullptr ||
+                                                                !domain_handler(*this, declIdx)) {
+            checkFlowDecl(declIdx);
+        }
         break;
     case syntax::NodeType::KitsDecl:
-        checkKitsDecl(declIdx);
+        if (auto domain_handler = getDomainSemanticDeclHandler(); domain_handler == nullptr ||
+                                                                !domain_handler(*this, declIdx)) {
+            checkKitsDecl(declIdx);
+        }
         break;
     case syntax::NodeType::TagDecl:
-        checkTagDecl(declIdx);
+        if (auto domain_handler = getDomainSemanticDeclHandler(); domain_handler == nullptr ||
+                                                                !domain_handler(*this, declIdx)) {
+            checkTagDecl(declIdx);
+        }
         break;
     case syntax::NodeType::TagGroupDecl:
-        checkTagGroupDecl(declIdx);
+        if (auto domain_handler = getDomainSemanticDeclHandler(); domain_handler == nullptr ||
+                                                                !domain_handler(*this, declIdx)) {
+            checkTagGroupDecl(declIdx);
+        }
         break;
     case syntax::NodeType::ProgramRoot:
         checkProgramRoot(declIdx);
@@ -217,119 +236,4 @@ void TypeChecker::checkTypeAliasDecl(syntax::ASTNodeIndex nodeIdx) {}
 void TypeChecker::checkInterfaceDecl(syntax::ASTNodeIndex nodeIdx) {}
 /** @brief 检查 impl 声明（占位实现）。 */
 void TypeChecker::checkImplDecl(syntax::ASTNodeIndex nodeIdx) {}
-/** @brief 检查 system 声明（当前先建立上下文边界，具体执行语义后续补齐）。 */
-void TypeChecker::checkSystemDecl(syntax::ASTNodeIndex nodeIdx) {
-    const auto [node, line, column] = getNodeCtx(nodeIdx);
-    bool enclosing_system = inSystemContext;
-    inSystemContext = true;
-
-    if (node.payload.system_decl.body.isvalid()) {
-        checkStatement(node.payload.system_decl.body);
-    }
-
-    inSystemContext = enclosing_system;
-}
-/** @brief 检查 component 声明（直接声明 + struct 提升）。 */
-void TypeChecker::checkComponentDecl(syntax::ASTNodeIndex nodeIdx) {
-    const auto [node, line, column] = getNodeCtx(nodeIdx);
-    const auto &component_decl = node.payload.component_decl;
-
-    if (component_decl.is_struct_promotion) {
-        if (component_decl.body.isvalid()) {
-            reportError(line, column, "Promoted component must not have body.");
-            return;
-        }
-        if (component_decl.source_struct_name_id == 0) {
-            reportError(line, column, "Promoted component missing source struct name.");
-            return;
-        }
-
-        bool struct_found = false;
-        if (globalSymbols != nullptr) {
-            const auto *sym = globalSymbols->find(component_decl.source_struct_name_id);
-            struct_found = (sym != nullptr && sym->kind == niki::Kind::Struct);
-        }
-        if (!struct_found && visibleSymbols != nullptr) {
-            auto iter = visibleSymbols->tables.find(component_decl.source_struct_name_id);
-            if (iter != visibleSymbols->tables.end() && iter->second.kind == niki::Kind::Struct) {
-                struct_found = true;
-            }
-        }
-        if (!struct_found) {
-            reportError(line, column, "Promoted component source struct not found.");
-        }
-        return;
-    }
-
-    // 直接声明 component 必须具备主体块（字段语义后续细化）。
-    if (!component_decl.body.isvalid()) {
-        reportError(line, column, "Component declaration missing body.");
-    }
-}
-/** @brief 检查 flow 声明（占位实现）。 */
-void TypeChecker::checkFlowDecl(syntax::ASTNodeIndex nodeIdx) {}
-/** @brief 检查 kits 声明：建立“数据窗口 alias -> component + 权限”映射。 */
-void TypeChecker::checkKitsDecl(syntax::ASTNodeIndex nodeIdx) {
-    const auto [node, line, column] = getNodeCtx(nodeIdx);
-    if (!node.payload.kits_decl.body.isvalid()) {
-        reportError(line, column, "Invalid kits body.");
-        return;
-    }
-
-    const auto &body_node = currentPool->getNode(node.payload.kits_decl.body);
-    auto members = currentPool->get_list(body_node.payload.list.elements);
-    // 每个 kits 名称对应一张“alias -> component + mutability”窗口表。
-    auto &window = kitsWindows[node.payload.kits_decl.name_id];
-    window.clear();
-
-    for (auto member_idx : members) {
-        if (!member_idx.isvalid()) {
-            continue;
-        }
-        const auto [member_node, m_line, m_col] = getNodeCtx(member_idx);
-        // Parser 已将“默认可写”映射为 VarDeclStmt，“&只读”映射为 ConstDeclStmt。
-        const bool is_mutable = member_node.type == syntax::NodeType::VarDeclStmt;
-        if (member_node.type != syntax::NodeType::VarDeclStmt && member_node.type != syntax::NodeType::ConstDeclStmt) {
-            reportError(m_line, m_col, "Invalid kits member declaration.");
-            continue;
-        }
-
-        const uint32_t alias_name_id = member_node.payload.var_decl.name_id;
-        const auto type_expr_idx = member_node.payload.var_decl.type_expr;
-        if (member_node.payload.var_decl.init_expr.isvalid()) {
-            reportError(m_line, m_col, "Kits member must not have initializer.");
-            continue;
-        }
-        if (!type_expr_idx.isvalid()) {
-            reportError(m_line, m_col, "Kits member missing component type expression.");
-            continue;
-        }
-        const auto &type_expr_node = currentPool->getNode(type_expr_idx);
-        if (type_expr_node.type != syntax::NodeType::IdentifierExpr) {
-            reportError(m_line, m_col, "Kits component name must be an identifier.");
-            continue;
-        }
-        const uint32_t component_name_id = type_expr_node.payload.identifier.name_id;
-        // kits 只能引用当前 module 内已声明的 component，避免窗口目标悬空。
-        if (moduleComponentNames.find(component_name_id) == moduleComponentNames.end()) {
-            reportError(m_line, m_col, "Kits target must be a component declared in current module.");
-            continue;
-        }
-
-        if (window.find(alias_name_id) != window.end()) {
-            reportError(m_line, m_col, "Duplicate kits alias in same kits scope.");
-            continue;
-        }
-        // alias 在同一 kits 内必须唯一，避免 system 侧名字解析歧义。
-        window.emplace(alias_name_id, KitsWindowEntry{
-                                         .component_name_id = component_name_id,
-                                         .is_mutable = is_mutable,
-                                     });
-    }
-}
-/** @brief 检查 tag 声明（占位实现）。 */
-void TypeChecker::checkTagDecl(syntax::ASTNodeIndex nodeIdx) {}
-/** @brief 检查 taggroup 声明（占位实现）。 */
-void TypeChecker::checkTagGroupDecl(syntax::ASTNodeIndex nodeIdx) {}
-
 } // namespace niki::semantic

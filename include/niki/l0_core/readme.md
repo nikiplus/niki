@@ -16,6 +16,8 @@
 - `l0_core/runtime/readme.md`
 - `l0_core/vm/readme.md`
 - `l0_core/diagnostic/readme.md`
+- `docs/README.md`（文档总索引）
+- `docs/architecture/layering_ir_contract.md`（L0-L5 分层与 IR 统一契约）
 
 ## 顶层模块关系
 

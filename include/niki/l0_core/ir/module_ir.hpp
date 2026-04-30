@@ -1,4 +1,5 @@
 #pragma once
+#include "niki/l1_domain/ir.hpp"
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -114,58 +115,11 @@ struct BlockRecord {
     uint32_t debug_name_sid = std::numeric_limits<uint32_t>::max();
     Span inst_span{}; // SPAN: 基本块对应的指令区间（位于 inst 表）。
 };
-enum class SymKind : uint8_t {
-    Func = 0,
-    Struct,
-    GlobalVar,
-    External
-};
-struct SymRecord {
-    // 符号在 syms 表中的稳定 id。
-    SymId sym_id = std::numeric_limits<SymId>::max();
-    // 符号名在字符串池中的 id。
-    uint32_t sym_name_sid = std::numeric_limits<uint32_t>::max();
-    // 符号种类（函数/结构体/全局变量/外部符号）。
-    SymKind sym_kind = SymKind::External;
-    // 拥有该符号的模块名 id（跨模块诊断与链接用）。
-    uint32_t owner_mod_sid = std::numeric_limits<uint32_t>::max();
-    // 是否对外导出。
-    bool is_exported = false;
-};
-//---kits 元数据记录（窗口定义）---
-struct KitsItemRecord {
-    // 窗口别名在字符串池中的 id（如 pos/vel）。
-    uint32_t alias_sid = std::numeric_limits<uint32_t>::max();
-    // 目标 component 名称在字符串池中的 id。
-    uint32_t component_sid = std::numeric_limits<uint32_t>::max();
-    // true=可写窗口（默认）；false=只读窗口（& 前缀）。
-    bool is_mutable = false;
-};
-struct KitsRecord {
-    // kits 名称在字符串池中的 id。
-    uint32_t kits_sid = std::numeric_limits<uint32_t>::max();
-    // 所属模块名在字符串池中的 id。
-    uint32_t owner_mod_sid = std::numeric_limits<uint32_t>::max();
-    // kits_items 扁平区间起点（包含）。
-    uint32_t first_item = 0;
-    // kits_items 条目数量。
-    uint32_t item_count = 0;
-    // 是否对外导出（后续可接 export wall）。
-    bool is_exported = false;
-};
-//---component 元数据记录（ECS 存储身份）---
-struct ComponentRecord {
-    // component 身份名在字符串池中的 id（例如 vec_com）。
-    uint32_t component_sid = std::numeric_limits<uint32_t>::max();
-    // 来源 struct 名在字符串池中的 id；非提升形态时保持 max。
-    uint32_t source_struct_sid = std::numeric_limits<uint32_t>::max();
-    // 所属模块名在字符串池中的 id。
-    uint32_t owner_mod_sid = std::numeric_limits<uint32_t>::max();
-    // true=由 struct 提升而来；false=直接 component 声明。
-    bool is_struct_promotion = false;
-    // 是否对外导出。
-    bool is_exported = false;
-};
+using SymKind = l1_domain::DomainSymKind;
+using SymRecord = l1_domain::DomainSymRecord;
+using KitsItemRecord = l1_domain::KitsItemRecord;
+using KitsRecord = l1_domain::KitsRecord;
+using ComponentRecord = l1_domain::ComponentRecord;
 //---指令表（SoA 列式布局）---
 struct InstTable {
     // SOA: 指令字段采用列式存储（kind + dst/a/b/c + payload）。
@@ -215,13 +169,13 @@ struct ModuleIR {
     std::vector<BlockRecord> blocks;
     // 模块内全部指令列。
     InstTable insts;
-    // 模块符号表（导出与链接决议基础数据）。
+    // 模块符号表（导出与链接决议基础数据，领域实现落在 l1_domain）。
     std::vector<SymRecord> syms;
-    // 模块内 kits 声明记录。
+    // 模块内 kits 声明记录（领域实现落在 l1_domain）。
     std::vector<KitsRecord> kits;
-    // 模块内 kits 扁平条目表。
+    // 模块内 kits 扁平条目表（领域实现落在 l1_domain）。
     std::vector<KitsItemRecord> kits_items;
-    // 模块内 component 身份记录。
+    // 模块内 component 身份记录（领域实现落在 l1_domain）。
     std::vector<ComponentRecord> components;
     bool has_init() const;
     uint32_t intern(const std::string &text);

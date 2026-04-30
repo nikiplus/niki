@@ -1,4 +1,5 @@
 #include "niki/l0_core/ir/verify.hpp"
+#include "niki/l1_domain/validator.hpp"
 
 #include <gtest/gtest.h>
 
@@ -6,6 +7,12 @@
 
 namespace niki::ir::test {
 namespace {
+
+struct DomainVerifyRegistrationGuard {
+    DomainVerifyRegistrationGuard() { l1_domain::registerVerifierExtensions(); }
+};
+
+DomainVerifyRegistrationGuard g_domain_verify_registration_guard{};
 
 bool hasIssueCode(const VerifyReport &report, VerifyErrorCode code) {
     return std::any_of(report.issues.begin(), report.issues.end(),
@@ -171,7 +178,6 @@ TEST(VerifyIRTest, ComponentSidOutOfRange_ShouldBeReported) {
         .source_struct_sid = std::numeric_limits<uint32_t>::max(),
         .owner_mod_sid = 888,
         .is_struct_promotion = false,
-        .is_exported = false,
     });
 
     VerifyReport report = verifyModuleIRFlat(module_ir);
@@ -186,7 +192,6 @@ TEST(VerifyIRTest, ComponentPromotionSourceStructOutOfRange_ShouldBeReported) {
         .source_struct_sid = 777,
         .owner_mod_sid = 0,
         .is_struct_promotion = true,
-        .is_exported = false,
     });
 
     VerifyReport report = verifyModuleIRFlat(module_ir);

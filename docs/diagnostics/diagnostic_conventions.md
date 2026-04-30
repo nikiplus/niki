@@ -12,7 +12,7 @@
 
 - 最小必填：`stage + code + message`。
 - 推荐填充：`file + line + column + length`。
-- 当存在 `line/column` 但无 `file` 时，`DiagnosticBag::emit` 会自动回填 `\"<unknown>\"`。
+- 当存在 `line/column` 但无 `file` 时，`DiagnosticBag::emit` 会自动回填 `"<unknown>"`。
 - 所有阶段优先使用 `makeSourceSpan(...)` 构造 span。
 
 ## 3. emit 接口统一

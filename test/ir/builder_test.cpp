@@ -1,4 +1,4 @@
-#include "niki/driver/driver.hpp"
+#include "niki/meta/precompile/precompile_pipeline.hpp"
 #include "niki/l0_core/diagnostic/renderer.hpp"
 #include "niki/l0_core/ir/builder.hpp"
 #include "niki/l0_core/ir/verify.hpp"
@@ -21,7 +21,7 @@ class IRBuilderTest : public ::testing::Test {
         unit.source_path = "<ir_builder_test>";
         unit.source = std::string(source);
 
-        auto parse_result = driver::parseIntoCompilationUnit(unit);
+        auto parse_result = meta::precompile::parseIntoCompilationUnit(unit);
         if (!parse_result.has_value()) {
             return std::unexpected(std::move(parse_result.error()));
         }
@@ -38,6 +38,19 @@ class IRBuilderTest : public ::testing::Test {
             }
         }
         return count;
+    }
+
+    static bool hasExportedSymbol(const ModuleIR &module_ir, SymKind symbol_kind, std::string_view symbol_name) {
+        for (const SymRecord &symbol_record : module_ir.syms) {
+            if (!symbol_record.is_exported || symbol_record.sym_kind != symbol_kind ||
+                symbol_record.sym_name_sid >= module_ir.string_pool.size()) {
+                continue;
+            }
+            if (module_ir.string_pool[symbol_record.sym_name_sid] == symbol_name) {
+                return true;
+            }
+        }
+        return false;
     }
 };
 
@@ -237,7 +250,7 @@ func main() {
     ASSERT_TRUE(result.has_value()) << diagnostic::renderDiagnosticBagText(result.error());
     const ModuleIR &module_ir = result.value();
     ASSERT_EQ(module_ir.kits.size(), 1u);
-    EXPECT_TRUE(module_ir.kits[0].is_exported);
+    EXPECT_TRUE(hasExportedSymbol(module_ir, SymKind::Kits, "MoveWindow"));
 }
 
 TEST_F(IRBuilderTest, BuildExportListKits_ShouldMarkKitsExportedRegardlessOrder) {
@@ -253,7 +266,7 @@ func main() {
 )");
     ASSERT_TRUE(before_result.has_value()) << diagnostic::renderDiagnosticBagText(before_result.error());
     ASSERT_EQ(before_result->kits.size(), 1u);
-    EXPECT_TRUE(before_result->kits[0].is_exported);
+    EXPECT_TRUE(hasExportedSymbol(before_result.value(), SymKind::Kits, "MoveWindow"));
 
     auto after_result = buildModule(R"(
 component Position {}
@@ -267,7 +280,7 @@ func main() {
 )");
     ASSERT_TRUE(after_result.has_value()) << diagnostic::renderDiagnosticBagText(after_result.error());
     ASSERT_EQ(after_result->kits.size(), 1u);
-    EXPECT_TRUE(after_result->kits[0].is_exported);
+    EXPECT_TRUE(hasExportedSymbol(after_result.value(), SymKind::Kits, "MoveWindow"));
 }
 
 TEST_F(IRBuilderTest, BuildComponentDeclAndPromotion_ShouldLowerToComponentMetadata) {
@@ -298,7 +311,7 @@ func main() { return 0; }
 )");
     ASSERT_TRUE(wrapped_result.has_value()) << diagnostic::renderDiagnosticBagText(wrapped_result.error());
     ASSERT_EQ(wrapped_result->components.size(), 1u);
-    EXPECT_TRUE(wrapped_result->components[0].is_exported);
+    EXPECT_TRUE(hasExportedSymbol(wrapped_result.value(), SymKind::Component, "Position"));
 
     auto list_result = buildModule(R"(
 component Position {}
@@ -307,7 +320,7 @@ func main() { return 0; }
 )");
     ASSERT_TRUE(list_result.has_value()) << diagnostic::renderDiagnosticBagText(list_result.error());
     ASSERT_EQ(list_result->components.size(), 1u);
-    EXPECT_TRUE(list_result->components[0].is_exported);
+    EXPECT_TRUE(hasExportedSymbol(list_result.value(), SymKind::Component, "Position"));
 }
 
 } // namespace

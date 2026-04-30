@@ -1,6 +1,5 @@
 #include "niki/l0_core/ir/builder.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
-#include <unordered_set>
 
 /** @builder_decl_impl: 顶层与声明降解实现
  * 这个文件处理模块根与顶层声明的降解入口，核心目标是把“树形声明结构”转成“函数级 IR 组织边界”。
@@ -76,24 +75,37 @@ bool IRBuilder::buildTopDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
 
     const ASTNode &decl = bc.unit->pool.getNode(decl_idx);
 
-    const auto mark_kits_exported_by_name_sid = [&](uint32_t kits_name_sid) {
-        bc.exported_kits_name_sids.insert(kits_name_sid);
-        for (auto &kits_record : bc.module.kits) {
-            if (kits_record.kits_sid == kits_name_sid) {
-                kits_record.is_exported = true;
+    const auto upsert_symbol = [&](uint32_t symbol_name_sid, SymKind kind, bool exported_by_default) {
+        const uint32_t owner_mod_sid = bc.module.intern(bc.module.module_name);
+        for (auto &sym : bc.module.syms) {
+            if (sym.sym_name_sid == symbol_name_sid && sym.sym_kind == kind) {
+                sym.owner_mod_sid = owner_mod_sid;
+                sym.is_exported = sym.is_exported || exported_by_default ||
+                                  (bc.exported_name_sids.find(symbol_name_sid) != bc.exported_name_sids.end());
+                return;
             }
         }
+
+        SymRecord sym{};
+        sym.sym_id = static_cast<SymId>(bc.module.syms.size());
+        sym.sym_name_sid = symbol_name_sid;
+        sym.sym_kind = kind;
+        sym.owner_mod_sid = owner_mod_sid;
+        sym.is_exported = exported_by_default ||
+                          (bc.exported_name_sids.find(symbol_name_sid) != bc.exported_name_sids.end());
+        bc.module.syms.push_back(sym);
     };
-    const auto mark_component_exported_by_name_sid = [&](uint32_t component_name_sid) {
-        bc.exported_component_name_sids.insert(component_name_sid);
-        for (auto &component_record : bc.module.components) {
-            if (component_record.component_sid == component_name_sid) {
-                component_record.is_exported = true;
+    const auto mark_exported_by_name_sid = [&](uint32_t symbol_name_sid) {
+        bc.exported_name_sids.insert(symbol_name_sid);
+        for (auto &sym : bc.module.syms) {
+            if (sym.sym_name_sid == symbol_name_sid) {
+                sym.is_exported = true;
             }
         }
     };
 
     if (decl.type == NodeType::ModuleDecl) {
+        const std::string saved_module_name = bc.module.module_name;
         if (decl.payload.module_decl.name_id < static_cast<uint32_t>(bc.module.string_pool.size())) {
             bc.module.module_name = bc.unit->pool.getStringId(decl.payload.module_decl.name_id);
         }
@@ -107,6 +119,7 @@ bool IRBuilder::buildTopDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
         for (ASTNodeIndex nested_decl_idx : nested_decls) {
             nested_ok = buildTopDecl(bc, nested_decl_idx) && nested_ok;
         }
+        bc.module.module_name = saved_module_name;
         return nested_ok;
     }
 
@@ -119,11 +132,21 @@ bool IRBuilder::buildTopDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
             if (wrapped_decl.type == NodeType::KitsDecl) {
                 const uint32_t kits_name_sid =
                     bc.module.intern(bc.unit->pool.getStringId(wrapped_decl.payload.kits_decl.name_id));
-                mark_kits_exported_by_name_sid(kits_name_sid);
+                mark_exported_by_name_sid(kits_name_sid);
             } else if (wrapped_decl.type == NodeType::ComponentDecl) {
                 const uint32_t component_name_sid =
                     bc.module.intern(bc.unit->pool.getStringId(wrapped_decl.payload.component_decl.name_id));
-                mark_component_exported_by_name_sid(component_name_sid);
+                mark_exported_by_name_sid(component_name_sid);
+            } else if (wrapped_decl.type == NodeType::FunctionDecl) {
+                const auto &func_data =
+                    bc.unit->pool.function_data[wrapped_decl.payload.func_decl.function_index];
+                const uint32_t func_name_sid = bc.module.intern(bc.unit->pool.getStringId(func_data.name_id));
+                mark_exported_by_name_sid(func_name_sid);
+            } else if (wrapped_decl.type == NodeType::StructDecl) {
+                const auto &struct_data =
+                    bc.unit->pool.struct_data[wrapped_decl.payload.struct_decl.struct_index];
+                const uint32_t struct_name_sid = bc.module.intern(bc.unit->pool.getStringId(struct_data.name_id));
+                mark_exported_by_name_sid(struct_name_sid);
             }
             return ok;
         }
@@ -131,117 +154,37 @@ bool IRBuilder::buildTopDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
         for (uint32_t i = 0; i < export_decl_data.item_count; ++i) {
             const ExportItem &item = bc.unit->pool.export_items[export_decl_data.first_item_index + i];
             const uint32_t exported_name_sid = bc.module.intern(bc.unit->pool.getStringId(item.local_name_id));
-            mark_kits_exported_by_name_sid(exported_name_sid);
-            mark_component_exported_by_name_sid(exported_name_sid);
+            mark_exported_by_name_sid(exported_name_sid);
         }
         return true;
     }
 
     if (decl.type == NodeType::FunctionDecl) {
+        const auto &func_data = bc.unit->pool.function_data[decl.payload.func_decl.function_index];
+        const uint32_t func_name_sid = bc.module.intern(bc.unit->pool.getStringId(func_data.name_id));
+        upsert_symbol(func_name_sid, SymKind::Func, true);
         return buildFuncDecl(bc, decl_idx);
     }
 
     if (decl.type == NodeType::StructDecl) {
+        const auto &struct_data = bc.unit->pool.struct_data[decl.payload.struct_decl.struct_index];
+        const uint32_t struct_name_sid = bc.module.intern(bc.unit->pool.getStringId(struct_data.name_id));
+        upsert_symbol(struct_name_sid, SymKind::Struct, true);
         return true;
     }
 
     if (decl.type == NodeType::ComponentDecl) {
+        const uint32_t component_name_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.component_decl.name_id));
+        upsert_symbol(component_name_sid, SymKind::Component, false);
         return buildComponentDecl(bc, decl_idx);
     }
 
     if (decl.type == NodeType::KitsDecl) {
+        const uint32_t kits_name_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.kits_decl.name_id));
+        upsert_symbol(kits_name_sid, SymKind::Kits, false);
         return buildKitsDecl(bc, decl_idx);
     }
 
-    return true;
-}
-
-bool IRBuilder::buildKitsDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
-    if (!decl_idx.isvalid()) {
-        return true;
-    }
-
-    const ASTNode &decl = bc.unit->pool.getNode(decl_idx);
-    const uint32_t kits_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.kits_decl.name_id));
-    const uint32_t owner_mod_sid = bc.module.intern(bc.module.module_name);
-
-    KitsRecord kits_record{};
-    kits_record.kits_sid = kits_sid;
-    kits_record.owner_mod_sid = owner_mod_sid;
-    kits_record.first_item = static_cast<uint32_t>(bc.module.kits_items.size());
-    kits_record.is_exported = (bc.exported_kits_name_sids.find(kits_sid) != bc.exported_kits_name_sids.end());
-
-    if (!decl.payload.kits_decl.body.isvalid()) {
-        error(bc, "kits declaration missing body.", decl_idx);
-        return false;
-    }
-
-    const ASTNode &body = bc.unit->pool.getNode(decl.payload.kits_decl.body);
-    const auto members = bc.unit->pool.get_list(body.payload.list.elements);
-    std::unordered_set<uint32_t> seen_alias_name_ids;
-    seen_alias_name_ids.reserve(members.size());
-
-    for (ASTNodeIndex member_idx : members) {
-        if (!member_idx.isvalid()) {
-            error(bc, "Invalid kits member node.", decl_idx);
-            return false;
-        }
-
-        const ASTNode &member = bc.unit->pool.getNode(member_idx);
-        if (member.type != NodeType::VarDeclStmt && member.type != NodeType::ConstDeclStmt) {
-            error(bc, "Invalid kits member declaration in IR lowering.", member_idx);
-            return false;
-        }
-
-        const ASTNodeIndex type_expr_idx = member.payload.var_decl.type_expr;
-        if (!type_expr_idx.isvalid()) {
-            error(bc, "kits member missing component type expression in IR lowering.", member_idx);
-            return false;
-        }
-        const ASTNode &type_expr = bc.unit->pool.getNode(type_expr_idx);
-        if (type_expr.type != NodeType::IdentifierExpr) {
-            error(bc, "kits component type must be identifier in IR lowering.", member_idx);
-            return false;
-        }
-
-        const uint32_t alias_name_id = member.payload.var_decl.name_id;
-        if (!seen_alias_name_ids.insert(alias_name_id).second) {
-            error(bc, "Duplicate kits alias in IR lowering.", member_idx);
-            return false;
-        }
-
-        KitsItemRecord item{};
-        item.alias_sid = bc.module.intern(bc.unit->pool.getStringId(alias_name_id));
-        item.component_sid = bc.module.intern(bc.unit->pool.getStringId(type_expr.payload.identifier.name_id));
-        item.is_mutable = (member.type == NodeType::VarDeclStmt);
-        bc.module.kits_items.push_back(item);
-        ++kits_record.item_count;
-    }
-
-    bc.module.kits.push_back(kits_record);
-    return true;
-}
-
-bool IRBuilder::buildComponentDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
-    if (!decl_idx.isvalid()) {
-        return true;
-    }
-
-    const ASTNode &decl = bc.unit->pool.getNode(decl_idx);
-    const auto &component_decl = decl.payload.component_decl;
-
-    ComponentRecord record{};
-    record.component_sid = bc.module.intern(bc.unit->pool.getStringId(component_decl.name_id));
-    record.owner_mod_sid = bc.module.intern(bc.module.module_name);
-    record.is_struct_promotion = component_decl.is_struct_promotion;
-    record.is_exported = (bc.exported_component_name_sids.find(record.component_sid) !=
-                          bc.exported_component_name_sids.end());
-
-    if (component_decl.is_struct_promotion) {
-        record.source_struct_sid = bc.module.intern(bc.unit->pool.getStringId(component_decl.source_struct_name_id));
-    }
-
-    bc.module.components.push_back(record);
     return true;
 }
 

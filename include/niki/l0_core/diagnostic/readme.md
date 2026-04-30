@@ -81,3 +81,5 @@ graph LR
 - 各阶段统一按“事件 -> 诊断包”上报，最终由 `renderer` 输出可读文本。
 - 诊断聚合遵循“阶段内收集、Driver 级合并”的组织方式。
 - 错误码映射集中在本模块维护，保证 Scanner/Parser/Semantic/Linker/Runtime/VM 的口径一致。
+- 核心错误码对照见：`docs/diagnostics/core_error_codes.md`。
+- 诊断规范总览见：`docs/diagnostics/diagnostic_conventions.md`。

@@ -1,7 +1,7 @@
 # Niki 项目健康度体检报告（P0）
 
 **文档性质**：工程诊断与优先级建议，与 `MILESTONES.md` 中的 M0～M2 对齐。  
-**更新说明**：首版整理自 2026-04 代码审查；含二次深入核对（VM 指令分发、Driver 流水线、语义层与测试矩阵）。2026-04-29 已按仓库当前状态复核并修正路径/测试清单。  
+**更新说明**：首版整理自 2026-04 代码审查；含二次深入核对（VM 指令分发、Driver 流水线、语义层与测试矩阵）。2026-04-30 已按仓库当前状态复核并修正路径/测试清单。  
 **迁移注记**：文中部分条目基于旧 `Compiler` 路径描述；当前主链路已迁移为 `IRBuilder -> Verify -> LowerToChunk`。
 
 ---
@@ -13,13 +13,13 @@
 1. **IR 降级路径可生成、虚拟机未实现的字节码**会导致「类型过了、能生成 chunk、运行时才炸」——属于最高优先级缺陷类。
 2. **语义检查按单文件 AST 进行**，跨文件符号对类型系统不可见；与「项目级 Driver + Linker」组合在一起时，会出现「链接/运行可能成立，但语义层不成立」或相反的不一致，需尽早定策略并收口。
 3. **Linker 的字符串池合并与操作数重映射**在头文件中承诺为后续能力，`.cpp` 中仍为占位实现；在依赖「全项目共享 `GlobalInterner`」的前提下可维持 MVP，但必须把**不变量写死并加测试**，否则后续一改链接策略就容易出现隐蔽错误。
-4. **回归测试**当前未覆盖 `TypeChecker` / 端到端 Driver 项目；仅靠单元测试与手工脚本时，上述问题容易反复回归。
+4. **回归测试**对语义专项与复杂工程场景覆盖仍偏薄；仅靠当前单元测试与手工脚本时，上述问题仍可能回归。
 
-### 2026-04-29 现状快照
+### 2026-04-30 现状快照
 
-- `cmake --build build` 可通过（当前工作区状态下实测）。
-- `ctest --test-dir build --output-on-failure` 为 **36/36 通过**。
-- 代码仍存在若干架构级 P0 问题（本报告 P0-1 ～ P0-3），但工程基线处于可回归状态。
+- L0/L1 分层改造主干已落地：领域语义与领域 IR 逻辑已迁入 `l1_domain`，并通过扩展点接入。
+- 文档体系已按领域重组至 `docs/architecture`、`docs/diagnostics`、`docs/audits`、`docs/planning`。
+- 代码仍存在若干架构级 P0 风险（本报告 P0-1 ～ P0-4），当前结论以“结构与语义风险”优先级为主。
 
 ---
 
@@ -28,9 +28,9 @@
 | ID | 领域 | 严重程度 | 简述 |
 |----|------|----------|------|
 | P0-1 | VM / IR Lowering | **阻断级** | 部分 opcode 可由 IR lowering 产出，但 VM 仍走「未实现」分支 |
-| P0-2 | Semantic / Driver | **阻断级** | 每文件独立 `TypeChecker::check`，缺少项目级符号环境，跨文件调用语义与工程模型不一致 |
+| P0-2 | Semantic / Precompile-Orchestrator | **阻断级** | 跨文件语义仍依赖显式模块语义上下文构建，若规则收口不足易导致语义与工程模型不一致 |
 | P0-3 | Linker | **高风险** | `mergeStringPools` / `remapChunkOperands` 等为 stub；依赖共享 interner 的隐含契约未用测试锁死 |
-| P0-4 | 语言表面 | **高** | Parser/AST 覆盖面大于当前 IRBuilder 已实现子集；大量节点路径仍为明确「未实现」报错 |
+| P0-4 | 语言表面 | **高** | 领域声明已接入 `l1_domain`，但 `system/flow/kits` 的语义到可执行链路仍未完全闭环 |
 | P0-5 | 工程基线 | **高** | `MILESTONES.md` M0：构建、`ctest`、`scripts/test.nk` 端到端需保持可重复绿基线 |
 | P0-6 | 测试矩阵 | **中高** | CMake 未注册语义/类型检查专项测试；无 Driver 级集成测试 |
 | P0-7 | 语义实现细节 | **中** | `Unknown` 操作数在比较运算上被宽松推断为 `Bool`，可能掩盖错误并仍向下编译 |
@@ -63,7 +63,7 @@
 
 ### 现象
 
-`driver.cpp` 中每个源文件独立执行：`Scanner` → `Parser` → `TypeChecker::check` → `IRBuilder` → `Verify` → `LowerToChunk`，仅在 `compileAll` 层共享 `GlobalInterner`。
+`meta/orchestrator` 编排层中每个源文件独立执行：`Scanner` → `Parser` → `TypeChecker::check` → `IRBuilder` → `Verify` → `LowerToChunk`，仅在 `compileAll` 层共享 `GlobalInterner`。
 
 因此**文件 B 无法在类型检查阶段看到文件 A 的顶层符号**，除非未来引入：
 
@@ -85,7 +85,7 @@
 
 ### 现象
 
-`linker.cpp` 末尾 `mergeStringPools`、`remapChunkOperands`、`resolveSymbols`、`mergeInitChunks` 为 MVP 占位；主流程 `link` 已包含：
+当前链接策略主实现已迁到 `project_linker.cpp`；`l0_core/linker.cpp` 作为兼容适配层保留。仍需关注字符串池重映射与深层重定位演进：
 
 - 多模块 `init_chunk` 顺序保留；
 - 合并后的 `program.string_pool`（用于诊断等）；
@@ -106,9 +106,9 @@
 
 ### 现象（节选）
 
-以下路径在当前 IRBuilder/Lowering 主链路中仍可能报「未实现」或降级失败（需持续收口），包括但不限于：
+以下路径在当前主链路中仍需持续收口，包括但不限于：
 
-- **声明类**：`Interface` / `Enum` / `TypeAlias` / `Impl` / `System` / `Component` / `Flow` / `Kits` / `Tag` / `TagGroup` 等。
+- **声明类**：`Interface` / `Enum` / `TypeAlias` / `Impl` / `System` / `Flow` / `Kits` / `Tag` / `TagGroup` 等。
 - **语句类**：`Match` / `Nock` / `Attach` / `Detach` / `Target` 等。
 - **表达式类**：部分动态属性、`Dispatch`、`Await`、`Borrow`、隐式转换等。
 
@@ -133,9 +133,9 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 
 ## 8. 深入考察：测试矩阵（P0-6）
 
-### 当前 `CMakeLists.txt` 中 `niki_tests` 组成
+### 当前 `CMakeLists.txt` 中 `niki_tests` 组成（主干）
 
-- `scanner_test` / `parser_test` / `builder_test` / `verify_test` / `module_ir_test` / `driver_project_test` / `linker_test` / `launcher_test`
+- `scanner_test` / `parser_test` / `builder_test` / `verify_test` / `module_ir_test` / `driver_project_test` / `linker_test` / `launcher_test` / `domain_split_test`
 
 ### 缺口
 
@@ -175,7 +175,7 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 
 `NIKI 虚拟机设计指北.md` 强调 Scanner 按需、迭代器式、避免整文件 Token 向量。
 
-`driver.cpp` 中 `compileOneModule` 当前将 `scanToken()` 结果循环 `push_back` 至 `std::vector<syntax::Token>`，即**全文件物化 Token 列表**。
+`meta/precompile/parse_stage.cpp` 当前将 `scanToken()` 结果循环 `push_back` 至 `std::vector<syntax::Token>`，即**全文件物化 Token 列表**。
 
 **结论**：非功能错误，属于实现与长期文档目标的差异；若在性能或内存上遇到瓶颈，可再评估改为 Parser 驱动的按需扫描。
 
@@ -202,14 +202,16 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 | 主题 | 路径 |
 |------|------|
 | 里程碑与验收 | `MILESTONES.md` |
-| 诊断规范 | `docs/diagnostic_conventions.md` |
+| 诊断规范 | `docs/diagnostics/diagnostic_conventions.md` |
+| 模块语义愿景 | `docs/architecture/module_link_feature_vision.md` |
 | Opcode 枚举 | `include/niki/l0_core/vm/opcode.hpp` |
 | VM 分发 | `src/l0_core/vm/vm.cpp` |
 | IR 降级实现 | `src/l0_core/ir/lower_to_chunk.cpp` |
-| Driver 流水线 | `src/driver/driver.cpp` |
-| Linker MVP 与占位 | `src/l0_core/linker/linker.cpp` |
+| 预编译阶段实现 | `src/meta/precompile/parse_stage.cpp` / `src/meta/precompile/predeclare_stage.cpp` / `src/meta/precompile/module_context_stage.cpp` |
+| 编排层入口 | `src/meta/orchestrator/compiler_orchestrator.cpp` |
+| Linker 策略实现 | `src/meta/project/project_linker.cpp` |
 | 语义二元表达式 | `src/l0_core/semantic/type_checker_expr.cpp` |
-| 启动与入口 | `src/l0_core/runtime/launcher.cpp` |
+| 启动与入口策略实现 | `src/meta/runtime_host/runtime_host.cpp` |
 | 测试注册 | `CMakeLists.txt` |
 | 跨文件语义用例（脚本） | `scripts/cases/fail/semantic_01_cross_file_call/` |
 

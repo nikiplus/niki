@@ -1,4 +1,4 @@
-#include "niki/driver/driver.hpp"
+#include "niki/meta/orchestrator/compiler_orchestrator.hpp"
 #include "niki/l0_core/diagnostic/renderer.hpp"
 #include <iostream>
 #include <string_view>
@@ -28,14 +28,14 @@ int main(int argc, char *argv[]) {
 
     // 实际驱动阶段
     // 加载驱动器及配置
-    niki::driver::Driver driver;
-    niki::driver::DriverOptions options;
+    niki::meta::orchestrator::CompilerOrchestrator orchestrator;
+    niki::meta::orchestrator::OrchestratorOptions options;
     // 更改配置值
     options.recursive_scan = true;
     options.file_ext = ".nk";
     options.entry_name = "main";
 
-    auto run_result = driver.runProject(argv[1], options);
+    auto run_result = orchestrator.runProject(argv[1], options);
 
     if (!run_result.has_value()) {
         if (diagnostic_format == "json") {
