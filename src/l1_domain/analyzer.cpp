@@ -49,7 +49,13 @@ void TypeChecker::checkComponentDecl(syntax::ASTNodeIndex nodeIdx) {
 
     if (!component_decl.body.isvalid()) {
         reportError(line, column, "Component declaration missing body.");
+        return;
     }
+
+    // 递归检查 component body 内部的成员声明
+    beginScope();
+    checkStatement(component_decl.body);
+    endScope();
 }
 
 void TypeChecker::checkFlowDecl(syntax::ASTNodeIndex nodeIdx) {}

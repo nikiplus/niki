@@ -1,7 +1,7 @@
 #pragma once
 
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
-#include "niki/l0_core/linker/linker.hpp"
+#include "niki/l0_core/linker/linker_facade.hpp"
 #include "niki/l0_core/semantic/global_compilation.hpp"
 #include "niki/l0_core/semantic/global_symbol_table.hpp"
 #include "niki/l0_core/semantic/global_type_arena.hpp"

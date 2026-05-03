@@ -427,7 +427,7 @@ ASTNodeIndex Parser::parseSystemDecl() {
     ASTNodePayload payload{};
 
     consume(TokenType::IDENTIFIER, "Expected system name.");
-    payload.component_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
+    payload.system_decl.name_id = astPool.internString(source.substr(previous.start_offset, previous.length));
 
     consume(TokenType::SYM_PAREN_L, "Expected '(' after system name to declare dependencies.");
     payload.system_decl.system_data = parseExpression(Precedence::None);

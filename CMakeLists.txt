@@ -35,7 +35,7 @@ set(NIKI_L0_CORE_SOURCES
     src/l0_core/semantic/type_checker_pre_decl.cpp
     src/l0_core/semantic/global_symbol_table.cpp
     src/l0_core/semantic/global_type_arena.cpp
-    src/l0_core/linker/linker.cpp
+    src/l0_core/linker/linker_facade.cpp
     src/l0_core/runtime/launcher.cpp
     src/l0_core/vm/vm.cpp
 )
@@ -114,6 +114,9 @@ enable_testing()
 add_executable(niki_tests 
     test/syntax/scanner_test.cpp
     test/syntax/parser_test.cpp
+    test/syntax/parser_stmt_test.cpp
+    test/semantic/type_checker_test.cpp
+    test/semantic/type_checker_stmt_test.cpp
     test/ir/builder_test.cpp
     test/ir/verify_test.cpp
     test/ir/module_ir_test.cpp
@@ -122,6 +125,7 @@ add_executable(niki_tests
     test/linker/linker_test.cpp
     test/runtime/launcher_test.cpp
     test/l1_domain/domain_split_test.cpp
+    test/test_helpers.hpp
 )
 
 # 注意 GTest::gtest_main 的大小写

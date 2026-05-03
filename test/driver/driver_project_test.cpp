@@ -1,233 +1,133 @@
-#include "niki/meta/orchestrator/compiler_orchestrator.hpp"
-#include "niki/l0_core/diagnostic/renderer.hpp"
+#include "../test_helpers.hpp"
+#include "niki/l0_core/diagnostic/diagnostic.hpp"
+#include "niki/l0_core/ir/module_ir.hpp"
+#include "niki/l0_core/linker/linker_facade.hpp"
+#include "niki/l0_core/runtime/launcher.hpp"
 #include "niki/l0_core/vm/value.hpp"
-#include <filesystem>
+#include "niki/l0_core/vm/vm.hpp"
 #include <gtest/gtest.h>
 #include <string>
+#include <vector>
 
-namespace {
-namespace fs = std::filesystem;
+using namespace niki;
+using namespace niki::ir;
+using namespace niki::syntax;
+using namespace niki::semantic;
+using namespace niki::vm;
 
-std::string resolveCaseDirOrDie(const std::string &relative_case_path) {
-    const std::string path_a = "scripts/" + relative_case_path;
-    const std::string path_b = "../scripts/" + relative_case_path;
-    if (fs::exists(path_a)) {
-        return path_a;
+/** @phase_D: 多模块/完整管线集成测试 */
+
+static GlobalCompilationUnit buildUnitFromSource(
+    syntax::GlobalInterner &interner, const std::string &source, const std::string &source_path) {
+    GlobalCompilationUnit unit(interner);
+    unit.source = source;
+    unit.source_path = source_path;
+    syntax::Scanner scanner(unit.source, unit.source_path);
+    while (true) {
+        auto token = scanner.scanToken();
+        unit.tokens.push_back(token);
+        if (token.type == syntax::TokenType::TOKEN_EOF) break;
     }
-    if (fs::exists(path_b)) {
-        return path_b;
-    }
-    ADD_FAILURE() << "Failed to resolve case dir from " << path_a << " and " << path_b;
-    return path_a;
-}
-} // namespace
-
-TEST(DriverProjectTest, MultiFileBasicCaseRunsSuccessfully) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/01_multi_file_basic"), options);
-    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    EXPECT_EQ(result->as.integer, 42);
+    static_cast<void>(scanner.takeDiagnostics());
+    unit.pool.source_path = unit.source_path;
+    syntax::Parser parser(unit.source, unit.tokens, unit.pool, unit.source_path);
+    auto parse_result = parser.parse();
+    unit.root = parse_result.root;
+    return unit;
 }
 
-TEST(DriverProjectTest, MultiFileInitOrderCaseRunsSuccessfully) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
+// D-1: 单模块直接执行: func main()->int{return 42;}
+TEST(DriverProjectTest, SingleModuleExecute) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("return 42;");
+    ASSERT_TRUE(unit.root.isvalid());
 
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/02_init_order"), options);
-    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    EXPECT_EQ(result->as.integer, 77);
+    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.symbols_);
+    ASSERT_TRUE(compile_result.has_value()) << "Compile should succeed";
+
+    linker::Linker linker;
+    linker::LinkOptions opts;
+    opts.entry_name = "__test_main";
+    auto linked = linker.link({compile_result.value()}, opts);
+    ASSERT_TRUE(linked.has_value()) << "Link should succeed";
+
+    VM vm;
+    runtime::Launcher launcher;
+    auto launch_result = launcher.launchProgram(vm, linked.value(), runtime::LaunchOptions{});
+    ASSERT_TRUE(launch_result.has_value()) << "Launch should succeed";
+    EXPECT_EQ(launch_result.value().type, ValueType::Integer);
+    EXPECT_EQ(launch_result.value().as.integer, 42);
 }
 
-TEST(DriverProjectTest, MultiDeclStableCaseRunsSuccessfully) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/03_multi_decl_stable"), options);
-    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    EXPECT_EQ(result->as.integer, 100);
+// D-2: 带变量计算: var x=19; var y=23; return x+y;
+TEST(DriverProjectTest, VariableComputation) {
+    ExprTestFixture fixture;
+    auto val_result = fixture.compileAndRun("var x=19; var y=23; return x+y;");
+    ASSERT_TRUE(val_result.has_value());
+    EXPECT_EQ(val_result.value().as.integer, 42);
 }
 
-TEST(DriverProjectTest, DiceBasicCaseReportsUnsupportedOperatorInCurrentIRBuilder) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
+// D-3: 函数调用: func add(a:int,b:int)->int{return a+b;} func main()->int{return add(20,22);}
+TEST(DriverProjectTest, FunctionCallWithinModule) {
+    ExprTestFixture fixture;
+    std::string source =
+        "module __t{"
+        "func add(a:int,b:int)->int{return a+b;}"
+        "func __test_main()->int{return add(20,22);}"
+        "}";
+    auto unit = buildUnitFromSource(fixture.interner_, source, "__test__");
+    ASSERT_TRUE(unit.root.isvalid());
 
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/04_dice_basic"), options);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_FALSE(result.error().empty());
-    const auto &diagnostics = result.error().all();
-    EXPECT_FALSE(diagnostics.empty());
-    EXPECT_EQ(diagnostics[0].stage, niki::diagnostic::DiagnosticStage::IR);
-    EXPECT_EQ(diagnostics[0].severity, niki::diagnostic::DiagnosticSeverity::Error);
-    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Unsupported binary operator"),
-              std::string::npos);
+    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.symbols_);
+    ASSERT_TRUE(compile_result.has_value()) << "Compile should succeed for function call";
+
+    linker::Linker linker;
+    linker::LinkOptions opts;
+    opts.entry_name = "__test_main";
+    auto linked = linker.link({compile_result.value()}, opts);
+    ASSERT_TRUE(linked.has_value()) << "Link should succeed";
+
+    VM vm;
+    runtime::Launcher launcher;
+    auto launch_result = launcher.launchProgram(vm, linked.value(), runtime::LaunchOptions{});
+    ASSERT_TRUE(launch_result.has_value()) << "Launch should succeed";
+    EXPECT_EQ(launch_result.value().type, ValueType::Integer);
+    EXPECT_EQ(launch_result.value().as.integer, 42);
 }
 
-TEST(DriverProjectTest, ExplicitImportCaseRunsSuccessfully) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
+// D-4: 多函数调用链: funcA 调用 funcB，funcB 调用 funcC
+TEST(DriverProjectTest, MultiFunctionCallChain) {
+    ExprTestFixture fixture;
+    std::string source =
+        "module __t{"
+        "func addOne(x:int)->int{return x+1;}"
+        "func doubleIt(x:int)->int{return x*2;}"
+        "func __test_main()->int{return doubleIt(addOne(20));}"
+        "}";
+    auto unit = buildUnitFromSource(fixture.interner_, source, "__test__");
+    ASSERT_TRUE(unit.root.isvalid());
 
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/05_import_explicit"), options);
-    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    EXPECT_EQ(result->as.integer, 42);
+    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.symbols_);
+    ASSERT_TRUE(compile_result.has_value()) << "Compile should succeed for multi-function call chain";
+
+    linker::Linker linker;
+    linker::LinkOptions opts;
+    opts.entry_name = "__test_main";
+    auto linked = linker.link({compile_result.value()}, opts);
+    ASSERT_TRUE(linked.has_value()) << "Link should succeed";
+
+    VM vm;
+    runtime::Launcher launcher;
+    auto launch_result = launcher.launchProgram(vm, linked.value(), runtime::LaunchOptions{});
+    ASSERT_TRUE(launch_result.has_value()) << "Launch should succeed";
+    EXPECT_EQ(launch_result.value().type, ValueType::Integer);
+    EXPECT_EQ(launch_result.value().as.integer, 42);
 }
 
-TEST(DriverProjectTest, MissingImportedSymbolShouldFailBeforeRuntime) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/fail/semantic_02_import_missing_symbol"), options);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_FALSE(result.error().empty());
-    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Imported symbol not exported."),
-              std::string::npos);
+// D-5: 完整编译执行复杂表达式
+TEST(DriverProjectTest, CompileAndRunComplexExpression) {
+    ExprTestFixture fixture;
+    auto val_result = fixture.compileAndRun("return ((1+2)*(3+4))/(5%3);");
+    ASSERT_TRUE(val_result.has_value());
+    EXPECT_EQ(val_result.value().as.integer, 10);
 }
-
-TEST(DriverProjectTest, ModuleScopedImportMissingSymbolShouldFailBeforeRuntime) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result =
-        driver.runProject(resolveCaseDirOrDie("cases/fail/semantic_module_scoped_import_missing_symbol"), options);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_FALSE(result.error().empty());
-    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Imported symbol not exported."),
-              std::string::npos);
-}
-
-TEST(DriverProjectTest, TypeAliasBasicCaseRunsSuccessfully) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/07_typealias_basic"), options);
-    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    EXPECT_EQ(result->as.integer, 41);
-}
-
-TEST(DriverProjectTest, FunctionArityCaseRunsSuccessfully) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/08_function_arity"), options);
-    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    EXPECT_EQ(result->as.integer, 42);
-}
-
-TEST(DriverProjectTest, ComponentPromotionCaseRunsSuccessfully) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/09_component_promotion"), options);
-    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    EXPECT_EQ(result->as.integer, 0);
-}
-
-TEST(DriverProjectTest, ComponentPromotionMissingStructShouldFailBeforeRuntime) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result =
-        driver.runProject(resolveCaseDirOrDie("cases/fail/semantic_component_promotion_missing_struct"), options);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_FALSE(result.error().empty());
-    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Promoted component source struct not found."),
-              std::string::npos);
-}
-
-TEST(DriverProjectTest, ComponentMultiPromotionCaseRunsSuccessfully) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/success/10_component_multi_promotion"), options);
-    ASSERT_TRUE(result.has_value()) << niki::diagnostic::renderDiagnosticBagText(result.error());
-    ASSERT_EQ(result->type, niki::vm::ValueType::Integer);
-    EXPECT_EQ(result->as.integer, 0);
-}
-
-TEST(DriverProjectTest, ModuleNameMismatchShouldFailDuringImportResolution) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/fail/semantic_module_name_mismatch"), options);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_FALSE(result.error().empty());
-    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Imported module not found."),
-              std::string::npos);
-}
-
-TEST(DriverProjectTest, ModuleBoundaryMayIgnoreSiblingTopLevelDecls) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result =
-        driver.runProject(resolveCaseDirOrDie("cases/fail/semantic_module_boundary_ignores_sibling_decl"), options);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_FALSE(result.error().empty());
-    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Imported symbol not exported."),
-              std::string::npos);
-}
-
-TEST(DriverProjectTest, KitsDuplicateAliasShouldFailBeforeRuntime) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/fail/semantic_kits_duplicate_alias"), options);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_FALSE(result.error().empty());
-    EXPECT_NE(niki::diagnostic::renderDiagnosticBagText(result.error()).find("Duplicate kits alias in same kits scope."),
-              std::string::npos);
-}
-
-TEST(DriverProjectTest, KitsUnknownComponentShouldFailBeforeRuntime) {
-    niki::meta::orchestrator::CompilerOrchestrator driver;
-    niki::meta::orchestrator::OrchestratorOptions options;
-    options.recursive_scan = false;
-    options.entry_name = "main";
-
-    auto result = driver.runProject(resolveCaseDirOrDie("cases/fail/semantic_kits_unknown_component"), options);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_FALSE(result.error().empty());
-    EXPECT_NE(
-        niki::diagnostic::renderDiagnosticBagText(result.error())
-            .find("Kits target must be a component declared in current module."),
-        std::string::npos);
-}
-

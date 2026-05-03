@@ -240,11 +240,13 @@ struct ASTListIndex {
     bool isvalid() const { return start_index != ~0U; }
     static ASTListIndex invalid() { return {~0U, 0}; }
 };
+
 /* 再次明确：
  * 所有的语法最终在底层都是“数据流”。
  * 将“定长索引”与“变长切片”区分开，能让编译器在处理语法树时，
  * 像收割机处理整齐的麦田一样，最大化发挥现代 CPU 的吞吐能力。
  */
+
 struct FunctionData {
     uint32_t name_id;
     ASTNodeIndex return_type;

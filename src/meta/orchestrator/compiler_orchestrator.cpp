@@ -1,11 +1,11 @@
 #include "niki/meta/orchestrator/compiler_orchestrator.hpp"
-#include "niki/meta/orchestrator/compile_pipeline.hpp"
-#include "niki/meta/precompile/precompile_pipeline.hpp"
-#include "niki/l0_core/linker/linker.hpp"
+#include "niki/l0_core/linker/linker_facade.hpp"
 #include "niki/l0_core/runtime/launcher.hpp"
 #include "niki/l0_core/semantic/type_checker.hpp"
 #include "niki/l0_core/syntax/global_interner.hpp"
 #include "niki/l0_core/vm/vm.hpp"
+#include "niki/meta/orchestrator/compile_pipeline.hpp"
+#include "niki/meta/precompile/precompile_pipeline.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -35,7 +35,8 @@ static diagnostic::DiagnosticBag makeDriverError(diagnostic::events::DriverCode 
  * @param options 扫描配置（递归/扩展名）。
  * @return std::vector<std::string> 已排序的源文件路径列表。
  */
-std::vector<std::string> CompilerOrchestrator::collectNkFiles(const std::string &root_dir, const OrchestratorOptions &options) {
+std::vector<std::string> CompilerOrchestrator::collectNkFiles(const std::string &root_dir,
+                                                              const OrchestratorOptions &options) {
     std::vector<std::string> files;
     std::error_code err;
     fs::path root(root_dir);
@@ -69,13 +70,13 @@ std::vector<std::string> CompilerOrchestrator::collectNkFiles(const std::string 
  * @return std::expected<GlobalCompilationUnit, diagnostic::DiagnosticBag> 成功返回编译单元，失败返回诊断。
  */
 std::expected<GlobalCompilationUnit, diagnostic::DiagnosticBag> CompilerOrchestrator::parseOneUnit(
-    const std::string &source_path,
-    syntax::GlobalInterner &interner) {
+    const std::string &source_path, syntax::GlobalInterner &interner) {
     GlobalCompilationUnit unit(interner);
     unit.source_path = source_path;
     std::ifstream in(source_path, std::ios::binary);
     if (!in.is_open()) {
-        return std::unexpected(makeDriverError(diagnostic::events::DriverCode::IoError, "Failed to open source file.", source_path));
+        return std::unexpected(
+            makeDriverError(diagnostic::events::DriverCode::IoError, "Failed to open source file.", source_path));
     }
     std::stringstream buffer;
     buffer << in.rdbuf();
@@ -162,7 +163,7 @@ std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Com
     }
     modules.reserve(units.size());
     for (auto &unit : units) {
-        auto module_result = compileParsedUnit(unit, global_arena, global_symbols);
+        auto module_result = compileParsedBackend(unit, global_arena, global_symbols);
         if (!module_result.has_value()) {
             diagnostics.merge(std::move(module_result.error()));
             continue;
@@ -181,11 +182,12 @@ std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Com
  * @param options 编排选项。
  * @return std::expected<vm::Value, diagnostic::DiagnosticBag> 成功返回入口值，失败返回诊断。
  */
-std::expected<vm::Value, diagnostic::DiagnosticBag> CompilerOrchestrator::runProject(const std::string &root_dir,
-                                                                                      const OrchestratorOptions &options) {
+std::expected<vm::Value, diagnostic::DiagnosticBag> CompilerOrchestrator::runProject(
+    const std::string &root_dir, const OrchestratorOptions &options) {
     auto files = collectNkFiles(root_dir, options);
     if (files.empty()) {
-        return std::unexpected(makeDriverError(diagnostic::events::DriverCode::NoInput, "No .nk source files found.", root_dir));
+        return std::unexpected(
+            makeDriverError(diagnostic::events::DriverCode::NoInput, "No .nk source files found.", root_dir));
     }
     auto compiled = compileAll(files);
     if (!compiled.has_value()) {

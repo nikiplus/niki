@@ -325,6 +325,8 @@ TokenType Scanner::checkIdentifierType() {
             if (source[start + 1] == 's')
                 return checkKeyword(2, 3, "ync", TokenType::KW_ASYNC);
         }
+        if (length == 6 && source[start + 1] == 't')
+            return checkKeyword(2, 4, "tach", TokenType::KW_ATTACH);
         break;
     case 'b':
         if (length > 1) {
@@ -361,6 +363,10 @@ TokenType Scanner::checkIdentifierType() {
                 break;
             }
         }
+        break;
+    case 'd':
+        if (length == 6 && source[start + 1] == 'e')
+            return checkKeyword(2, 4, "tach", TokenType::KW_DETACH);
         break;
     case 'e':
         if (length == 4) {
@@ -468,6 +474,10 @@ TokenType Scanner::checkIdentifierType() {
                     return checkKeyword(2, 1, "g", TokenType::KW_TAG);
                 if (length == 8)
                     return checkKeyword(2, 6, "ggroup", TokenType::KW_TAGGROUP);
+                break;
+            case 'o':
+                if (length == 2)
+                    return checkKeyword(2, 0, "", TokenType::KW_TO);
                 break;
             case 'r':
                 return checkKeyword(2, 2, "ue", TokenType::KW_TRUE);

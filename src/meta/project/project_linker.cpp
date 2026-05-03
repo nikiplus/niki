@@ -36,7 +36,7 @@ static void collectMergedStringPool(const std::vector<linker::CompileModule> &mo
 static std::vector<SymbolDef> collectDefinedSymbols(const linker::CompileModule &module) {
     std::vector<SymbolDef> symbols;
     const auto &string_pool = module.init_chunk.string_pool;
-    symbols.reserve(module.exports.size());
+    symbols.reserve(module.exports.size() + module.exported_symbols.size());
 
     for (const auto &[local_symbol_id, exported_symbol_id] : module.exports) {
         (void)local_symbol_id;
@@ -45,6 +45,15 @@ static std::vector<SymbolDef> collectDefinedSymbols(const linker::CompileModule 
                                       : ("<id" + std::to_string(exported_symbol_id) + ">");
         symbols.push_back(SymbolDef{exported_symbol_id, std::move(symbol_name), module.source_path});
     }
+
+    // Also collect non-function exported symbols (component/kits etc.)
+    for (const auto &sym_record : module.exported_symbols) {
+        std::string symbol_name = (sym_record.sym_name_sid < string_pool.size())
+                                      ? string_pool[sym_record.sym_name_sid]
+                                      : ("<sid" + std::to_string(sym_record.sym_name_sid) + ">");
+        symbols.push_back(SymbolDef{sym_record.sym_name_sid, std::move(symbol_name), module.source_path});
+    }
+
     return symbols;
 }
 

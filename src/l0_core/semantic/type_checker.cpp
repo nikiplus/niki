@@ -119,7 +119,8 @@ void TypeChecker::declareSymbol(uint32_t name_id, NKType type, uint32_t line, ui
         if (symbols[i].depth < currentDepth)
             break;
         if (symbols[i].name_id == name_id) {
-            reportError(line, column, "Variable already declared in this scope.");
+            reportError(line, column, "Variable already declared in this scope.",
+                        niki::diagnostic::events::SemanticCode::DuplicateDeclaration);
             return;
         }
     }
@@ -149,7 +150,8 @@ NKType TypeChecker::resolveSymbol(uint32_t name_id, uint32_t line, uint32_t colu
         }
     }
 
-    reportError(line, column, "Undeclared variable.");
+    reportError(line, column, "Undeclared variable.",
+                niki::diagnostic::events::SemanticCode::UndeclaredIdentifier);
     return NKType::makeUnknown();
 }
 
@@ -221,8 +223,9 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
 };
 
 /** @brief 上报语义错误。 */
-void TypeChecker::reportError(uint32_t line, uint32_t column, const std::string &message) {
-    diagnostics.error(niki::diagnostic::events::SemanticCode::GenericError, message,
+void TypeChecker::reportError(uint32_t line, uint32_t column, const std::string &message,
+                               niki::diagnostic::events::SemanticCode code) {
+    diagnostics.error(code, message,
                       niki::diagnostic::makeSourceSpan(currentPool != nullptr ? currentPool->source_path : "", line, column));
 }
 

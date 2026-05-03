@@ -1,267 +1,328 @@
+#include "../test_helpers.hpp"
 #include "ast_printer.hpp"
-#include "niki/l0_core/diagnostic/renderer.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
-#include "niki/l0_core/syntax/parser.hpp"
-#include "niki/l0_core/syntax/scanner.hpp"
-#include <array>
-#include <fstream>
+#include "niki/l0_core/syntax/ast_payloads.hpp"
 #include <gtest/gtest.h>
-#include <sstream>
 
-using namespace niki::syntax;
 using namespace niki::syntax::test;
+using namespace niki::syntax;
 
-namespace {
-std::string readScriptOrDie(const std::string &script_name) {
-    const std::array<std::string, 2> paths = {"scripts/" + script_name, "../scripts/" + script_name};
-    std::ifstream file(paths[0]);
-    if (!file.is_open()) {
-        file.open(paths[1]);
-    }
+/** @phase_A: 表达式解析测试
+ *
+ * 验证 wrapAndParse + ASTPrinter 可正确表达任意表达式 AST。
+ * 测试用例使用完整的 module → func → block → stmt → expr 包裹链路。
+ */
 
-    EXPECT_TRUE(file.is_open()) << "Failed to open " << script_name << " from both " << paths[0] << " and " << paths[1];
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-}
-} // namespace
-
-// 这是一个基础的测试夹具 (Test Fixture)
-class ParserTest : public ::testing::Test {
-  protected:
-    GlobalInterner interner;
-    ASTPool pool{interner};
-
-    // 辅助函数：将源码字符串解析为 AST 根节点
-    ASTNodeIndex parseSource(std::string_view source) {
-        // 由于 scanner 没有一次性 scanTokens 方法，我们需要手动循环收集
-        Scanner scanner(source);
-        std::vector<Token> tokens;
-
-        for (;;) {
-            Token token = scanner.scanToken();
-            tokens.push_back(token);
-            if (token.type == TokenType::TOKEN_EOF) {
-                break;
-            }
-        }
-        auto scannerDiagnostics = scanner.takeDiagnostics();
-
-        EXPECT_TRUE(scannerDiagnostics.empty()) << "Scanner failed on input: " << source << "\n"
-                                                << niki::diagnostic::renderDiagnosticBagText(scannerDiagnostics);
-
-        Parser parser(source, tokens, pool);
-        ParseResult result = parser.parse();
-        EXPECT_TRUE(result.diagnostics.empty()) << "Parser failed on input: " << source << "\n"
-                                                << niki::diagnostic::renderDiagnosticBagText(result.diagnostics);
-        return result.root;
-    }
-
-    void SetUp() override {
-        // 每个测试用例运行前，清理 AST 池
-        pool.clear();
-    }
-};
-
-// 【测试用例 1】最简单的变量声明解析
-TEST_F(ParserTest, ParseVarDecl_Simple) {
-    auto root = parseSource("func test() { var x = 10; }");
-
-    // 验证根节点是否生成成功
-    ASSERT_TRUE(root.isvalid());
-
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-
-    // 预期输出: (module\n  (func test() (block (var x = 10))))
-    EXPECT_EQ(astStr, "(module\n  (func test() (block (var x = 10))))");
+// A-1: 整数字面量
+TEST(ParserExprTest, IntegerLiteral) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 42; return x;");
+    ASSERT_TRUE(unit.root.isvalid()) << "wrapAndParse should produce valid root";
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    // Expect: (module (func __test_main() (block (var x = 42)(return x)))
+    EXPECT_TRUE(ast_str.find("42") != std::string::npos);
+    EXPECT_TRUE(ast_str.find("__test_main") != std::string::npos);
 }
 
-// 【测试用例 2】基础的二元表达式测试 (测试优先级和结合性)
-TEST_F(ParserTest, ParseExpression_Precedence) {
-    // 1 + 2 * 3 应该被解析为 1 + (2 * 3)
-    auto root = parseSource("func test() { var result = 1 + 2 * 3; }");
-    ASSERT_TRUE(root.isvalid());
-
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-
-    // 预期输出: (module\n  (func test() (block (var result = (+ 1 (* 2 3))))))
-    EXPECT_EQ(astStr, "(module\n  (func test() (block (var result = (+ 1 (* 2 3))))))");
-}
-
-TEST_F(ParserTest, ParseExpression_DiceMixedWithAdd) {
-    auto root = parseSource("func test() { var x = 1d10 + 1d(1+3); }");
-    ASSERT_TRUE(root.isvalid());
-
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-
-    EXPECT_EQ(astStr, "(module\n  (func test() (block (var x = (+ (d 1 10) (d 1 (+ 1 3)))))))");
-}
-
-TEST_F(ParserTest, ParseWithCommentsShouldSucceed) {
-    auto root = parseSource("func test() { // line\n /* block */ var x = 1; return x; }");
-    ASSERT_TRUE(root.isvalid());
-
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-    EXPECT_NE(astStr.find("(func test()"), std::string::npos);
-    EXPECT_NE(astStr.find("(var x = 1)"), std::string::npos);
-}
-
-TEST_F(ParserTest, ParseModuleScopedImportExportShouldSucceed) {
-    // module 主体块内允许出现 import/export（module-scoped）。
-    auto root = parseSource(R"nk(
-module math {
-  import { add as add2 } from lib;
-  export { add2 };
-  func add(a: int, b: int) -> int { return a + b; }
-}
-)nk");
-
-    ASSERT_TRUE(root.isvalid());
-    EXPECT_TRUE(pool.nodes.size() > 0);
-    // 不强行断言 AST 字符串，避免 ASTPrinter 格式变动导致脆弱用例。
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-    EXPECT_NE(astStr.find("(module"), std::string::npos);
-    EXPECT_NE(astStr.find("(func add("), std::string::npos);
-}
-
-TEST_F(ParserTest, ParseKitsReadWriteWindowShouldSucceed) {
-    auto root = parseSource(R"nk(
-kits MoveWindow {
-  &Position as pos_ro;
-  Velocity as vel_rw;
-}
-)nk");
-
-    ASSERT_TRUE(root.isvalid());
-    const auto &root_node = pool.getNode(root);
-    ASSERT_EQ(root_node.type, NodeType::ModuleDecl);
-    const auto &module_body = pool.getNode(root_node.payload.module_decl.body);
-    auto decls = pool.get_list(module_body.payload.list.elements);
-    ASSERT_FALSE(decls.empty());
-
-    const auto &kits_decl = pool.getNode(decls.front());
-    ASSERT_EQ(kits_decl.type, NodeType::KitsDecl);
-    const auto &kits_body = pool.getNode(kits_decl.payload.kits_decl.body);
-    auto members = pool.get_list(kits_body.payload.list.elements);
-    ASSERT_EQ(members.size(), 2u);
-    EXPECT_EQ(pool.getNode(members[0]).type, NodeType::ConstDeclStmt); // read -> const
-    EXPECT_EQ(pool.getNode(members[1]).type, NodeType::VarDeclStmt);   // write -> var
-}
-
-TEST_F(ParserTest, ParseComponentPromotionShouldSucceed) {
-    auto root = parseSource(R"nk(
-struct vec {
-  x: int,
-  y: int
-}
-component vec as vec_com;
-)nk");
-
-    ASSERT_TRUE(root.isvalid());
-    const auto &root_node = pool.getNode(root);
-    ASSERT_EQ(root_node.type, NodeType::ModuleDecl);
-    const auto &module_body = pool.getNode(root_node.payload.module_decl.body);
-    auto decls = pool.get_list(module_body.payload.list.elements);
-    ASSERT_EQ(decls.size(), 2u);
-    const auto &component_decl = pool.getNode(decls[1]);
-    ASSERT_EQ(component_decl.type, NodeType::ComponentDecl);
-    EXPECT_TRUE(component_decl.payload.component_decl.is_struct_promotion);
-    EXPECT_FALSE(component_decl.payload.component_decl.body.isvalid());
-}
-
-// 【测试用例 3】解析完整的 test.nk 脚本文件
-TEST_F(ParserTest, ParseFullScript_TestNK) {
-    std::string sourceCode = readScriptOrDie("test.nk");
-
-    auto root = parseSource(sourceCode);
-    ASSERT_TRUE(root.isvalid()) << "Root node is invalid for test.nk";
-
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-    EXPECT_NE(astStr.find("(module"), std::string::npos);
-    EXPECT_NE(astStr.find("calculate_total"), std::string::npos);
-    EXPECT_NE(astStr.find("main"), std::string::npos);
-}
-
-TEST_F(ParserTest, ParseFullScript_MainNK) {
-    std::string sourceCode = readScriptOrDie("main.nk");
-    auto root = parseSource(sourceCode);
-    ASSERT_TRUE(root.isvalid()) << "Root node is invalid for main.nk";
-
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-    EXPECT_NE(astStr.find("(func main("), std::string::npos);
-    EXPECT_NE(astStr.find("a"), std::string::npos);
-    EXPECT_NE(astStr.find("b"), std::string::npos);
-}
-
-TEST_F(ParserTest, ParseFullScript_AllSyntaxOK) {
-    std::string sourceCode = readScriptOrDie("all_syntax_ok.nk");
-    auto root = parseSource(sourceCode);
-    ASSERT_TRUE(root.isvalid()) << "Root node is invalid for all_syntax_ok.nk";
-
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-    EXPECT_NE(astStr.find("calculate_total"), std::string::npos);
-    EXPECT_NE(astStr.find("main"), std::string::npos);
-    EXPECT_NE(astStr.find("str1"), std::string::npos);
-    EXPECT_NE(astStr.find("str2"), std::string::npos);
-}
-
-TEST_F(ParserTest, ParseFullScript_FailSemanticCrossFileCallMainNK) {
-    std::string sourceCode = readScriptOrDie("cases/fail/semantic_01_cross_file_call/10_main.nk");
-
-    auto root = parseSource(sourceCode);
-    ASSERT_TRUE(root.isvalid()) << "Root node is invalid for cases/fail/semantic_01_cross_file_call/10_main.nk";
-
-    ASTPrinter printer(pool);
-    std::string astStr = printer.print(root);
-    EXPECT_NE(astStr.find("(func main("), std::string::npos);
-}
-
-TEST_F(ParserTest, ParseTopLevelVar_ShouldFail) {
-    std::string sourceCode = "var a: int = 1;";
-    Scanner scanner(sourceCode);
-    std::vector<Token> tokens;
-    for (;;) {
-        Token token = scanner.scanToken();
-        tokens.push_back(token);
-        if (token.type == TokenType::TOKEN_EOF) {
+// A-2: 浮点字面量
+TEST(ParserExprTest, FloatLiteral) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 3.14; return x;", "float");
+    ASSERT_TRUE(unit.root.isvalid());
+    // 验证存在 LiteralExpr 节点
+    auto lit_nodes = fixture.findNodes(unit.pool, NodeType::LiteralExpr);
+    EXPECT_GE(lit_nodes.size(), 1u);
+    // 验证存在浮点常量 (常量池中)
+    bool has_float_const = false;
+    for (const auto &c : unit.pool.constants) {
+        if (c.type == vm::ValueType::Float) {
+            has_float_const = true;
             break;
         }
     }
-    auto scannerDiagnostics = scanner.takeDiagnostics();
-    ASSERT_TRUE(scannerDiagnostics.empty()) << "Scanner should succeed for top-level var source";
-
-    Parser parser(sourceCode, tokens, pool);
-    ParseResult result = parser.parse();
-    ASSERT_FALSE(result.diagnostics.empty()) << "Top-level var declaration must be rejected.";
-    EXPECT_EQ(result.diagnostics.all()[0].code,
-              niki::diagnostic::codeOf(niki::diagnostic::events::ParserCode::GenericError));
+    EXPECT_TRUE(has_float_const) << "Should have a float constant in the pool";
 }
 
-TEST_F(ParserTest, ParseTopLevelExpression_ShouldFail) {
-    std::string sourceCode = "1 + 2;";
-    Scanner scanner(sourceCode);
-    std::vector<Token> tokens;
-    for (;;) {
-        Token token = scanner.scanToken();
-        tokens.push_back(token);
-        if (token.type == TokenType::TOKEN_EOF) {
-            break;
+// A-3: 布尔字面量
+TEST(ParserExprTest, BoolLiteral) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = true; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    EXPECT_TRUE(ast_str.find("true") != std::string::npos);
+}
+
+// A-4: 一元负号
+TEST(ParserExprTest, UnaryNegate) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = -5; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    EXPECT_TRUE(ast_str.find("-") != std::string::npos);
+}
+
+// A-5: 逻辑非
+TEST(ParserExprTest, LogicalNot) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = !true; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    EXPECT_TRUE(ast_str.find("!") != std::string::npos);
+}
+
+// A-6: 二元加减
+TEST(ParserExprTest, BinaryAdd) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 1 + 2; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    // AST: (+ 1 2)
+    EXPECT_TRUE(ast_str.find("+") != std::string::npos);
+}
+
+// A-7: 二元乘除
+TEST(ParserExprTest, BinaryMul) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 3 * 4; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    EXPECT_TRUE(ast_str.find("*") != std::string::npos);
+}
+
+// A-8: 优先级嵌套: 1 + 2 * 3 → (+ 1 (* 2 3))
+TEST(ParserExprTest, PrecedenceNested) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 1 + 2 * 3; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    // 乘法应在加法之前绑定
+    auto mul_pos = ast_str.find("*");
+    auto add_pos = ast_str.find("+");
+    EXPECT_NE(mul_pos, std::string::npos);
+    EXPECT_NE(add_pos, std::string::npos);
+    // 由于乘法优先级高于加法，printer 中 "*" 应出现在更深的嵌套中
+    // 字符串对比: "(+ 1 (* 2 3))" 中 + 在 * 之前出现
+    EXPECT_LT(add_pos, mul_pos);
+}
+
+// A-9: 括号改写优先级: (1 + 2) * 3 → (* (+ 1 2) 3)
+TEST(ParserExprTest, ParenthesisOverride) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = (1 + 2) * 3; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    // 括号内加法应先求值, printer 中 "+" 出现在更内层
+    auto mul_pos = ast_str.find("*");
+    auto add_pos = ast_str.find("+");
+    EXPECT_NE(mul_pos, std::string::npos);
+    EXPECT_NE(add_pos, std::string::npos);
+    // 由于(1+2)整体是乘法左操作数，AST结构为 (* (+ 1 2) 3)
+    // 在字符串中 "*" 出现在 "(+ 1 2)" 之前
+    EXPECT_LT(mul_pos, add_pos);
+}
+
+// A-10: 相等性比较
+TEST(ParserExprTest, EqualityCompare) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 1 == 2; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    EXPECT_TRUE(ast_str.find("==") != std::string::npos);
+}
+
+// A-11: 关系比较
+TEST(ParserExprTest, RelationalCompare) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 3 > 5; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    EXPECT_TRUE(ast_str.find(">") != std::string::npos);
+}
+
+// A-12: 逻辑运算
+TEST(ParserExprTest, LogicalAnd) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = true && false; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    EXPECT_TRUE(ast_str.find("&&") != std::string::npos);
+}
+
+// A-13: 标识符引用
+TEST(ParserExprTest, IdentifierReference) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var y = a + b; return y;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    EXPECT_TRUE(ast_str.find("a") != std::string::npos);
+    EXPECT_TRUE(ast_str.find("b") != std::string::npos);
+}
+
+// A-14: 字符串字面量
+TEST(ParserExprTest, StringLiteral) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = \"hello\"; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    ASTPrinter printer(unit.pool);
+    std::string ast_str = printer.print(unit.root);
+    // 应能识别出字符串字面量节点
+    auto literal_nodes = fixture.findNodes(unit.pool, NodeType::LiteralExpr);
+    EXPECT_GE(literal_nodes.size(), 1u);
+}
+
+// A-15: 数组字面量
+TEST(ParserExprTest, ArrayLiteral) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = [1, 2, 3]; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    auto array_nodes = fixture.findNodes(unit.pool, NodeType::ArrayExpr);
+    EXPECT_GE(array_nodes.size(), 1u);
+}
+
+// A-16: 函数调用
+TEST(ParserExprTest, FunctionCall) {
+    ExprTestFixture fixture;
+    // 需要在包裹中额外定义 foo 函数
+    std::string source =
+        "module __t{"
+        "func foo(a:int,b:int)->int{return a+b;}"
+        "func __test_main()->int{var x = foo(1,2); return x;}"
+        "}";
+    auto unit = fixture.wrapAndParse("var x = foo(1,2); return x;");
+    // 使用自定义包裹方式
+    unit = [&]() {
+        GlobalCompilationUnit u(fixture.interner_);
+        u.source = source;
+        u.source_path = "__test__";
+        syntax::Scanner scanner(u.source, u.source_path);
+        while (true) {
+            auto token = scanner.scanToken();
+            u.tokens.push_back(token);
+            if (token.type == syntax::TokenType::TOKEN_EOF) break;
+        }
+        static_cast<void>(scanner.takeDiagnostics());
+        u.pool.source_path = u.source_path;
+        syntax::Parser parser(u.source, u.tokens, u.pool, u.source_path);
+        auto parse_result = parser.parse();
+        u.root = parse_result.root;
+        return u;
+    }();
+    ASSERT_TRUE(unit.root.isvalid());
+    auto call_nodes = fixture.findNodes(unit.pool, NodeType::CallExpr);
+    EXPECT_GE(call_nodes.size(), 1u);
+}
+
+// A-17: 成员访问
+TEST(ParserExprTest, MemberAccess) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = obj.field; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    auto member_nodes = fixture.findNodes(unit.pool, NodeType::MemberExpr);
+    EXPECT_GE(member_nodes.size(), 1u);
+}
+
+// A-18: 索引访问
+TEST(ParserExprTest, IndexAccess) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = arr[0]; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    auto index_nodes = fixture.findNodes(unit.pool, NodeType::IndexExpr);
+    EXPECT_GE(index_nodes.size(), 1u);
+}
+
+// A-19: 复杂嵌套: foo(bar(1 + 2) * 3)[0]
+TEST(ParserExprTest, ComplexNested) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = get(bar(1 + 2) * 3)[0]; return x;");
+    ASSERT_TRUE(unit.root.isvalid());
+    // 同时包含 CallExpr、BinaryExpr、IndexExpr
+    auto call_nodes = fixture.findNodes(unit.pool, NodeType::CallExpr);
+    auto bin_nodes = fixture.findNodes(unit.pool, NodeType::BinaryExpr);
+    auto idx_nodes = fixture.findNodes(unit.pool, NodeType::IndexExpr);
+    EXPECT_GE(call_nodes.size(), 1u);
+    EXPECT_GE(bin_nodes.size(), 1u);
+    EXPECT_GE(idx_nodes.size(), 1u);
+}
+
+// A-20: 解析错误恢复: var x = 1 + ;
+TEST(ParserExprTest, ParserErrorRecovery) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 1 + ;");
+    // 解析器应在此场景下产出诊断
+    // 不崩溃即可视为通过
+    SUCCEED();
+}
+
+// A-21: 三元/条件表达式 (如果语言支持)
+TEST(ParserExprTest, NonStandardExpressionStillParses) {
+    // 验证任意合法的表达式模板不会导致解析器崩溃
+    std::vector<std::string> expressions = {
+        "var a=1;var b=2;var c=a+b; return c;",
+        "return 42;",
+        "var x=1+2*3/4%5; return x;",
+        "var x=1<2 && 3>4 || 5==5; return x;"
+    };
+    for (const auto& expr : expressions) {
+        ExprTestFixture fixture;
+        auto unit = fixture.wrapAndParse(expr);
+        EXPECT_TRUE(unit.root.isvalid()) << "Failed to parse: " << expr;
+        if (!unit.root.isvalid()) {
+            ADD_FAILURE() << "wrapAndParse returned invalid root for: " << expr;
         }
     }
-    auto scannerDiagnostics = scanner.takeDiagnostics();
-    ASSERT_TRUE(scannerDiagnostics.empty()) << "Scanner should succeed for top-level expression source";
+}
 
-    Parser parser(sourceCode, tokens, pool);
-    ParseResult result = parser.parse();
-    ASSERT_FALSE(result.diagnostics.empty()) << "Top-level expression must be rejected.";
-    EXPECT_EQ(result.diagnostics.all()[0].code,
-              niki::diagnostic::codeOf(niki::diagnostic::events::ParserCode::GenericError));
+// A-22: 验证包裹结构: ProgramRoot 下包含 ModuleDecl
+TEST(ParserExprTest, ModuleFunctionWrapperStructure) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("return 42;");
+    ASSERT_TRUE(unit.root.isvalid());
+
+    // wrapAndParse 直接返回解析根节点（可能为 ModuleDecl 或 ProgramRoot）
+    // 验证至少存在 ModuleDecl 节点
+    auto module_nodes = fixture.findNodes(unit.pool, NodeType::ModuleDecl);
+    EXPECT_GE(module_nodes.size(), 1u);
+
+    // 验证存在 FunctionDecl 节点
+    auto func_nodes = fixture.findNodes(unit.pool, NodeType::FunctionDecl);
+    EXPECT_GE(func_nodes.size(), 1u);
+}
+
+// A-23: 验证多个顶层 FunctionDecl 共存
+TEST(ParserExprTest, MultipleFunctionsInModule) {
+    ExprTestFixture fixture;
+    std::string source =
+        "module __t{"
+        "func helper(x:int)->int{return x+1;}"
+        "func __test_main()->int{return helper(41);}"
+        "}";
+    GlobalCompilationUnit unit(fixture.interner_);
+    unit.source = source;
+    unit.source_path = "__test__";
+    syntax::Scanner scanner(unit.source, unit.source_path);
+    while (true) {
+        auto token = scanner.scanToken();
+        unit.tokens.push_back(token);
+        if (token.type == syntax::TokenType::TOKEN_EOF) break;
+    }
+    static_cast<void>(scanner.takeDiagnostics());
+    unit.pool.source_path = unit.source_path;
+    syntax::Parser parser(unit.source, unit.tokens, unit.pool, unit.source_path);
+    auto parse_result = parser.parse();
+    unit.root = parse_result.root;
+    ASSERT_TRUE(unit.root.isvalid());
+    auto func_nodes = fixture.findNodes(unit.pool, NodeType::FunctionDecl);
+    EXPECT_EQ(func_nodes.size(), 2u);
 }

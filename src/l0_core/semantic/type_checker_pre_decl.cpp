@@ -27,6 +27,8 @@ void TypeChecker::preDeclareNode(syntax::ASTNodeIndex declIdx) {
         preDeclareStruct(declIdx);
     } else if (node.type == syntax::NodeType::TypeAliasDecl) {
         preDeclareTypeAlias(declIdx);
+    } else if (node.type == syntax::NodeType::ComponentDecl) {
+        preDeclareComponent(declIdx);
     }
 }
 
@@ -88,6 +90,23 @@ void TypeChecker::preDeclareTypeAlias(syntax::ASTNodeIndex nodeIdx) {
         return;
     }
     declareSymbol(alias_name_id, sym->type, line, column);
+}
+
+/**
+ * @brief 预声明组件符号到 moduleComponentNames（不进入 symbol 栈）。
+ * @param nodeIdx ComponentDecl 节点索引。
+ * @note Component 不是值类型，不调用 declareSymbol。
+ * 只注册到 moduleComponentNames 供 kits 窗口目标合法性校验使用。
+ */
+void TypeChecker::preDeclareComponent(syntax::ASTNodeIndex nodeIdx) {
+    if (!nodeIdx.isvalid()) {
+        return;
+    }
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    const uint32_t name_id = node.payload.component_decl.name_id;
+    if (name_id != 0) {
+        moduleComponentNames.insert(name_id);
+    }
 }
 
 } // namespace niki::semantic

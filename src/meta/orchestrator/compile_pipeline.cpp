@@ -2,12 +2,15 @@
 #include "niki/l0_core/ir/builder.hpp"
 #include "niki/l0_core/ir/lower_to_chunk.hpp"
 #include "niki/l0_core/ir/verify.hpp"
+#include "niki/l0_core/semantic/type_checker.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/vm/object.hpp"
 #include "niki/l0_core/vm/value.hpp"
+#include "niki/meta/precompile/precompile_pipeline.hpp"
 #include <filesystem>
 #include <limits>
 #include <sstream>
+#include <vector>
 
 /** @meta_compile_pipeline_impl: 后端编译阶段实现
  * 该文件聚焦“单编译单元后端编译”：IR build、IR verify、IR lower、CompileModule 封装。
@@ -193,8 +196,17 @@ std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> compileUnitChunk(G
         return std::unexpected(std::move(diagnostics));
     }
     UnitCompileArtifact artifact;
+    artifact.module_name = ir_result.value().module_name;
     artifact.init_chunk = makeInitChunkFromLoweredFunctions(lower_result.value().functions, ir_result.value().string_pool);
     artifact.exports = collectExportsFromLoweredFunctions(lower_result.value().functions);
+
+    // 收集非函数导出符号（component/kits 等）
+    for (const auto &sym : ir_result.value().syms) {
+        if (sym.is_exported && sym.sym_kind != ir::SymKind::Func) {
+            artifact.exported_sym_records.push_back(sym);
+        }
+    }
+
     return artifact;
 }
 
@@ -206,28 +218,72 @@ std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> compileUnitChunk(G
  */
 linker::CompileModule buildCompileModule(std::string source_path, UnitCompileArtifact artifact) {
     linker::CompileModule module;
-    module.module_name = std::filesystem::path(source_path).stem().string();
+    // 优先取显式 module 名，回退到文件名 stem
+    if (!artifact.module_name.empty()) {
+        module.module_name = std::move(artifact.module_name);
+    } else {
+        module.module_name = std::filesystem::path(source_path).stem().string();
+    }
     module.source_path = std::move(source_path);
     module.init_chunk = std::move(artifact.init_chunk);
     module.exports = std::move(artifact.exports);
+    module.exported_symbols = std::move(artifact.exported_sym_records);
     return module;
 }
 
 /**
- * @brief 单编译单元后端流水线入口。
+ * @brief 单编译单元后端流水线入口（无重复语义阶段）。
  * @param unit 编译单元。
  * @param global_arena 全局类型 arena。
  * @param global_symbols 全局符号表。
  * @return std::expected<linker::CompileModule, diagnostic::DiagnosticBag> 成功返回模块产物，失败返回诊断。
  */
-std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedUnit(GlobalCompilationUnit &unit,
-                                                                                   GlobalTypeArena &global_arena,
-                                                                                   GlobalSymbolTable &global_symbols) {
+std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedBackend(GlobalCompilationUnit &unit,
+                                                                                    GlobalTypeArena &global_arena,
+                                                                                    GlobalSymbolTable &global_symbols) {
     auto artifact_result = compileUnitChunk(unit, global_arena, global_symbols);
     if (!artifact_result.has_value()) {
         return std::unexpected(std::move(artifact_result.error()));
     }
     return buildCompileModule(std::move(unit.source_path), std::move(artifact_result.value()));
+}
+
+/**
+ * @brief 单编译单元完整流水线：预声明、模块可见性、类型检查、后端编译。
+ * @note 通过临时 vector 调用 buildModuleSemanticContext，避免复制 GlobalCompilationUnit。
+ */
+std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedUnit(GlobalCompilationUnit &unit,
+                                                                                GlobalTypeArena &global_arena,
+                                                                                GlobalSymbolTable &global_symbols) {
+    auto predeclare_result = meta::precompile::predeclareSingleUnit(unit, global_arena, global_symbols);
+    if (!predeclare_result.has_value()) {
+        return std::unexpected(std::move(predeclare_result.error()));
+    }
+
+    std::vector<GlobalCompilationUnit> single_unit;
+    single_unit.push_back(std::move(unit));
+
+    auto context_result = meta::precompile::buildModuleSemanticContext(single_unit, global_symbols);
+    if (!context_result.has_value()) {
+        unit = std::move(single_unit[0]);
+        return std::unexpected(std::move(context_result.error()));
+    }
+
+    semantic::TypeChecker checker;
+    auto type_result =
+        checker.check(single_unit[0].pool, single_unit[0].root, global_symbols, global_arena,
+                      context_result.value().visible_per_unit[0]);
+    if (!type_result.has_value()) {
+        unit = std::move(single_unit[0]);
+        return std::unexpected(std::move(type_result.error()));
+    }
+
+    auto backend_result = compileParsedBackend(single_unit[0], global_arena, global_symbols);
+    unit = std::move(single_unit[0]);
+    if (!backend_result.has_value()) {
+        return std::unexpected(std::move(backend_result.error()));
+    }
+    return backend_result;
 }
 
 } // namespace niki::meta::orchestrator

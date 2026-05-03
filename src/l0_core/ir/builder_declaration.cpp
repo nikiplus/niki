@@ -147,6 +147,12 @@ bool IRBuilder::buildTopDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
                     bc.unit->pool.struct_data[wrapped_decl.payload.struct_decl.struct_index];
                 const uint32_t struct_name_sid = bc.module.intern(bc.unit->pool.getStringId(struct_data.name_id));
                 mark_exported_by_name_sid(struct_name_sid);
+            } else if (wrapped_decl.type == NodeType::SystemDecl) {
+                const uint32_t sys_name_sid = bc.module.intern(bc.unit->pool.getStringId(wrapped_decl.payload.system_decl.name_id));
+                mark_exported_by_name_sid(sys_name_sid);
+            } else if (wrapped_decl.type == NodeType::FlowDecl) {
+                const uint32_t flow_name_sid = bc.module.intern(bc.unit->pool.getStringId(wrapped_decl.payload.flow_decl.name_id));
+                mark_exported_by_name_sid(flow_name_sid);
             }
             return ok;
         }
@@ -159,33 +165,82 @@ bool IRBuilder::buildTopDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
         return true;
     }
 
-    if (decl.type == NodeType::FunctionDecl) {
+    switch (decl.type) {
+    case NodeType::FunctionDecl: {
         const auto &func_data = bc.unit->pool.function_data[decl.payload.func_decl.function_index];
         const uint32_t func_name_sid = bc.module.intern(bc.unit->pool.getStringId(func_data.name_id));
         upsert_symbol(func_name_sid, SymKind::Func, true);
         return buildFuncDecl(bc, decl_idx);
     }
-
-    if (decl.type == NodeType::StructDecl) {
+    case NodeType::StructDecl: {
         const auto &struct_data = bc.unit->pool.struct_data[decl.payload.struct_decl.struct_index];
         const uint32_t struct_name_sid = bc.module.intern(bc.unit->pool.getStringId(struct_data.name_id));
         upsert_symbol(struct_name_sid, SymKind::Struct, true);
         return true;
     }
-
-    if (decl.type == NodeType::ComponentDecl) {
+    case NodeType::ComponentDecl: {
         const uint32_t component_name_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.component_decl.name_id));
         upsert_symbol(component_name_sid, SymKind::Component, false);
         return buildComponentDecl(bc, decl_idx);
     }
-
-    if (decl.type == NodeType::KitsDecl) {
+    case NodeType::KitsDecl: {
         const uint32_t kits_name_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.kits_decl.name_id));
         upsert_symbol(kits_name_sid, SymKind::Kits, false);
         return buildKitsDecl(bc, decl_idx);
     }
-
-    return true;
+    case NodeType::SystemDecl: {
+        const uint32_t name_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.system_decl.name_id));
+        upsert_symbol(name_sid, SymKind::Func, false);
+        bc.diags.warning(diagnostic::events::IRCode::GenericError,
+                         "IR lowering not yet implemented for SystemDecl.",
+                         diagnostic::makeSourceSpan(
+                             bc.unit ? bc.unit->source_path : "", 0, 0));
+        return true;
+    }
+    case NodeType::FlowDecl: {
+        const uint32_t name_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.flow_decl.name_id));
+        upsert_symbol(name_sid, SymKind::Func, false);
+        bc.diags.warning(diagnostic::events::IRCode::GenericError,
+                         "IR lowering not yet implemented for FlowDecl.",
+                         diagnostic::makeSourceSpan(
+                             bc.unit ? bc.unit->source_path : "", 0, 0));
+        return true;
+    }
+    case NodeType::TagDecl: {
+        const uint32_t name_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.tag_decl.name_id));
+        upsert_symbol(name_sid, SymKind::External, false);
+        bc.diags.warning(diagnostic::events::IRCode::GenericError,
+                         "IR lowering not yet implemented for TagDecl.",
+                         diagnostic::makeSourceSpan(
+                             bc.unit ? bc.unit->source_path : "", 0, 0));
+        return true;
+    }
+    case NodeType::TagGroupDecl: {
+        const uint32_t name_sid = bc.module.intern(bc.unit->pool.getStringId(decl.payload.tag_group.name_id));
+        upsert_symbol(name_sid, SymKind::External, false);
+        bc.diags.warning(diagnostic::events::IRCode::GenericError,
+                         "IR lowering not yet implemented for TagGroupDecl.",
+                         diagnostic::makeSourceSpan(
+                             bc.unit ? bc.unit->source_path : "", 0, 0));
+        return true;
+    }
+    case NodeType::ImportDecl:
+        // import 由 TypeChecker 处理语义，IR 层无对应结构
+        return true;
+    case NodeType::InterfaceDecl:
+    case NodeType::ImplDecl:
+    case NodeType::EnumDecl:
+    case NodeType::TypeAliasDecl:
+    case NodeType::InterfaceMethod:
+        // 纯语义/语法层声明，IR 层无需处理
+        return true;
+    case NodeType::ErrorNode:
+        error(bc, "Unexpected ErrorNode in top-level declaration position.", decl_idx);
+        return false;
+    default:
+        error(bc, "Unexpected node type in top-level declaration position.", decl_idx);
+        return false;
+    }
 }
 
 /**

@@ -110,7 +110,8 @@ class TypeChecker {
 
     NKType resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx);
     //---错误报告---
-    void reportError(uint32_t line, uint32_t column, const std::string &message);
+    void reportError(uint32_t line, uint32_t column, const std::string &message,
+                      niki::diagnostic::events::SemanticCode code = niki::diagnostic::events::SemanticCode::GenericError);
 
     //---遍历入口---
     // checkNode 是语义层总分发器，根据 NodeType 路由到表达式/语句/声明分支。
@@ -160,6 +161,7 @@ class TypeChecker {
     void preDeclareFunction(syntax::ASTNodeIndex nodeIdx);
     void preDeclareStruct(syntax::ASTNodeIndex nodeIdx);
     void preDeclareTypeAlias(syntax::ASTNodeIndex nodeIdx);
+    void preDeclareComponent(syntax::ASTNodeIndex nodeIdx);
 
     // --- 顶层声明 ---
     void checkDeclaration(syntax::ASTNodeIndex declIdx);

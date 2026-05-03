@@ -91,6 +91,7 @@ struct Span {
     // 区间长度（元素个数）。
     uint32_t count = 0;
 };
+
 //---函数记录（模块内每个函数一条）---
 struct FuncRecord {
     // 函数在 funcs 表中的稳定 id。

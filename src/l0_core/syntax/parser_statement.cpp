@@ -29,8 +29,11 @@ ASTNodeIndex Parser::parseStatement() {
         return parseReturnStmt();
     } else if (match(TokenType::KW_NOCK)) {
         return parseNockStmt();
+    } else if (match(TokenType::KW_ATTACH)) {
+        return parseAttachStmt();
+    } else if (match(TokenType::KW_DETACH)) {
+        return parseDetachStmt();
     }
-    // ... 其他语句类型
 
     // 如果没有任何控制流关键字，则默认解析为表达式语句
     return parseExpressionStmt();
@@ -314,7 +317,29 @@ ASTNodeIndex Parser::parseNockStmt() {
     return emitNode(NodeType::NockStmt, payload, startToken);
 }
 //---组件挂载与卸载---
-/** @brief 解析 attach 语句（占位实现）。 */
-ASTNodeIndex Parser::parseAttachStmt() { return ASTNodeIndex{}; }
-/** @brief 解析 detach 语句（占位实现）。 */
-ASTNodeIndex Parser::parseDetachStmt() { return ASTNodeIndex{}; }
+/** @brief 解析 attach 语句。 */
+ASTNodeIndex Parser::parseAttachStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+
+    // attach <Component> to <entity>;
+    payload.attach.component = parseExpression(Precedence::None);
+    consume(TokenType::KW_TO, "Expected 'to' after component in attach statement.");
+    payload.attach.target = parseExpression(Precedence::None);
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after attach statement.");
+
+    return emitNode(NodeType::AttachStmt, payload, startToken);
+}
+/** @brief 解析 detach 语句。 */
+ASTNodeIndex Parser::parseDetachStmt() {
+    Token startToken = previous;
+    ASTNodePayload payload{};
+
+    // detach <Component> from <entity>;
+    payload.detach.component = parseExpression(Precedence::None);
+    consume(TokenType::KW_FROM, "Expected 'from' after component in detach statement.");
+    payload.detach.target = parseExpression(Precedence::None);
+    consume(TokenType::SYM_SEMICOLON, "Expected ';' after detach statement.");
+
+    return emitNode(NodeType::DetachStmt, payload, startToken);
+}

@@ -11,7 +11,6 @@
 #include <vcruntime_typeinfo.h>
 #include <vector>
 
-
 namespace niki::syntax {
 
 // ASTNodeIndex / ASTListIndex 等“索引而非指针”的动机、旁侧表与 locations 对齐关系：
@@ -76,7 +75,7 @@ union ASTNodePayload {
 
 // [syntax] 单个语法节点：type + payload（定长 16 字节，变长数据走 lists_elements 与各类旁侧表）。
 struct ASTNode {
-    NodeType type;         ///< 节点类型标签。
+    NodeType type;          ///< 节点类型标签。
     ASTNodePayload payload; ///< 节点载荷（定长 union）。
 };
 
@@ -97,7 +96,7 @@ struct ASTPool {
     uint32_t ID_STRING = 3;
 
     // --- [syntax.core] 主节点表 + 变长子节点索引扁平区（列表切片由 ASTListIndex 指向此区）---
-    std::vector<ASTNode> nodes; ///< AST 主节点表。
+    std::vector<ASTNode> nodes;               ///< AST 主节点表。
     std::vector<ASTNodeIndex> lists_elements; ///< 变长列表扁平存储区。
 
     // --- [syntax.diagnostic] 与 nodes 同下标：行/列（报错、编译回溯）---
@@ -110,13 +109,13 @@ struct ASTPool {
     std::vector<vm::Value> constants; ///< 字面量常量池。
 
     // --- [syntax.decl] 声明级旁侧表（节点 payload 里只存「本声明在下列表中的下标」）---
-    std::vector<FunctionData> function_data; ///< 函数声明旁侧表。
-    std::vector<StructData> struct_data; ///< 结构体声明旁侧表。
-    std::vector<ImplData> impl_data; ///< impl 声明旁侧表。
-    std::vector<KitsData> kits_data; ///< kits 声明旁侧表。
-    std::vector<MapData> map_data; ///< map 字面量旁侧表。
-    std::vector<ImportItem> import_items; ///< import 条目池。
-    std::vector<ExportItem> export_items; ///< export 条目池。
+    std::vector<FunctionData> function_data;      ///< 函数声明旁侧表。
+    std::vector<StructData> struct_data;          ///< 结构体声明旁侧表。
+    std::vector<ImplData> impl_data;              ///< impl 声明旁侧表。
+    std::vector<KitsData> kits_data;              ///< kits 声明旁侧表。
+    std::vector<MapData> map_data;                ///< map 字面量旁侧表。
+    std::vector<ImportItem> import_items;         ///< import 条目池。
+    std::vector<ExportItem> export_items;         ///< export 条目池。
     std::vector<ImportDeclData> import_decl_data; ///< import 声明旁侧表。
     std::vector<ExportDeclData> export_decl_data; ///< export 声明旁侧表。
 

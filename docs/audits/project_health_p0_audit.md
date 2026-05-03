@@ -85,7 +85,7 @@
 
 ### 现象
 
-当前链接策略主实现已迁到 `project_linker.cpp`；`l0_core/linker.cpp` 作为兼容适配层保留。仍需关注字符串池重映射与深层重定位演进：
+当前链接策略主实现已迁到 `project_linker.cpp`；`src/l0_core/linker/linker_facade.cpp` 仅保留稳定门面转发。仍需关注字符串池重映射与深层重定位演进：
 
 - 多模块 `init_chunk` 顺序保留；
 - 合并后的 `program.string_pool`（用于诊断等）；

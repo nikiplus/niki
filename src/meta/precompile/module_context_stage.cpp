@@ -13,49 +13,6 @@ namespace niki::meta::precompile {
 namespace {
 
 /**
- * @brief 收集模块顶层声明节点列表。
- * @param unit 编译单元。
- * @return std::vector<syntax::ASTNodeIndex> 顶层声明节点集合。
- */
-std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUnit &unit) {
-    std::vector<syntax::ASTNodeIndex> decls;
-    if (!unit.root.isvalid()) {
-        return decls;
-    }
-    const syntax::ASTNode &root_node = unit.pool.getNode(unit.root);
-    if (root_node.type != syntax::NodeType::ModuleDecl && root_node.type != syntax::NodeType::ProgramRoot) {
-        return decls;
-    }
-    syntax::ASTNodeIndex body_index = unit.root;
-    if (root_node.type == syntax::NodeType::ModuleDecl) {
-        const syntax::ASTNode &outer_body_node = unit.pool.getNode(root_node.payload.module_decl.body);
-        auto outer_decls_span = unit.pool.get_list(outer_body_node.payload.list.elements);
-        syntax::ASTNodeIndex primary_module_decl_idx = syntax::ASTNodeIndex::invalid();
-        uint32_t module_decl_count = 0;
-        for (syntax::ASTNodeIndex candidate : outer_decls_span) {
-            if (!candidate.isvalid()) {
-                continue;
-            }
-            const syntax::ASTNode &cand_node = unit.pool.getNode(candidate);
-            if (cand_node.type == syntax::NodeType::ModuleDecl) {
-                primary_module_decl_idx = candidate;
-                module_decl_count++;
-            }
-        }
-        if (module_decl_count == 1 && primary_module_decl_idx.isvalid()) {
-            const syntax::ASTNode &primary_module = unit.pool.getNode(primary_module_decl_idx);
-            body_index = primary_module.payload.module_decl.body;
-        } else {
-            body_index = root_node.payload.module_decl.body;
-        }
-    }
-    const syntax::ASTNode &body_node = unit.pool.getNode(body_index);
-    auto span = unit.pool.get_list(body_node.payload.list.elements);
-    decls.assign(span.begin(), span.end());
-    return decls;
-}
-
-/**
  * @brief 构建模块注册表与 import 关系。
  * @param units 全部编译单元。
  * @return std::expected<semantic::ModuleRegistry, diagnostic::DiagnosticBag> 成功返回 registry，失败返回诊断。

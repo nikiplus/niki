@@ -5,6 +5,7 @@
 #include "niki/l0_core/semantic/global_symbol_table.hpp"
 #include "niki/l0_core/semantic/global_type_arena.hpp"
 #include "niki/l0_core/semantic/module_semantic.hpp"
+#include "niki/l0_core/syntax/ast.hpp"
 #include <expected>
 #include <vector>
 
@@ -13,6 +14,9 @@
  * 其目标是把语义前置准备从 orchestrator 中剥离，形成可复用阶段 API。
  */
 namespace niki::meta::precompile {
+
+/// @brief 收集模块顶层声明节点列表（自动拆包合成 outer ModuleDecl，提取显式 module body）。
+std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUnit &unit);
 
 struct ModuleSemanticContext {
     semantic::ModuleRegistry registry;

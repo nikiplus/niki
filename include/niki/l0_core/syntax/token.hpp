@@ -115,6 +115,7 @@ enum class TokenType : uint8_t {
     KW_COMPONENT, // component 组件
     KW_TAG,       // tag 标签
     KW_TAGGROUP,  // taggroup 标签组
+    KW_TO,        // to 介词
     KW_EXCLUSIVE, // exclusive 互斥修饰符
     KW_SET,       // set 设置
     KW_UNSET,     // unset 取消设置
@@ -125,6 +126,8 @@ enum class TokenType : uint8_t {
     KW_MODULE,    // module (模块)
     KW_STRUCT, // struct (结构体)
     KW_ENUM,   // enum (枚举)
+    KW_ATTACH, // attach (挂载)
+    KW_DETACH, // detach (卸载)
 
     /*---[control]控制标记---*/
     TOKEN_EOF,   // 结束标记
@@ -328,6 +331,8 @@ inline std::string_view toString(TokenType type) {
         return "KW_TAG";
     case TokenType::KW_TAGGROUP:
         return "KW_TAGGROUP";
+    case TokenType::KW_TO:
+        return "KW_TO";
     case TokenType::KW_EXCLUSIVE:
         return "KW_EXCLUSIVE";
     case TokenType::KW_SET:
@@ -348,6 +353,10 @@ inline std::string_view toString(TokenType type) {
         return "KW_STRUCT";
     case TokenType::KW_ENUM:
         return "KW_ENUM";
+    case TokenType::KW_ATTACH:
+        return "KW_ATTACH";
+    case TokenType::KW_DETACH:
+        return "KW_DETACH";
     case TokenType::TOKEN_EOF:
         return "TOKEN_EOF";
     case TokenType::TOKEN_ERROR:

@@ -11,7 +11,21 @@ namespace {
 
 constexpr std::string_view kScannerInvalidToken = "SCANNER_INVALID_TOKEN";
 constexpr std::string_view kParserGenericError = "PARSER_ERROR";
+constexpr std::string_view kParserExpectedExpression = "PARSER_EXPECTED_EXPRESSION";
+constexpr std::string_view kParserExpectedStatement = "PARSER_EXPECTED_STATEMENT";
+constexpr std::string_view kParserExpectedSemicolon = "PARSER_EXPECTED_SEMICOLON";
+constexpr std::string_view kParserExpectedIdentifier = "PARSER_EXPECTED_IDENTIFIER";
+constexpr std::string_view kParserUnexpectedToken = "PARSER_UNEXPECTED_TOKEN";
 constexpr std::string_view kSemanticGenericError = "SEMANTIC_ERROR";
+constexpr std::string_view kSemanticTypeMismatch = "SEMANTIC_TYPE_MISMATCH";
+constexpr std::string_view kSemanticUndeclaredIdentifier = "SEMANTIC_UNDECLARED_IDENTIFIER";
+constexpr std::string_view kSemanticDuplicateDeclaration = "SEMANTIC_DUPLICATE_DECLARATION";
+constexpr std::string_view kSemanticArgumentCountMismatch = "SEMANTIC_ARGUMENT_COUNT_MISMATCH";
+constexpr std::string_view kSemanticReturnTypeMismatch = "SEMANTIC_RETURN_TYPE_MISMATCH";
+constexpr std::string_view kSemanticMissingTypeAnnotation = "SEMANTIC_MISSING_TYPE_ANNOTATION";
+constexpr std::string_view kSemanticNotABoolContext = "SEMANTIC_NOT_A_BOOL_CONTEXT";
+constexpr std::string_view kSemanticInvalidUnaryOperand = "SEMANTIC_INVALID_UNARY_OPERAND";
+constexpr std::string_view kSemanticAssignmentToConst = "SEMANTIC_ASSIGNMENT_TO_CONST";
 constexpr std::string_view kIRInvalidRoot = "IR_INVALID_ROOT";
 constexpr std::string_view kIRVerifyFailed = "IR_VERIFY_FAILED";
 constexpr std::string_view kIRLowerFailed = "IR_LOWER_FAILED";
@@ -46,6 +60,16 @@ std::string_view codeOf(events::ParserCode code) {
     switch (code) {
     case events::ParserCode::GenericError:
         return kParserGenericError;
+    case events::ParserCode::ExpectedExpression:
+        return kParserExpectedExpression;
+    case events::ParserCode::ExpectedStatement:
+        return kParserExpectedStatement;
+    case events::ParserCode::ExpectedSemicolon:
+        return kParserExpectedSemicolon;
+    case events::ParserCode::ExpectedIdentifier:
+        return kParserExpectedIdentifier;
+    case events::ParserCode::UnexpectedToken:
+        return kParserUnexpectedToken;
     }
     return kParserGenericError;
 }
@@ -54,6 +78,24 @@ std::string_view codeOf(events::SemanticCode code) {
     switch (code) {
     case events::SemanticCode::GenericError:
         return kSemanticGenericError;
+    case events::SemanticCode::TypeMismatch:
+        return kSemanticTypeMismatch;
+    case events::SemanticCode::UndeclaredIdentifier:
+        return kSemanticUndeclaredIdentifier;
+    case events::SemanticCode::DuplicateDeclaration:
+        return kSemanticDuplicateDeclaration;
+    case events::SemanticCode::ArgumentCountMismatch:
+        return kSemanticArgumentCountMismatch;
+    case events::SemanticCode::ReturnTypeMismatch:
+        return kSemanticReturnTypeMismatch;
+    case events::SemanticCode::MissingTypeAnnotation:
+        return kSemanticMissingTypeAnnotation;
+    case events::SemanticCode::NotABoolContext:
+        return kSemanticNotABoolContext;
+    case events::SemanticCode::InvalidUnaryOperand:
+        return kSemanticInvalidUnaryOperand;
+    case events::SemanticCode::AssignmentToConst:
+        return kSemanticAssignmentToConst;
     }
     return kSemanticGenericError;
 }

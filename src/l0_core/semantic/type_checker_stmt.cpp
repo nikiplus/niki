@@ -76,7 +76,8 @@ void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
     NKType valueType = checkExpression(node.payload.assign_stmt.value);
     if (targetType.getBase() != semantic::NKBaseType::Unknown && valueType.getBase() != semantic::NKBaseType::Unknown) {
         if (targetType != valueType) {
-            reportError(line, column, "Type mismatch in assignment statement.");
+            reportError(line, column, "Type mismatch in assignment statement.",
+                        niki::diagnostic::events::SemanticCode::TypeMismatch);
         }
     }
 }
@@ -97,13 +98,15 @@ void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
     }
     if (declType.getBase() != semantic::NKBaseType::Unknown && initType.getBase() != semantic::NKBaseType::Unknown) {
         if (declType != initType) {
-            reportError(line, column, "Type mismatch in varibale declaration.");
+            reportError(line, column, "Type mismatch in varibale declaration.",
+                        niki::diagnostic::events::SemanticCode::TypeMismatch);
         }
     }
     NKType finalType = declType.getBase() != semantic::NKBaseType::Unknown ? declType : initType;
 
     if (finalType.getBase() == semantic::NKBaseType::Unknown) {
-        reportError(line, column, "Cannot infer type for variable.Type annotation or initializer required.");
+        reportError(line, column, "Cannot infer type for variable.Type annotation or initializer required.",
+                    niki::diagnostic::events::SemanticCode::MissingTypeAnnotation);
     }
     declareSymbol(node.payload.var_decl.name_id, finalType, line, column);
 }
@@ -154,7 +157,8 @@ void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
 
     // 2. return 只能出现在函数体内
     if (!inFunction) {
-        reportError(line, column, "Cannot return from outside a function.");
+        reportError(line, column, "Cannot return from outside a function.",
+                    niki::diagnostic::events::SemanticCode::GenericError);
         return;
     }
     // 3. 显式标注了返回类型时才做严格比对；未标注时允许推导（当前阶段不强制一致性）。
@@ -162,7 +166,8 @@ void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
         exprType != currentReturnType) {
         reportError(line, column,
                     "Return type mismatch. Expected " + std::to_string((int)currentReturnType.getBase()) + ", got " +
-                        std::to_string((int)exprType.getBase()));
+                        std::to_string((int)exprType.getBase()),
+                    niki::diagnostic::events::SemanticCode::ReturnTypeMismatch);
     }
 }
 /** @brief 检查 nock 语句（占位实现）。 */

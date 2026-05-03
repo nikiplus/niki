@@ -133,7 +133,8 @@ NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
         if (leftType.getBase() == NKBaseType::Float && rightType.getBase() == NKBaseType::Float)
             return NKType::makeFloat();
 
-        reportError(line, column, "Arithmetic operations require both Int or both Float.");
+        reportError(line, column, "Arithmetic operations require both Int or both Float.",
+                    niki::diagnostic::events::SemanticCode::TypeMismatch);
 
         // 启发式错误恢复 (Heuristic Error Recovery)
         // 如果哪怕有一边是浮点数，我们就猜测程序员的意图是浮点运算
@@ -145,7 +146,8 @@ NKType TypeChecker::checkBinaryExpr(syntax::ASTNodeIndex nodeIdx) {
     case syntax::TokenType::SYM_MOD:
         if (leftType.getBase() == NKBaseType::Integer && rightType.getBase() == NKBaseType::Integer)
             return NKType::makeInt();
-        reportError(line, column, "Modulo operation requires Int.");
+        reportError(line, column, "Modulo operation requires Int.",
+                    niki::diagnostic::events::SemanticCode::TypeMismatch);
         return NKType::makeInt(); // 错误恢复：取模运算必定产生 Int
     case syntax::TokenType::SYM_CONCAT:
         if (leftType.getBase() == NKBaseType::String && rightType.getBase() == NKBaseType::String) {
@@ -286,10 +288,12 @@ NKType TypeChecker::checkLogicalExpr(syntax::ASTNodeIndex nodeIdx) {
     NKType leftType = checkExpression(node.payload.logical.left);
     NKType rightType = checkExpression(node.payload.logical.right);
     if (leftType.getBase() != NKBaseType::Unknown && leftType.getBase() != NKBaseType::Bool) {
-        reportError(line, column, "Left operand of logical expression must be Bool.");
+        reportError(line, column, "Left operand of logical expression must be Bool.",
+                    niki::diagnostic::events::SemanticCode::NotABoolContext);
     }
     if (rightType.getBase() != NKBaseType::Unknown && rightType.getBase() != NKBaseType::Bool) {
-        reportError(line, column, "Right operand of logical expression must be Bool.");
+        reportError(line, column, "Right operand of logical expression must be Bool.",
+                    niki::diagnostic::events::SemanticCode::NotABoolContext);
     }
     return NKType::makeBool();
 }
@@ -303,13 +307,15 @@ NKType TypeChecker::checkUnaryExpr(syntax::ASTNodeIndex nodeIdx) {
     case syntax::TokenType::SYM_MINUS:
         if (opType.getBase() != NKBaseType::Unknown && opType.getBase() != NKBaseType::Integer &&
             opType.getBase() != NKBaseType::Float) {
-            reportError(line, column, "Operand for '-' must be Int or Float.");
+            reportError(line, column, "Operand for '-' must be Int or Float.",
+                        niki::diagnostic::events::SemanticCode::InvalidUnaryOperand);
         }
         return opType; // 返回操作数本身的类型
     case syntax::TokenType::SYM_BANG:
         if (opType.getBase() != NKBaseType::Unknown && opType.getBase() != NKBaseType::Bool &&
             opType.getBase() != NKBaseType::Integer) {
-            reportError(line, column, "Operand for '!' must be Bool or Int.");
+            reportError(line, column, "Operand for '!' must be Bool or Int.",
+                        niki::diagnostic::events::SemanticCode::InvalidUnaryOperand);
         }
         return NKType::makeBool();
     case syntax::TokenType::SYM_BIT_NOT:

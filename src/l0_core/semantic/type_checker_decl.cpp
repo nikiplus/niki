@@ -95,25 +95,15 @@ void TypeChecker::checkDeclaration(syntax::ASTNodeIndex declIdx) {
  */
 void TypeChecker::checkModuleDecl(syntax::ASTNodeIndex nodeIdx) {
     // Two-Pass 入口：
-    // Pass 1: 预声明顶层符号（函数/结构体等），解决前向引用。
+    // Pass 1: 预声明顶层符号（函数/结构体/组件等），解决前向引用。
     // Pass 2: 基于已注册符号做声明细节与函数体检查。
     const auto &node = currentPool->getNode(nodeIdx);
     const auto &bodyNode = currentPool->getNode(node.payload.module_decl.body);
     auto declarations = currentPool->get_list(bodyNode.payload.list.elements);
 
-    // module 级组件名索引：供 kits 窗口目标合法性校验使用。
-    moduleComponentNames.clear();
-    for (auto child : declarations) {
-        if (!child.isvalid()) {
-            continue;
-        }
-        const auto &decl = currentPool->getNode(child);
-        if (decl.type == syntax::NodeType::ComponentDecl) {
-            moduleComponentNames.insert(decl.payload.component_decl.name_id);
-        }
-    }
-
     // 第一遍扫描：预声明所有顶层符号 (Two-Pass Compilation 第一步)
+    // FunctionDecl/StructDecl/TypeAliasDecl 进入 scope；
+    // ComponentDecl 进入 moduleComponentNames（供 kits 校验使用）。
     for (auto child : declarations) {
         preDeclareNode(child);
     }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
-#include "niki/l0_core/linker/linker.hpp"
+#include "niki/l0_core/linker/linker_facade.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include "niki/l0_core/vm/vm.hpp"
 #include <expected>

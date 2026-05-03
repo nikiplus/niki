@@ -81,10 +81,24 @@ enum class ScannerCode : uint8_t {
 
 enum class ParserCode : uint8_t {
     GenericError,
+    ExpectedExpression,
+    ExpectedStatement,
+    ExpectedSemicolon,
+    ExpectedIdentifier,
+    UnexpectedToken,
 };
 
 enum class SemanticCode : uint8_t {
     GenericError,
+    TypeMismatch,
+    UndeclaredIdentifier,
+    DuplicateDeclaration,
+    ArgumentCountMismatch,
+    ReturnTypeMismatch,
+    MissingTypeAnnotation,
+    NotABoolContext,
+    InvalidUnaryOperand,
+    AssignmentToConst,
 };
 
 enum class IRCode : uint8_t {

@@ -8,13 +8,7 @@
  * 其核心目标是“声明先行、定义后验”，不承担模块可见性图计算。
  */
 namespace niki::meta::precompile {
-namespace {
 
-/**
- * @brief 收集模块顶层声明节点列表。
- * @param unit 编译单元。
- * @return std::vector<syntax::ASTNodeIndex> 顶层声明节点集合。
- */
 std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUnit &unit) {
     std::vector<syntax::ASTNodeIndex> decls;
     if (!unit.root.isvalid()) {
@@ -113,8 +107,6 @@ semantic::NKType resolvePredeclareType(const GlobalCompilationUnit &unit, syntax
                       diagnostic::makeSourceSpan(unit.source_path, line, column));
     return semantic::NKType::makeUnknown();
 }
-
-} // namespace
 
 /**
  * @brief 对单编译单元执行顶层符号预声明。

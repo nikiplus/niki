@@ -75,6 +75,15 @@ class ASTPrinter {
             res += ")";
             return res;
         }
+        case NodeType::LogicalExpr:
+            return "(logical " + printToken(node.payload.logical.op) + " " + print(node.payload.logical.left) + " " +
+                   print(node.payload.logical.right) + ")";
+        case NodeType::ReturnStmt: {
+            if (node.payload.return_stmt.expression.isvalid())
+                return "(return " + print(node.payload.return_stmt.expression) + ")";
+            else
+                return "(return)";
+        }
         case NodeType::FunctionDecl: {
             const auto &func_data = pool.function_data[node.payload.func_decl.function_index];
             std::string res = "(func " + pool.getStringId(func_data.name_id) + "(";
