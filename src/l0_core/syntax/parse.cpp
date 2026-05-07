@@ -39,7 +39,13 @@ Parser::Parser(std::string_view source, std::span<const Token> tokens, ASTPool &
 };
 
 /**
- * @brief 解析总入口：将顶层声明组织为 ModuleDecl 根节点。
+ * @brief 解析总入口：将顶层声明组织为 AST 根节点。
+ *
+ * 现在的行为：
+ * - 若顶层声明中有且仅有一个 ModuleDecl，直接返回该 ModuleDecl
+ * - 否则将所有声明包装在一个合成 ModuleDecl 中返回
+ * - 消除"两层 ModuleDecl"嵌套问题
+ *
  * @return AST 根节点索引与本阶段诊断信息。
  */
 ParseResult Parser::parse() {
@@ -54,12 +60,35 @@ ParseResult Parser::parse() {
     }
     niki::debug::debug("parser", "finish parse, decl_count={}", declarations.size());
 
+    // 检查是否仅包含一个 ModuleDecl：如果是，直接返回该 ModuleDecl（消除双层嵌套）
+    ASTNodeIndex solo_module_decl = ASTNodeIndex::invalid();
+    uint32_t module_count = 0;
+    for (const auto decl : declarations) {
+        if (!decl.isvalid()) {
+            continue;
+        }
+        if (astPool.nodes[static_cast<size_t>(decl.index)].type == NodeType::ModuleDecl) {
+            solo_module_decl = decl;
+            module_count++;
+        }
+    }
+
+    if (module_count == 1 && solo_module_decl.isvalid()) {
+        ParseResult result;
+        result.root = solo_module_decl;
+        result.diagnostics = std::move(diagnostics);
+        niki::debug::debug("parser", "return solo ModuleDecl root (no synthetic wrapping)");
+        return result;
+    }
+
+    // 多声明或无模块：合成 ModuleDecl 包装
     ASTNodePayload blockPayload{};
     blockPayload.list.elements = astPool.allocateList(declarations);
     ASTNodeIndex body = emitNode(NodeType::BlockStmt, blockPayload);
 
     ASTNodePayload payload{};
     payload.module_decl.body = body;
+    payload.module_decl.name_id = kSyntheticModuleRootNameId;
     ParseResult result;
     result.root = emitNode(NodeType::ModuleDecl, payload);
     result.diagnostics = std::move(diagnostics);

@@ -42,9 +42,9 @@ bool IRBuilder::buildRoot(BuildCtx &bc) {
         return false;
     }
 
-    // 显式 `module` 时，模块名以声明名为准；`name_id` 在 builder 启动时已快照到 `module.string_pool`。
+    // 显式 `module Name` 时以声明名为准；合成根使用 kSyntheticModuleRootNameId，保持 module_name 为空以便 linker 回退 stem。
     if (root.type == NodeType::ModuleDecl &&
-        root.payload.module_decl.name_id < static_cast<uint32_t>(bc.module.string_pool.size())) {
+        root.payload.module_decl.name_id != kSyntheticModuleRootNameId) {
         bc.module.module_name = bc.unit->pool.getStringId(root.payload.module_decl.name_id);
     }
 
@@ -106,7 +106,7 @@ bool IRBuilder::buildTopDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
 
     if (decl.type == NodeType::ModuleDecl) {
         const std::string saved_module_name = bc.module.module_name;
-        if (decl.payload.module_decl.name_id < static_cast<uint32_t>(bc.module.string_pool.size())) {
+        if (decl.payload.module_decl.name_id != kSyntheticModuleRootNameId) {
             bc.module.module_name = bc.unit->pool.getStringId(decl.payload.module_decl.name_id);
         }
         if (!decl.payload.module_decl.body.isvalid()) {
@@ -257,6 +257,7 @@ bool IRBuilder::buildFuncDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
 
     FuncCtx fc;
     fc.fid = beginFunc(bc, func_data.name_id);
+    fc.func_decl_node_idx = decl_idx;
 
     const BlockId entry = beginBlock(bc, fc, "entry");
     func(bc, fc.fid).entry_block = entry;
@@ -280,6 +281,10 @@ bool IRBuilder::buildFuncDecl(BuildCtx &bc, ASTNodeIndex decl_idx) {
     func(bc, fc.fid).param_count = param_count;
 
     bool ok = buildStmt(bc, fc, func_data.body);
+    if (!isCurrentBlockTerminated(bc, fc)) {
+        setEmitLocation(bc, fc, decl_idx);
+        emitFuncExitFreesFromPool(bc, fc, decl_idx);
+    }
     ok = ensureBlockTerminated(bc, fc) && ok;
 
     return ok;

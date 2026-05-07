@@ -93,7 +93,15 @@ VerifyReport verifyModuleIRFlat(const ModuleIR &module_ir) {
             // PASS_3: 指令级与引用合法性校验。
             for (uint32_t instruction_absolute_index = block_inst_begin; instruction_absolute_index < block_inst_end;
                  ++instruction_absolute_index) {
-                const bool current_is_terminator = isTerminator(module_ir.insts.kind[instruction_absolute_index]);
+                const InstKind inst_kind = module_ir.insts.kind[instruction_absolute_index];
+                if (inst_kind == InstKind::Free) {
+                    if (module_ir.insts.dst_kind[instruction_absolute_index] != ValueKind::VReg) {
+                        report.add(VerifyErrorCode::VRegOutOfRange, "Free expects dst VReg", function_index,
+                                   relative_block_index, instruction_absolute_index - block_inst_begin);
+                    }
+                }
+
+                const bool current_is_terminator = isTerminator(inst_kind);
                 if (current_is_terminator && instruction_absolute_index + 1 != block_inst_end) {
                     report.add(VerifyErrorCode::TerminatorNotLast, "terminator must be last in block", function_index,
                                relative_block_index, instruction_absolute_index - block_inst_begin);

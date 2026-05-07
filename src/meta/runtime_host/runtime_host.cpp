@@ -21,7 +21,7 @@ std::expected<vm::Value, diagnostic::DiagnosticBag> RuntimeHost::launch(vm::VM &
         }
     }
 
-    vm::ObjFunction *entry = vm.lookupGlobalFunctionById(program.entry_name_id);
+    vm::ObjFunction *entry = vm.lookupGlobalFunctionById(program.entry_module_id, program.entry_name_id);
     if (entry == nullptr) {
         diagnostic::DiagnosticBag diagnostics;
         diagnostics.error(diagnostic::events::LauncherCode::EntryLookupFailed, "Entry function not found.");

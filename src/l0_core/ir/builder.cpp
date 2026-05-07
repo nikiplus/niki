@@ -1,5 +1,6 @@
 #include "niki/l0_core/ir/builder.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
+#include <limits>
 
 /** @builder_core_impl: IRBuilder 核心管线与发射基元实现
  * 这个文件实现的是 Builder 的“中枢层”：构建入口、函数/块管理、寄存器分配和统一指令发射。
@@ -12,7 +13,7 @@
  * 因此该文件可以视作 IRBuilder 的“执行内核”：它把上层降解逻辑中的分支复杂度，收敛到稳定的数据写入协议。
  *
  * 字段流说明（核心）：
- * - `GlobalCompilationUnit` -> `BuildCtx.unit`：提供 AST、位置信息与字符串池快照来源。
+ * - `CompilationUnit` -> `BuildCtx.unit`：提供 AST、位置信息与字符串池快照来源。
  * - `BuildCtx.module`：承载本次构建所有产物；`beginFunc/beginBlock/emitInstId` 都写入这里。
  * - `FuncCtx.fid/cur_bid`：决定“当前发射写到哪个函数、哪个块”。
  * - `FuncCtx.emit_line/emit_col`：每条指令写入时同步记录源码映射。
@@ -31,14 +32,17 @@ using namespace niki::syntax;
  * @return std::expected<ModuleIR, diagnostic::DiagnosticBag> 成功返回 ModuleIR，失败返回诊断集合。
  * @note 失败条件包括根节点降级失败或构建阶段出现诊断。
  */
-std::expected<ModuleIR, diagnostic::DiagnosticBag> IRBuilder::build(GlobalCompilationUnit &unit) {
+std::expected<ModuleIR, diagnostic::DiagnosticBag> IRBuilder::build(CompilationUnit &unit,
+                                                               const semantic::UnitVisibleSymbols *visible_symbols) {
     BuildCtx bc;
     bc.unit = &unit;
-    bc.module.module_name = unit.source_path;
+    bc.visible_symbols = visible_symbols;
+    bc.module.module_id = unit.module_id;
+    bc.module.module_name.clear();
     bc.module.module_src_path = unit.source_path;
     bc.module.string_pool = unit.pool.snapshotStringPool();
 
-    if (!buildRoot(bc) || !bc.diags.empty()) {
+    if (!buildRoot(bc) || bc.diags.hasErrors()) {
         return std::unexpected(std::move(bc.diags));
     }
 
@@ -96,7 +100,12 @@ BlockId IRBuilder::beginBlock(BuildCtx &bc, FuncCtx &fc, const char *debug_name)
     BlockRecord b;
     b.block_id = f.block_span.count;
     b.debug_name_sid = bc.module.intern(debug_name ? debug_name : "");
-    b.inst_span.begin = bc.module.insts.size();
+    b.inst_span.begin = std::numeric_limits<uint32_t>::max();  // CHG-20260506 懒初始化：首条指令发射时回填。
+    // 旧实现：b.inst_span.begin = bc.module.insts.size(); 在块创建时立即设 begin。
+    // 问题：IfStmt/LoopStmt 在构建控制流图时先顺序创建多个块（then/else/join/body/exit），
+    //       然后才递归 buildStmt 往各块中填充指令。后创建的块拿到的 begin 指向的是前面所有块的
+    //       起始指令位置，导致 verifier 读到多块共用同一个 inst_span 起始偏移，误判为
+    //       VerifyErrorCode::TerminatorNotLast 错误："块的终结指令不是块内最后一条指令"。
     b.inst_span.count = 0;
     bc.module.blocks.push_back(b);
     f.block_span.count += 1;
@@ -162,9 +171,15 @@ uint32_t IRBuilder::emitInstId(BuildCtx &bc, FuncCtx &fc, InstKind k, ValueKind 
                                uint64_t du64, ValueKind ak, uint32_t au32, int64_t ai64, uint64_t au64, ValueKind bk,
                                uint32_t bu32, int64_t bi64, uint64_t bu64, ValueKind ck, uint32_t cu32, int64_t ci64,
                                uint64_t cu64, uint32_t aux) {
+    // CHG-20260506 懒初始化：块的首条指令发射时回填 inst_span.begin。
+    // 与 beginBlock 中设 UINT32_MAX 配对，解决多块背靠背创建时的 inst_span 重叠问题。
+    BlockRecord &cur = block(bc, fc.fid, fc.cur_bid);
+    if (cur.inst_span.begin == std::numeric_limits<uint32_t>::max()) {
+        cur.inst_span.begin = bc.module.insts.size();
+    }
     const uint32_t inst_id = bc.module.insts.push(k, dk, du32, di64, du64, ak, au32, ai64, au64, bk, bu32, bi64, bu64,
                                                   ck, cu32, ci64, cu64, aux, fc.emit_line, fc.emit_col);
-    block(bc, fc.fid, fc.cur_bid).inst_span.count += 1;
+    cur.inst_span.count += 1;
 
     return inst_id;
 }
@@ -254,6 +269,55 @@ void IRBuilder::emitConstantF64Bits(BuildCtx &build_ctx, FuncCtx &func_ctx, RegI
 void IRBuilder::emitConstantStringId(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId dst_reg, uint32_t string_id) {
     emit(build_ctx, func_ctx, InstKind::Constant, ValueKind::VReg, dst_reg, 0, 0, ValueKind::StringId, string_id, 0, 0,
          ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0);
+}
+
+/**
+ * @brief 发射释放堆对象的 Free 指令（dst 为待清空的目标虚拟寄存器）。
+ */
+void IRBuilder::emitFree(BuildCtx &bc, FuncCtx &fc, RegId vreg) {
+    emit(bc, fc, InstKind::Free, ValueKind::VReg, vreg, 0, 0, ValueKind::Invalid, 0, 0, 0, ValueKind::Invalid, 0, 0, 0,
+         ValueKind::Invalid, 0, 0, 0);
+}
+
+void IRBuilder::emitBlockExitFreesFromPool(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex block_stmt_idx) {
+    if (!block_stmt_idx.isvalid() || bc.unit == nullptr) {
+        return;
+    }
+    auto it = bc.unit->pool.block_exit_free_name_ids.find(block_stmt_idx.index);
+    if (it == bc.unit->pool.block_exit_free_name_ids.end()) {
+        return;
+    }
+    for (uint32_t name_sid : it->second) {
+        auto reg_it = fc.local_vreg_by_name_sid.find(name_sid);
+        if (reg_it != fc.local_vreg_by_name_sid.end()) {
+            emitFree(bc, fc, reg_it->second);
+        }
+    }
+}
+
+void IRBuilder::emitFuncExitFreesFromPool(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex func_decl_idx) {
+    if (!func_decl_idx.isvalid() || bc.unit == nullptr) {
+        return;
+    }
+    auto it = bc.unit->pool.func_exit_free_name_ids.find(func_decl_idx.index);
+    if (it == bc.unit->pool.func_exit_free_name_ids.end()) {
+        return;
+    }
+    for (uint32_t name_sid : it->second) {
+        auto reg_it = fc.local_vreg_by_name_sid.find(name_sid);
+        if (reg_it != fc.local_vreg_by_name_sid.end()) {
+            emitFree(bc, fc, reg_it->second);
+        }
+    }
+}
+
+void IRBuilder::emitAllOpenScopeFreesBeforeReturn(BuildCtx &bc, FuncCtx &fc) {
+    for (auto it = fc.block_stack.rbegin(); it != fc.block_stack.rend(); ++it) {
+        emitBlockExitFreesFromPool(bc, fc, *it);
+    }
+    if (fc.func_decl_node_idx.isvalid()) {
+        emitFuncExitFreesFromPool(bc, fc, fc.func_decl_node_idx);
+    }
 }
 
 //------------------------------------------------------------------------------

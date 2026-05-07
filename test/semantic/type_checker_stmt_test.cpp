@@ -1,4 +1,4 @@
-#include "../test_helpers.hpp"
+#include "../helpers/test_helpers.hpp"
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include <gtest/gtest.h>
@@ -13,43 +13,75 @@ using namespace niki::syntax;
  * 所有预期失败的测试断言 stage + code + severity 三要素。
  */
 
-// T-1: If 条件解析通过（当前 TypeChecker 不做条件类型校验，仅确保不崩溃）
-TEST(TypeCheckerStmtTest, IfStatementParses) {
+// T-1: If 条件为 Bool 通过
+TEST(TypeCheckerStmtTest, IfStatementTypecheckPasses) {
     ExprTestFixture fixture;
-    auto unit = fixture.wrapAndParse(
-        "if (true) { return 1; } else { return 2; }"
-    );
+    auto unit = fixture.wrapAndParse("if (true) { return 1; } else { return 2; }");
     auto result = fixture.runTypeCheck(unit);
-    // 当前 checkIfStmt 只检查表达式但不强制 Bool 类型校验
-    // 只要不崩溃即可
-    SUCCEED();
+    ASSERT_TRUE(result.has_value()) << "if (true) { ... } should typecheck successfully";
 }
 
-// T-2: 赋值类型不匹配报错
+// T-2: If 条件非 Bool 报错（NotABoolContext）
+TEST(TypeCheckerStmtTest, IfConditionNotBool) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("if (42) { return 1; }");
+    auto result = fixture.runTypeCheck(unit);
+    ASSERT_FALSE(result.has_value()) << "if (42) should fail typecheck";
+    const auto &diags = result.error().all();
+    ASSERT_FALSE(diags.empty());
+    EXPECT_EQ(diags[0].stage, diagnostic::DiagnosticStage::Semantic);
+    EXPECT_EQ(diags[0].code, diagnostic::codeOf(diagnostic::events::SemanticCode::NotABoolContext));
+    EXPECT_EQ(diags[0].severity, diagnostic::DiagnosticSeverity::Error);
+}
+
+// T-3: Loop 条件为 Bool 通过
+TEST(TypeCheckerStmtTest, LoopConditionBoolPasses) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 0; loop (x < 10) { x = x + 1; } return x;");
+    auto result = fixture.runTypeCheck(unit);
+    ASSERT_TRUE(result.has_value()) << "loop (cond_bool) { ... } should typecheck";
+}
+
+// T-4: Loop 条件非 Bool 报错
+TEST(TypeCheckerStmtTest, LoopConditionNotBool) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 0; loop (42) { x = x + 1; } return x;");
+    auto result = fixture.runTypeCheck(unit);
+    ASSERT_FALSE(result.has_value()) << "loop (int) should fail typecheck";
+    const auto &diags = result.error().all();
+    ASSERT_FALSE(diags.empty());
+    bool has_not_bool = false;
+    for (const auto &d : diags) {
+        if (d.code == diagnostic::codeOf(diagnostic::events::SemanticCode::NotABoolContext)) {
+            has_not_bool = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(has_not_bool) << "Should contain NotABoolContext diagnostic";
+}
+
+// T-5: 赋值类型匹配通过
+TEST(TypeCheckerStmtTest, AssignmentTypeMatch) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("var x = 42; x = 100; return x;");
+    auto result = fixture.runTypeCheck(unit);
+    ASSERT_TRUE(result.has_value()) << "int-to-int assignment should typecheck";
+}
+
+// T-6: 赋值类型不匹配报错
 TEST(TypeCheckerStmtTest, AssignmentTypeMismatch) {
     ExprTestFixture fixture;
-    // 赋值 整数给布尔变量? 实际上前一句 var x: bool 声明了x为布尔
-    // 但当前包装器默认返回 int，var x: bool = true 不能直接赋值 int
-    // 改用最直接的触发路径：var x = 42; x = true; → 赋值类型不匹配
-    // 但当前 TypeChecker 在赋值时检查左值和右值类型是否相等
-    // var x = 42 使 x 为 int，然后 x = true 让左值 int 右值 bool
-    auto unit = fixture.wrapAndParse(
-        "var x = 42; x = true; return x;"
-    );
+    auto unit = fixture.wrapAndParse("var x = 42; x = true; return x;");
     auto result = fixture.runTypeCheck(unit);
-    // 赋值类型不匹配应产生 TypeMismatch 诊断
-    if (result.has_value()) {
-        ADD_FAILURE() << "Expected TypeMismatch error for assignment int = bool";
-    } else {
-        const auto &diags = result.error().all();
-        ASSERT_FALSE(diags.empty());
-        EXPECT_EQ(diags[0].stage, diagnostic::DiagnosticStage::Semantic);
-        EXPECT_EQ(diags[0].code, diagnostic::codeOf(diagnostic::events::SemanticCode::TypeMismatch));
-        EXPECT_EQ(diags[0].severity, diagnostic::DiagnosticSeverity::Error);
-    }
+    ASSERT_FALSE(result.has_value()) << "int = bool should fail typecheck";
+    const auto &diags = result.error().all();
+    ASSERT_FALSE(diags.empty());
+    EXPECT_EQ(diags[0].stage, diagnostic::DiagnosticStage::Semantic);
+    EXPECT_EQ(diags[0].code, diagnostic::codeOf(diagnostic::events::SemanticCode::TypeMismatch));
+    EXPECT_EQ(diags[0].severity, diagnostic::DiagnosticSeverity::Error);
 }
 
-// T-3: 缺少类型标注报错
+// T-7: 缺少类型标注报错
 TEST(TypeCheckerStmtTest, MissingTypeAnnotation) {
     ExprTestFixture fixture;
     auto unit = fixture.wrapAndParse("var x; return 42;");
@@ -66,7 +98,7 @@ TEST(TypeCheckerStmtTest, MissingTypeAnnotation) {
     }
 }
 
-// T-4: 未声明变量引用报错
+// T-8: 未声明变量引用报错
 TEST(TypeCheckerStmtTest, UndeclaredIdentifier) {
     ExprTestFixture fixture;
     auto unit = fixture.wrapAndParse("var x = unknownVar; return x;");
@@ -92,7 +124,7 @@ TEST(TypeCheckerStmtTest, UndeclaredIdentifier) {
     }
 }
 
-// T-5: Return 类型匹配通过
+// T-9: Return 类型匹配通过
 TEST(TypeCheckerStmtTest, ReturnTypeMatch) {
     ExprTestFixture fixture;
     auto unit = fixture.wrapAndParse("return 42;");
@@ -100,7 +132,7 @@ TEST(TypeCheckerStmtTest, ReturnTypeMatch) {
     EXPECT_TRUE(result.has_value()) << "return 42 with int return type should succeed";
 }
 
-// T-6: Return 类型不匹配报错（返回字符串但函数声明返回 int）
+// T-10: Return 类型不匹配报错（返回字符串但函数声明返回 int）
 TEST(TypeCheckerStmtTest, ReturnTypeMismatch) {
     ExprTestFixture fixture;
     auto unit = fixture.wrapAndParse("return \"hello\";");

@@ -469,6 +469,9 @@ struct ModuleDeclPayload {
     ASTNodeIndex body;
 };
 
+/// 解析器为「多顶层声明」合成的外层 `module` 根节点使用；与 StringInterner 内置类型 id 及真实模块名区分。
+inline constexpr uint32_t kSyntheticModuleRootNameId = UINT32_MAX;
+
 struct SystemDeclPayload {
     uint32_t name_id;
     ASTNodeIndex body;

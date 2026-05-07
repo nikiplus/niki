@@ -1,4 +1,4 @@
-#include "../test_helpers.hpp"
+#include "../helpers/test_helpers.hpp"
 #include "ast_printer.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include <gtest/gtest.h>

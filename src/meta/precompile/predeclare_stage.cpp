@@ -1,7 +1,8 @@
-#include "niki/meta/precompile/precompile_pipeline.hpp"
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/syntax/ast_payloads.hpp"
+#include "niki/meta/precompile/precompile_pipeline.hpp"
+
 
 /** @meta_precompile_predeclare_impl: 预声明阶段实现
  * 该文件负责从顶层声明提取符号并写入全局符号/类型表，形成后续 typecheck 的先验环境。
@@ -9,7 +10,7 @@
  */
 namespace niki::meta::precompile {
 
-std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUnit &unit) {
+std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const CompilationUnit &unit) {
     std::vector<syntax::ASTNodeIndex> decls;
     if (!unit.root.isvalid()) {
         return decls;
@@ -18,30 +19,10 @@ std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUn
     if (root_node.type != syntax::NodeType::ModuleDecl && root_node.type != syntax::NodeType::ProgramRoot) {
         return decls;
     }
+    // root 已是真实 ModuleDecl 或 ProgramRoot，只需解包一层
     syntax::ASTNodeIndex body_index = unit.root;
     if (root_node.type == syntax::NodeType::ModuleDecl) {
-        const syntax::ASTNode &outer_body_node = unit.pool.getNode(root_node.payload.module_decl.body);
-        auto outer_decls_span = unit.pool.get_list(outer_body_node.payload.list.elements);
-        syntax::ASTNodeIndex primary_module_decl_idx = syntax::ASTNodeIndex::invalid();
-        uint32_t module_decl_count = 0;
-        for (syntax::ASTNodeIndex candidate : outer_decls_span) {
-            if (!candidate.isvalid()) {
-                continue;
-            }
-            const syntax::ASTNode &cand_node = unit.pool.getNode(candidate);
-            if (cand_node.type == syntax::NodeType::ModuleDecl) {
-                primary_module_decl_idx = candidate;
-                module_decl_count++;
-            }
-        }
-        if (module_decl_count == 1 && primary_module_decl_idx.isvalid()) {
-            const syntax::ASTNode &primary_module = unit.pool.getNode(primary_module_decl_idx);
-            body_index = primary_module.payload.module_decl.body;
-        } else {
-            body_index = root_node.payload.module_decl.body;
-        }
-    } else {
-        body_index = unit.root;
+        body_index = root_node.payload.module_decl.body;
     }
     const syntax::ASTNode &body_node = unit.pool.getNode(body_index);
     auto span = unit.pool.get_list(body_node.payload.list.elements);
@@ -53,14 +34,14 @@ std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUn
  * @brief 将预声明类型表达式解析为 NKType。
  * @param unit 编译单元。
  * @param type_expr_idx 类型表达式节点索引。
- * @param global_symbols 全局符号表。
+ * @param module_namespace 模块命名空间。
  * @param diagnostics 诊断输出。
  * @param line 行号。
  * @param column 列号。
  * @return semantic::NKType 解析得到的类型；失败时返回 Unknown 并写诊断。
  */
-semantic::NKType resolvePredeclareType(const GlobalCompilationUnit &unit, syntax::ASTNodeIndex type_expr_idx,
-                                       const GlobalSymbolTable &global_symbols, diagnostic::DiagnosticBag &diagnostics,
+semantic::NKType resolvePredeclareType(const CompilationUnit &unit, syntax::ASTNodeIndex type_expr_idx,
+                                       const ModuleNamespace &module_namespace, diagnostic::DiagnosticBag &diagnostics,
                                        uint32_t line, uint32_t column) {
     if (!type_expr_idx.isvalid()) {
         return semantic::NKType::makeUnknown();
@@ -77,7 +58,8 @@ semantic::NKType resolvePredeclareType(const GlobalCompilationUnit &unit, syntax
         case syntax::TokenType::KW_STRING:
             return semantic::NKType(semantic::NKBaseType::String, -1);
         default:
-            diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Unknown built-in type annotation in predeclare.",
+            diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                              "Unknown built-in type annotation in predeclare.",
                               diagnostic::makeSourceSpan(unit.source_path, line, column));
             return semantic::NKType::makeUnknown();
         }
@@ -96,7 +78,7 @@ semantic::NKType resolvePredeclareType(const GlobalCompilationUnit &unit, syntax
         if (name_id == unit.pool.ID_STRING) {
             return semantic::NKType(semantic::NKBaseType::String, -1);
         }
-        if (const auto *sym = global_symbols.find(name_id); sym != nullptr) {
+        if (const auto *sym = module_namespace.find(unit.module_id, name_id); sym != nullptr) {
             return sym->type;
         }
         diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Unknown type name in predeclare.",
@@ -109,15 +91,15 @@ semantic::NKType resolvePredeclareType(const GlobalCompilationUnit &unit, syntax
 }
 
 /**
- * @brief 对单编译单元执行顶层符号预声明。
+ * @brief 对单编译单元执行顶层符号预声明并写入 ModuleNamespace。
  * @param unit 编译单元。
  * @param global_arena 全局类型 arena。
- * @param global_symbols 全局符号表。
+ * @param module_namespace 模块命名空间（唯一点入口）。
  * @return std::expected<void, diagnostic::DiagnosticBag> 成功返回空，失败返回聚合诊断。
  */
-std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const GlobalCompilationUnit &unit,
-                                                                    GlobalTypeArena &global_arena,
-                                                                    GlobalSymbolTable &global_symbols) {
+std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const CompilationUnit &unit,
+                                                                    TypeArena &global_arena,
+                                                                    ModuleNamespace &module_namespace) {
     diagnostic::DiagnosticBag diagnostics;
     if (!unit.root.isvalid()) {
         diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Invalid module root in predeclare.",
@@ -125,31 +107,27 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
         return std::unexpected(std::move(diagnostics));
     }
     const auto &root = unit.pool.getNode(unit.root);
-    if (root.type != syntax::NodeType::ModuleDecl) {
-        diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Root node must be ModuleDecl in predeclare.",
+    if (root.type != syntax::NodeType::ModuleDecl && root.type != syntax::NodeType::ProgramRoot) {
+        diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                          "Root node must be ModuleDecl or ProgramRoot in predeclare.",
                           diagnostic::makeSourceSpan(unit.source_path));
         return std::unexpected(std::move(diagnostics));
     }
-    auto decls = collectTopLevelDecls(unit);
+    // 仅写入 ModuleNamespace（含嵌套 module 体内叶子声明）
     auto predeclare_typealias_decl = [&](const syntax::ASTNode &typealias_node, uint32_t at_line, uint32_t at_column,
                                          const char *duplicate_msg) {
         const auto &type_alias = typealias_node.payload.type_alias;
         semantic::NKType alias_type =
-            resolvePredeclareType(unit, type_alias.type_expr, global_symbols, diagnostics, at_line, at_column);
-        GlobalSymbol sym{
-            .name_id = type_alias.name_id,
-            .kind = Kind::TypeAlias,
-            .type = alias_type,
-            .owner_module = unit.source_path,
-        };
-        if (!global_symbols.insert(std::move(sym))) {
+            resolvePredeclareType(unit, type_alias.type_expr, module_namespace, diagnostics, at_line, at_column);
+        ModuleNamespace::Symbol nsym{type_alias.name_id, unit.module_id, Kind::TypeAlias, alias_type};
+        if (!module_namespace.insert(std::move(nsym))) {
             diagnostics.error(diagnostic::events::SemanticCode::GenericError, duplicate_msg,
                               diagnostic::makeSourceSpan(unit.source_path, at_line, at_column));
         }
     };
-    for (auto decl_idx : decls) {
+    forEachModuleScopedDecl(unit, [&](syntax::ASTNodeIndex decl_idx) {
         if (!decl_idx.isvalid()) {
-            continue;
+            return;
         }
         const auto &decl = unit.pool.getNode(decl_idx);
         uint32_t line = unit.pool.locations[decl_idx.index].line;
@@ -170,19 +148,19 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
                 field_name_ids.push_back(unit.pool.getNode(field_name_idx).payload.identifier.name_id);
             }
             for (auto field_type_idx : field_type_nodes) {
-                field_types.push_back(resolvePredeclareType(unit, field_type_idx, global_symbols, diagnostics, line, column));
+                field_types.push_back(
+                    resolvePredeclareType(unit, field_type_idx, module_namespace, diagnostics, line, column));
             }
-            uint32_t global_struct_id =
-                global_arena.internStruct(struct_data.name_id, unit.source_path, std::move(field_name_ids), std::move(field_types));
-            GlobalSymbol sym{.name_id = struct_data.name_id,
-                             .kind = Kind::Struct,
-                             .type = semantic::NKType::makeObject(static_cast<int32_t>(global_struct_id)),
-                             .owner_module = unit.source_path};
-            if (!global_symbols.insert(std::move(sym))) {
-                diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Duplicate top-level symbol (struct).",
+            uint32_t global_struct_id = global_arena.internStruct(struct_data.name_id, unit.source_path,
+                                                                  std::move(field_name_ids), std::move(field_types));
+            ModuleNamespace::Symbol nsym{struct_data.name_id, unit.module_id, Kind::Struct,
+                                         semantic::NKType::makeObject(static_cast<int32_t>(global_struct_id))};
+            if (!module_namespace.insert(std::move(nsym))) {
+                diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                  "Duplicate top-level symbol (struct).",
                                   diagnostic::makeSourceSpan(unit.source_path, line, column));
             }
-            continue;
+            return;
         }
         if (decl.type == syntax::NodeType::FunctionDecl) {
             const auto &func_data = unit.pool.function_data[decl.payload.func_decl.function_index];
@@ -191,26 +169,28 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
             param_types.reserve(params.size());
             for (auto param_idx : params) {
                 const auto &param_node = unit.pool.getNode(param_idx);
-                param_types.push_back(
-                    resolvePredeclareType(unit, param_node.payload.var_decl.type_expr, global_symbols, diagnostics, line, column));
+                param_types.push_back(resolvePredeclareType(unit, param_node.payload.var_decl.type_expr, module_namespace,
+                                                            diagnostics, line, column));
             }
             semantic::NKType ret_type = semantic::NKType::makeUnknown();
             if (func_data.return_type.isvalid()) {
-                ret_type = resolvePredeclareType(unit, func_data.return_type, global_symbols, diagnostics, line, column);
+                ret_type =
+                    resolvePredeclareType(unit, func_data.return_type, module_namespace, diagnostics, line, column);
             }
             semantic::FunctionSignature sig{param_types, ret_type};
             uint32_t global_sig_id = global_arena.internFuncSig(sig);
-            GlobalSymbol sym{
-                .name_id = func_data.name_id,
-                .kind = Kind::Function,
-                .type = semantic::NKType(semantic::NKBaseType::Function, static_cast<int32_t>(global_sig_id)),
-                .owner_module = unit.source_path,
+            ModuleNamespace::Symbol nsym{
+                func_data.name_id,
+                unit.module_id,
+                Kind::Function,
+                semantic::NKType(semantic::NKBaseType::Function, static_cast<int32_t>(global_sig_id)),
             };
-            if (!global_symbols.insert(std::move(sym))) {
-                diagnostics.error(diagnostic::events::SemanticCode::GenericError, "Duplicate top-level symbol (function).",
+            if (!module_namespace.insert(std::move(nsym))) {
+                diagnostics.error(diagnostic::events::SemanticCode::GenericError,
+                                  "Duplicate top-level symbol (function).",
                                   diagnostic::makeSourceSpan(unit.source_path, line, column));
             }
-            continue;
+            return;
         }
         if (decl.type == syntax::NodeType::ExportDecl) {
             const auto &export_decl = unit.pool.export_decl_data[decl.payload.export_decl.export_decl_index];
@@ -223,22 +203,23 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
                     param_types.reserve(params.size());
                     for (auto param_idx : params) {
                         const auto &param_node = unit.pool.getNode(param_idx);
-                        param_types.push_back(resolvePredeclareType(unit, param_node.payload.var_decl.type_expr, global_symbols,
-                                                                    diagnostics, line, column));
+                        param_types.push_back(resolvePredeclareType(unit, param_node.payload.var_decl.type_expr,
+                                                                    module_namespace, diagnostics, line, column));
                     }
                     semantic::NKType ret_type = semantic::NKType::makeUnknown();
                     if (func_data.return_type.isvalid()) {
-                        ret_type = resolvePredeclareType(unit, func_data.return_type, global_symbols, diagnostics, line, column);
+                        ret_type = resolvePredeclareType(unit, func_data.return_type, module_namespace, diagnostics, line,
+                                                         column);
                     }
                     semantic::FunctionSignature sig{param_types, ret_type};
                     uint32_t global_sig_id = global_arena.internFuncSig(sig);
-                    GlobalSymbol sym{
-                        .name_id = func_data.name_id,
-                        .kind = Kind::Function,
-                        .type = semantic::NKType(semantic::NKBaseType::Function, static_cast<int32_t>(global_sig_id)),
-                        .owner_module = unit.source_path,
+                    ModuleNamespace::Symbol nsym{
+                        func_data.name_id,
+                        unit.module_id,
+                        Kind::Function,
+                        semantic::NKType(semantic::NKBaseType::Function, static_cast<int32_t>(global_sig_id)),
                     };
-                    if (!global_symbols.insert(std::move(sym))) {
+                    if (!module_namespace.insert(std::move(nsym))) {
                         diagnostics.error(diagnostic::events::SemanticCode::GenericError,
                                           "Duplicate top-level symbol (export wrapped function).",
                                           diagnostic::makeSourceSpan(unit.source_path, line, column));
@@ -259,30 +240,30 @@ std::expected<void, diagnostic::DiagnosticBag> predeclareSingleUnit(const Global
                         field_name_ids.push_back(unit.pool.getNode(field_name_idx).payload.identifier.name_id);
                     }
                     for (auto field_type_idx : field_type_nodes) {
-                        field_types.push_back(resolvePredeclareType(unit, field_type_idx, global_symbols, diagnostics, line, column));
+                        field_types.push_back(
+                            resolvePredeclareType(unit, field_type_idx, module_namespace, diagnostics, line, column));
                     }
-                    uint32_t global_struct_id =
-                        global_arena.internStruct(struct_data.name_id, unit.source_path, std::move(field_name_ids), std::move(field_types));
-                    GlobalSymbol sym{.name_id = struct_data.name_id,
-                                     .kind = Kind::Struct,
-                                     .type = semantic::NKType::makeObject(static_cast<int32_t>(global_struct_id)),
-                                     .owner_module = unit.source_path};
-                    if (!global_symbols.insert(std::move(sym))) {
+                    uint32_t global_struct_id = global_arena.internStruct(
+                        struct_data.name_id, unit.source_path, std::move(field_name_ids), std::move(field_types));
+                    ModuleNamespace::Symbol nsym{struct_data.name_id, unit.module_id, Kind::Struct,
+                                                 semantic::NKType::makeObject(static_cast<int32_t>(global_struct_id))};
+                    if (!module_namespace.insert(std::move(nsym))) {
                         diagnostics.error(diagnostic::events::SemanticCode::GenericError,
                                           "Duplicate top-level symbol (export wrapped struct).",
                                           diagnostic::makeSourceSpan(unit.source_path, line, column));
                     }
                 } else if (wrapped_node.type == syntax::NodeType::TypeAliasDecl) {
-                    predeclare_typealias_decl(wrapped_node, line, column, "Duplicate top-level symbol (export wrapped typealias).");
+                    predeclare_typealias_decl(wrapped_node, line, column,
+                                              "Duplicate top-level symbol (export wrapped typealias).");
                 }
             }
-            continue;
+            return;
         }
         if (decl.type == syntax::NodeType::TypeAliasDecl) {
             predeclare_typealias_decl(decl, line, column, "Duplicate top-level symbol (typealias).");
-            continue;
+            return;
         }
-    }
+    });
     if (!diagnostics.empty()) {
         return std::unexpected(std::move(diagnostics));
     }

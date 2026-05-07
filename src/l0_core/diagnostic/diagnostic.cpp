@@ -26,6 +26,7 @@ constexpr std::string_view kSemanticMissingTypeAnnotation = "SEMANTIC_MISSING_TY
 constexpr std::string_view kSemanticNotABoolContext = "SEMANTIC_NOT_A_BOOL_CONTEXT";
 constexpr std::string_view kSemanticInvalidUnaryOperand = "SEMANTIC_INVALID_UNARY_OPERAND";
 constexpr std::string_view kSemanticAssignmentToConst = "SEMANTIC_ASSIGNMENT_TO_CONST";
+constexpr std::string_view kSemanticUseOfMovedValue = "SEMANTIC_USE_OF_MOVED_VALUE";
 constexpr std::string_view kIRInvalidRoot = "IR_INVALID_ROOT";
 constexpr std::string_view kIRVerifyFailed = "IR_VERIFY_FAILED";
 constexpr std::string_view kIRLowerFailed = "IR_LOWER_FAILED";
@@ -96,6 +97,8 @@ std::string_view codeOf(events::SemanticCode code) {
         return kSemanticInvalidUnaryOperand;
     case events::SemanticCode::AssignmentToConst:
         return kSemanticAssignmentToConst;
+    case events::SemanticCode::UseOfMovedValue:
+        return kSemanticUseOfMovedValue;
     }
     return kSemanticGenericError;
 }

@@ -38,7 +38,7 @@ graph LR
 ## 数据边界
 
 - 输入：`source`（`std::string`）
-- 输出：`GlobalCompilationUnit.tokens`、`ASTPool`、`root`
+- 输出：`CompilationUnit.tokens`、`ASTPool`、`root`
 
 ## 模块间依赖
 
@@ -96,8 +96,8 @@ graph LR
   - `syntax/ast_payloads.hpp`
   - `src/l0_core/syntax/ast.cpp`
   - `syntax/token.hpp`
-  - `syntax/global_interner.hpp`
-  - `src/l0_core/syntax/global_interner.cpp`
+  - `syntax/string_interner.hpp`
+  - `src/l0_core/syntax/string_interner.cpp`
 - IR 后端（由 driver 调用）
   - `include/niki/l0_core/ir/builder.hpp`
   - `src/l0_core/ir/builder.cpp`

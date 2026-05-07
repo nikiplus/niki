@@ -24,7 +24,7 @@
  * 字面量在解析期写入 constants，AST 里只存 const_pool_index。
  *
  * --- 字符串驻留表放在哪里？---
- * 字符串池上移到 Driver 级 GlobalInterner，ASTPool 仅做转发。
+ * 字符串池上移到 Driver 级 StringInterner，ASTPool 仅做转发。
  * 这样多模块编译可共享同一套 name_id，避免链接阶段出现“同ID异名”的伪冲突。
  *
  * --- get_list 与 std::span---
@@ -33,7 +33,7 @@
  * --- clear() 与旁侧表---
  * 凡被节点 payload 或语义阶段引用的「池内下标」向量，必须在 clear() 中与 nodes 一并清空，
  * 否则复用同一 ASTPool 时会出现悬空下标。
- * GlobalInterner 与 ID_INT 等内建名 id 不由 clear() 重置。
+ * StringInterner 与 ID_INT 等内建名 id 不由 clear() 重置。
  * =============================================================================
  */
 
@@ -50,7 +50,7 @@ using namespace niki::syntax;
  * @brief 构造 ASTPool，并固定内置类型名 id。
  * @param shared_interner Driver 共享字符串驻留表。
  */
-ASTPool::ASTPool(GlobalInterner &shared_interner) : interner(&shared_interner) {
+ASTPool::ASTPool(StringInterner &shared_interner) : interner(&shared_interner) {
     ID_INT = interner->intern("int");
     ID_FLOAT = interner->intern("float");
     ID_BOOL = interner->intern("bool");
@@ -113,8 +113,10 @@ void ASTPool::clear() {
     impl_data.clear();
     kits_data.clear();
     map_data.clear();
+    block_exit_free_name_ids.clear();
+    func_exit_free_name_ids.clear();
 
-    // 注意：共享字符串池由 GlobalInterner 持有，clear() 仅重置 AST 结构数据；ID_INT 等仍有效。
+    // 注意：共享字符串池由 StringInterner 持有，clear() 仅重置 AST 结构数据；ID_INT 等仍有效。
 };
 /**
  * @brief 获取可写 AST 节点引用。

@@ -2,9 +2,9 @@
 
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/linker/linker_facade.hpp"
-#include "niki/l0_core/semantic/global_compilation.hpp"
-#include "niki/l0_core/semantic/global_symbol_table.hpp"
-#include "niki/l0_core/semantic/global_type_arena.hpp"
+#include "niki/l0_core/semantic/compilation_unit.hpp"
+#include "niki/l0_core/semantic/type_arena.hpp"
+#include "niki/l0_core/semantic/module_namespace.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include <expected>
 #include <string>
@@ -36,16 +36,16 @@ class CompilerOrchestrator {
   private:
     /// @brief 收集项目下待编译 `.nk` 文件列表。
     std::vector<std::string> collectNkFiles(const std::string &root_dir, const OrchestratorOptions &options);
-    /// @brief 读取并解析单源文件到 GlobalCompilationUnit。
-    std::expected<GlobalCompilationUnit, diagnostic::DiagnosticBag> parseOneUnit(const std::string &source_path,
-                                                                                 syntax::GlobalInterner &interner);
+    /// @brief 读取并解析单源文件到 CompilationUnit。
+    std::expected<CompilationUnit, diagnostic::DiagnosticBag> parseOneUnit(const std::string &source_path,
+                                                                                 syntax::StringInterner &interner);
     /// @brief 执行项目级多文件编译总流程（不含链接与运行）。
     std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> compileAll(
         const std::vector<std::string> &files);
     /// @brief 对全部 unit 执行预声明阶段并汇总诊断。
-    std::expected<void, diagnostic::DiagnosticBag> predeclareAllUnits(const std::vector<GlobalCompilationUnit> &units,
-                                                                      GlobalTypeArena &global_arena,
-                                                                      GlobalSymbolTable &global_symbols);
+    std::expected<void, diagnostic::DiagnosticBag> predeclareAllUnits(const std::vector<CompilationUnit> &units,
+                                                                      TypeArena &global_arena,
+                                                                      ModuleNamespace &module_namespace);
 };
 
 } // namespace niki::meta::orchestrator

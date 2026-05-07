@@ -6,7 +6,7 @@
 
 - Predeclare（全局预声明）
   - 从各 Unit 顶层声明提取可跨文件实体（函数/结构体等）
-  - 写入 `GlobalSymbolTable` 与 `GlobalTypeArena`
+  - 写入 `ModuleNamespace` 与 `TypeArena`
 - TypeCheck（类型检查）
   - 在共享全局语义上下文中检查表达式/语句/声明
   - 将推导结果写回 `ASTPool.node_types`
@@ -22,11 +22,11 @@ graph LR
     subgraph SMM[semantic module]
         STAGE_PREDECLARE[Predeclare]
         STAGE_TYPECHECK[TypeChecker]
-        OUT_GST[GlobalSymbolTable]
-        OUT_GTA[GlobalTypeArena]
-        STAGE_PREDECLARE --> OUT_GST
+        OUT_MN[ModuleNamespace]
+        OUT_GTA[TypeArena]
+        STAGE_PREDECLARE --> OUT_MN
         STAGE_PREDECLARE --> OUT_GTA
-        OUT_GST --> STAGE_TYPECHECK
+        OUT_MN --> STAGE_TYPECHECK
         OUT_GTA --> STAGE_TYPECHECK
     end
 
@@ -41,7 +41,7 @@ graph LR
 
 ## 数据边界
 
-- 输入：`ASTPool`、`root`、`GlobalSymbolTable`、`GlobalTypeArena`
+- 输入：`ASTPool`、`root`、`ModuleNamespace`、`TypeArena`
 - 输出：`node_types` 回填结果与 `DiagnosticBag`
 
 ## 模块间依赖
@@ -60,15 +60,15 @@ graph LR
 ## 关键对象
 
 - `NKType`：静态类型值对象
-- `GlobalSymbolTable`：名字到符号信息的全局映射
-- `GlobalTypeArena`：全局类型实体仓库（结构体信息/函数签名 ID）
+- `ModuleNamespace`：模块作用域符号注册（`(module_id, name_id)` 复合键）
+- `TypeArena`：全局类型实体仓库（结构体信息/函数签名 ID）
 - `TypeChecker`：统一语义检查入口
 
 ## 阶段接口（对外）
 
 - Predeclare
   - 输入：全部 Unit 的顶层声明 AST
-  - 输出：`GlobalSymbolTable`、`GlobalTypeArena`
+  - 输出：`ModuleNamespace`、`TypeArena`
 - TypeCheck
   - 输入：单 Unit `ASTPool + root` 与全局语义表
   - 输出：`ASTPool.node_types`、`DiagnosticBag`
@@ -76,12 +76,12 @@ graph LR
 ## 接口契约（输入/输出/失败语义）
 
 - Predeclare（由 Driver 组织调用）
-  - 输入对象：各 `GlobalCompilationUnit` 的顶层声明 AST
-  - 输出对象：填充后的 `GlobalSymbolTable`、`GlobalTypeArena`
+  - 输入对象：各 `CompilationUnit` 的顶层声明 AST
+  - 输出对象：填充后的 `ModuleNamespace`、`TypeArena`
   - 失败语义：预声明冲突/非法签名写入 `DiagnosticBag`；任一失败会阻止后续全局语义阶段
   - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::SemanticCode`）
 - TypeCheck（`TypeChecker::check`）
-  - 输入对象：`ASTPool&`、`root`、`global_symbols`、`global_arena`
+  - 输入对象：`ASTPool&`、`root`、`global_arena`、`module_id`、`module_namespace`
   - 输出对象：`std::expected<TypeCheckResult, DiagnosticBag>`，并回填 `ASTPool.node_types`
   - 失败语义：返回 `unexpected(DiagnosticBag)`；`node_types` 可能是部分回填状态
   - 错误码来源：`diagnostic` 模块内部映射（事件码：`diagnostic::events::SemanticCode`）
@@ -91,10 +91,10 @@ graph LR
 - 类型系统
   - `semantic/nktype.hpp`
 - 全局语义表
-  - `semantic/global_symbol_table.hpp`
-  - `src/l0_core/semantic/global_symbol_table.cpp`
-  - `semantic/global_type_arena.hpp`
-  - `src/l0_core/semantic/global_type_arena.cpp`
+  - `semantic/module_namespace.hpp`
+  - `src/l0_core/semantic/module_namespace.cpp`
+  - `semantic/type_arena.hpp`
+  - `src/l0_core/semantic/type_arena.cpp`
 - 类型检查
   - `semantic/type_checker.hpp`
   - `src/l0_core/semantic/type_checker.cpp`
@@ -103,10 +103,10 @@ graph LR
   - `src/l0_core/semantic/type_checker_stmt.cpp`
   - `src/l0_core/semantic/type_checker_expr.cpp`
 
-## 当前实现结构（2026-04）
+## 当前实现结构（2026-05）
 
-- 语义阶段采用“两段式”组织：
+- 语义阶段采用"两段式"组织：
   - `Predeclare(all units) -> TypeCheck(per unit)`
-- `Predeclare` 负责全局符号与类型实体建表，不参与表达式求型。
+- `Predeclare` 负责模块级符号与类型实体建表，不参与表达式求型。
 - `TypeCheck` 在共享全局语义上下文中回填 `ASTPool.node_types`。
 - `ir` 仅消费语义结果，不在本模块重复执行类型推导。

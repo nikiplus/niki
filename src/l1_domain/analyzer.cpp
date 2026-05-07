@@ -31,8 +31,8 @@ void TypeChecker::checkComponentDecl(syntax::ASTNodeIndex nodeIdx) {
         }
 
         bool struct_found = false;
-        if (globalSymbols != nullptr) {
-            const auto *sym = globalSymbols->find(component_decl.source_struct_name_id);
+        if (moduleNamespace != nullptr && currentModuleId != kInvalidModuleId) {
+            const auto *sym = moduleNamespace->find(currentModuleId, component_decl.source_struct_name_id);
             struct_found = (sym != nullptr && sym->kind == niki::Kind::Struct);
         }
         if (!struct_found && visibleSymbols != nullptr) {
@@ -55,7 +55,7 @@ void TypeChecker::checkComponentDecl(syntax::ASTNodeIndex nodeIdx) {
     // 递归检查 component body 内部的成员声明
     beginScope();
     checkStatement(component_decl.body);
-    endScope();
+    endScopePlain();
 }
 
 void TypeChecker::checkFlowDecl(syntax::ASTNodeIndex nodeIdx) {}

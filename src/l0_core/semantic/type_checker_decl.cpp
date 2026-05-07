@@ -183,7 +183,7 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
     for (size_t i = 0; i < paramNodes.size(); ++i) {
         auto [paramNode, p_line, p_col] = getNodeCtx(paramNodes[i]);
         uint32_t param_name_id = paramNode.payload.var_decl.name_id;
-        declareSymbol(param_name_id, paramTypes[i], p_line, p_col);
+        declareSymbol(param_name_id, paramTypes[i], p_line, p_col, false);
     }
 
     NKType enclosingReturnType = currentReturnType;
@@ -198,7 +198,7 @@ void TypeChecker::checkFunctionDecl(syntax::ASTNodeIndex nodeIdx) {
     currentReturnType = enclosingReturnType;
     inFunction = enclosingInFunction;
 
-    endScope();
+    endFunctionLocalScope(nodeIdx);
 }
 /** @brief 检查接口方法声明（占位实现）。 */
 void TypeChecker::checkInterfaceMethod(syntax::ASTNodeIndex nodeIdx) {}

@@ -10,16 +10,30 @@
  * 从算法层面看，主循环是 Fetch-Decode-Execute；
  * 从工程层面看，这里是错误隔离边界：越界读、坏跳转、类型不匹配都统一上报为 RUNTIME_ERROR。
  */
+#include "niki/l0_core/semantic/module_id.hpp"
 #include "niki/l0_core/vm/chunk.hpp"
 #include "niki/l0_core/vm/object.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
 namespace niki::vm {
+
+/// VM globals 复合键: (module_id, name_id)
+struct GlobalKey {
+    ModuleId module_id;
+    uint32_t name_id;
+    bool operator==(const GlobalKey &o) const { return module_id == o.module_id && name_id == o.name_id; }
+};
+struct GlobalKeyHash {
+    size_t operator()(const GlobalKey &k) const {
+        return std::hash<uint64_t>{}((static_cast<uint64_t>(k.module_id) << 32) ^ k.name_id);
+    }
+};
 
 /// 一次激活调用：一段寄存器窗口 + 一份字节码。
 struct CallFrame {
@@ -72,20 +86,24 @@ class VM {
      */
     ObjFunction *lookupGlobalFunctionByName(const std::string &name);
     /**
-     * @brief 按 name_id 查询全局函数表。
-     * @param id 字符串池 id。
+     * @brief 按 (module_id, name_id) 查询全局函数表。
+     * @param module_id 模块 id。
+     * @param name_id 字符串池 id。
      * @return 找到返回函数指针，否则返回 nullptr。
      */
-    ObjFunction *lookupGlobalFunctionById(uint32_t id);
+    ObjFunction *lookupGlobalFunctionById(ModuleId module_id, uint32_t name_id);
 
   private:
     std::array<Value, stack_capacity> stack{}; ///< 全局寄存器文件
     std::vector<CallFrame> frames;             ///< 调用栈；`OP_CALL` / `OP_RETURN` 维护
 
-    std::unordered_map<uint32_t, ObjFunction *> globals;   ///< 顶层函数：name_id -> ObjFunction*
-    std::unordered_map<uint32_t, Object *> global_objects; ///< 全局对象：如 StructDef
+    std::unordered_map<GlobalKey, ObjFunction *, GlobalKeyHash>
+        globals; ///< 顶层函数：(module_id, name_id) -> ObjFunction*
+    std::unordered_map<GlobalKey, Object *, GlobalKeyHash>
+        global_objects; ///< 全局对象：(module_id, name_id) -> Object*
 
     const std::vector<std::string> *current_string_pool = nullptr; ///< 当前上下文字符串池（诊断、按名查找）
+    ModuleId current_chunk_module_id_ = kInvalidModuleId;          ///< 当前执行 chunk 所属模块 id
 
     CallFrame *currentFrame = nullptr; ///< 等价于 `frames` 非空时指向最后一帧
 

@@ -1,11 +1,12 @@
 #include "niki/l0_core/ir/builder.hpp"
 #include "niki/l0_core/ir/module_ir.hpp"
 #include "niki/l0_core/ir/verify.hpp"
-#include "niki/l0_core/semantic/global_compilation.hpp"
-#include "niki/l0_core/semantic/global_symbol_table.hpp"
-#include "niki/l0_core/semantic/global_type_arena.hpp"
+#include "niki/l0_core/semantic/compilation_unit.hpp"
+#include "niki/l0_core/semantic/type_arena.hpp"
+#include "niki/l0_core/semantic/module_id.hpp"
+#include "niki/l0_core/semantic/module_namespace.hpp"
 #include "niki/l0_core/semantic/type_checker.hpp"
-#include "niki/l0_core/syntax/global_interner.hpp"
+#include "niki/l0_core/syntax/string_interner.hpp"
 #include "niki/l0_core/syntax/parser.hpp"
 #include "niki/l0_core/syntax/scanner.hpp"
 #include "niki/meta/precompile/precompile_pipeline.hpp"
@@ -16,11 +17,12 @@ using namespace niki::ir;
 
 namespace {
 std::expected<ModuleIR, diagnostic::DiagnosticBag> buildIRFromBody(std::string_view body) {
-    syntax::GlobalInterner interner;
-    GlobalTypeArena arena;
-    GlobalSymbolTable symbols;
+    syntax::StringInterner interner;
+    TypeArena arena;
+    ModuleNamespace module_namespace;
+    ModuleIdAllocator module_id_allocator;
 
-    GlobalCompilationUnit unit(interner);
+    CompilationUnit unit(interner);
     unit.source_path = "__verify_test__";
     unit.source = "module __t{func __test_main()->int{" + std::string(body) + "}}";
 
@@ -44,14 +46,15 @@ std::expected<ModuleIR, diagnostic::DiagnosticBag> buildIRFromBody(std::string_v
         return std::unexpected(std::move(parse_result.diagnostics));
     }
     unit.root = parse_result.root;
+    unit.module_id = module_id_allocator.ensure(unit.source_path);
 
-    auto predeclare = meta::precompile::predeclareSingleUnit(unit, arena, symbols);
+    auto predeclare = meta::precompile::predeclareSingleUnit(unit, arena, module_namespace);
     if (!predeclare.has_value()) {
         return std::unexpected(std::move(predeclare.error()));
     }
 
     semantic::TypeChecker checker;
-    auto type_result = checker.check(unit.pool, unit.root, symbols, arena);
+    auto type_result = checker.check(unit.pool, unit.root, arena, unit.module_id, module_namespace);
     if (!type_result.has_value()) {
         return std::unexpected(std::move(type_result.error()));
     }

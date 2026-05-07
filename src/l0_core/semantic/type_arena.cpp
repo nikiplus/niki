@@ -1,15 +1,15 @@
-#include "niki/l0_core/semantic/global_type_arena.hpp"
+#include "niki/l0_core/semantic/type_arena.hpp"
 
 #include <utility>
 
 namespace niki {
 
 /**
- * @brief 注册结构体信息到全局类型池。
+ * @brief 注册结构体信息到类型池。
  * @return 结构体 id（若完全相同则返回已存在 id）。
  */
-uint32_t GlobalTypeArena::internStruct(uint32_t name_id, std::string owner_module, std::vector<uint32_t> field_name_ids,
-                                       std::vector<semantic::NKType> field_types) {
+uint32_t TypeArena::internStruct(uint32_t name_id, std::string owner_module, std::vector<uint32_t> field_name_ids,
+                                 std::vector<semantic::NKType> field_types) {
     for (uint32_t i = 0; i < structs_.size(); ++i) {
         if (structs_[i].name_id == name_id && structs_[i].owner_module == owner_module &&
             structs_[i].field_name_ids == field_name_ids && structs_[i].field_types == field_types) {
@@ -23,8 +23,8 @@ uint32_t GlobalTypeArena::internStruct(uint32_t name_id, std::string owner_modul
     return static_cast<uint32_t>(structs_.size() - 1);
 }
 
-/** @brief 注册函数签名到全局类型池。 */
-uint32_t GlobalTypeArena::internFuncSig(const semantic::FunctionSignature &sig) {
+/** @brief 注册函数签名到类型池。 */
+uint32_t TypeArena::internFuncSig(const semantic::FunctionSignature &sig) {
     for (uint32_t i = 0; i < func_sigs_.size(); ++i) {
         if (func_sigs_[i] == sig) {
             return i;
@@ -35,7 +35,7 @@ uint32_t GlobalTypeArena::internFuncSig(const semantic::FunctionSignature &sig) 
 }
 
 /** @brief 通过 id 查询函数签名。 */
-const semantic::FunctionSignature *GlobalTypeArena::findFuncSig(uint32_t id) const {
+const semantic::FunctionSignature *TypeArena::findFuncSig(uint32_t id) const {
     if (id >= func_sigs_.size()) {
         return nullptr;
     }
@@ -43,7 +43,7 @@ const semantic::FunctionSignature *GlobalTypeArena::findFuncSig(uint32_t id) con
 }
 
 /** @brief 通过 id 查询结构体信息。 */
-const GlobalTypeArena::StructInfo *GlobalTypeArena::findStruct(uint32_t id) const {
+const TypeArena::StructInfo *TypeArena::findStruct(uint32_t id) const {
     if (id >= structs_.size()) {
         return nullptr;
     }

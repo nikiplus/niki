@@ -1,8 +1,9 @@
 #include "niki/meta/orchestrator/compiler_orchestrator.hpp"
 #include "niki/l0_core/linker/linker_facade.hpp"
 #include "niki/l0_core/runtime/launcher.hpp"
+#include "niki/l0_core/semantic/module_id.hpp"
 #include "niki/l0_core/semantic/type_checker.hpp"
-#include "niki/l0_core/syntax/global_interner.hpp"
+#include "niki/l0_core/syntax/string_interner.hpp"
 #include "niki/l0_core/vm/vm.hpp"
 #include "niki/meta/orchestrator/compile_pipeline.hpp"
 #include "niki/meta/precompile/precompile_pipeline.hpp"
@@ -67,11 +68,11 @@ std::vector<std::string> CompilerOrchestrator::collectNkFiles(const std::string 
  * @brief 读取并解析单源文件到编译单元。
  * @param source_path 源文件路径。
  * @param interner 项目级字符串驻留器。
- * @return std::expected<GlobalCompilationUnit, diagnostic::DiagnosticBag> 成功返回编译单元，失败返回诊断。
+ * @return std::expected<CompilationUnit, diagnostic::DiagnosticBag> 成功返回编译单元，失败返回诊断。
  */
-std::expected<GlobalCompilationUnit, diagnostic::DiagnosticBag> CompilerOrchestrator::parseOneUnit(
-    const std::string &source_path, syntax::GlobalInterner &interner) {
-    GlobalCompilationUnit unit(interner);
+std::expected<CompilationUnit, diagnostic::DiagnosticBag> CompilerOrchestrator::parseOneUnit(
+    const std::string &source_path, syntax::StringInterner &interner) {
+    CompilationUnit unit(interner);
     unit.source_path = source_path;
     std::ifstream in(source_path, std::ios::binary);
     if (!in.is_open()) {
@@ -96,10 +97,10 @@ std::expected<GlobalCompilationUnit, diagnostic::DiagnosticBag> CompilerOrchestr
  * @return std::expected<void, diagnostic::DiagnosticBag> 成功返回空，失败返回聚合诊断。
  */
 std::expected<void, diagnostic::DiagnosticBag> CompilerOrchestrator::predeclareAllUnits(
-    const std::vector<GlobalCompilationUnit> &units, GlobalTypeArena &global_arena, GlobalSymbolTable &global_symbols) {
+    const std::vector<CompilationUnit> &units, TypeArena &global_arena, ModuleNamespace &module_namespace) {
     diagnostic::DiagnosticBag diagnostics;
     for (const auto &unit : units) {
-        auto one = meta::precompile::predeclareSingleUnit(unit, global_arena, global_symbols);
+        auto one = meta::precompile::predeclareSingleUnit(unit, global_arena, module_namespace);
         if (!one.has_value()) {
             diagnostics.merge(std::move(one.error()));
         }
@@ -119,10 +120,11 @@ std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Com
     const std::vector<std::string> &files) {
     std::vector<linker::CompileModule> modules;
     diagnostic::DiagnosticBag diagnostics;
-    syntax::GlobalInterner interner;
-    GlobalTypeArena global_arena;
-    GlobalSymbolTable global_symbols;
-    std::vector<GlobalCompilationUnit> units;
+    syntax::StringInterner interner;
+    TypeArena global_arena;
+    ModuleNamespace module_namespace;
+    ModuleIdAllocator module_id_allocator;
+    std::vector<CompilationUnit> units;
     units.reserve(files.size());
     for (const auto &file : files) {
         auto unit_result = parseOneUnit(file, interner);
@@ -130,19 +132,21 @@ std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Com
             diagnostics.merge(std::move(unit_result.error()));
             continue;
         }
-        units.push_back(std::move(unit_result.value()));
+        auto &unit = unit_result.value();
+        unit.module_id = module_id_allocator.ensure(unit.source_path);
+        units.push_back(std::move(unit));
     }
     if (!diagnostics.empty()) {
         return std::unexpected(std::move(diagnostics));
     }
-    auto predeclare_result = predeclareAllUnits(units, global_arena, global_symbols);
+    auto predeclare_result = predeclareAllUnits(units, global_arena, module_namespace);
     if (!predeclare_result.has_value()) {
         diagnostics.merge(std::move(predeclare_result.error()));
     }
     if (!diagnostics.empty()) {
         return std::unexpected(std::move(diagnostics));
     }
-    auto semantic_context_result = meta::precompile::buildModuleSemanticContext(units, global_symbols);
+    auto semantic_context_result = meta::precompile::buildModuleSemanticContext(units, module_namespace);
     if (!semantic_context_result.has_value()) {
         diagnostics.merge(std::move(semantic_context_result.error()));
     }
@@ -153,7 +157,8 @@ std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Com
     for (size_t unit_idx = 0; unit_idx < units.size(); ++unit_idx) {
         auto &unit = units[unit_idx];
         semantic::TypeChecker checker;
-        auto result = checker.check(unit.pool, unit.root, global_symbols, global_arena, visible_per_unit[unit_idx]);
+        auto result = checker.check(unit.pool, unit.root, global_arena, visible_per_unit[unit_idx], unit.module_id,
+                                    module_namespace);
         if (!result.has_value()) {
             diagnostics.merge(std::move(result.error()));
         }
@@ -162,8 +167,9 @@ std::expected<std::vector<linker::CompileModule>, diagnostic::DiagnosticBag> Com
         return std::unexpected(std::move(diagnostics));
     }
     modules.reserve(units.size());
-    for (auto &unit : units) {
-        auto module_result = compileParsedBackend(unit, global_arena, global_symbols);
+    for (size_t unit_idx = 0; unit_idx < units.size(); ++unit_idx) {
+        auto &unit = units[unit_idx];
+        auto module_result = compileParsedBackend(unit, global_arena, &visible_per_unit[unit_idx]);
         if (!module_result.has_value()) {
             diagnostics.merge(std::move(module_result.error()));
             continue;

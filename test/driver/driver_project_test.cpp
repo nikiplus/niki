@@ -1,8 +1,9 @@
-#include "../test_helpers.hpp"
+#include "../helpers/test_helpers.hpp"
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/ir/module_ir.hpp"
 #include "niki/l0_core/linker/linker_facade.hpp"
 #include "niki/l0_core/runtime/launcher.hpp"
+#include "niki/l0_core/semantic/module_id.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include "niki/l0_core/vm/vm.hpp"
 #include <gtest/gtest.h>
@@ -17,9 +18,10 @@ using namespace niki::vm;
 
 /** @phase_D: 多模块/完整管线集成测试 */
 
-static GlobalCompilationUnit buildUnitFromSource(
-    syntax::GlobalInterner &interner, const std::string &source, const std::string &source_path) {
-    GlobalCompilationUnit unit(interner);
+static CompilationUnit buildUnitFromSource(
+    syntax::StringInterner &interner, const std::string &source, const std::string &source_path,
+    ModuleIdAllocator &module_id_allocator) {
+    CompilationUnit unit(interner);
     unit.source = source;
     unit.source_path = source_path;
     syntax::Scanner scanner(unit.source, unit.source_path);
@@ -33,6 +35,7 @@ static GlobalCompilationUnit buildUnitFromSource(
     syntax::Parser parser(unit.source, unit.tokens, unit.pool, unit.source_path);
     auto parse_result = parser.parse();
     unit.root = parse_result.root;
+    unit.module_id = module_id_allocator.ensure(source_path);
     return unit;
 }
 
@@ -42,7 +45,7 @@ TEST(DriverProjectTest, SingleModuleExecute) {
     auto unit = fixture.wrapAndParse("return 42;");
     ASSERT_TRUE(unit.root.isvalid());
 
-    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.symbols_);
+    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.module_namespace_);
     ASSERT_TRUE(compile_result.has_value()) << "Compile should succeed";
 
     linker::Linker linker;
@@ -67,6 +70,15 @@ TEST(DriverProjectTest, VariableComputation) {
     EXPECT_EQ(val_result.value().as.integer, 42);
 }
 
+// D-2b: 堆局部 string + OP_FREE 全链路不崩溃
+TEST(DriverProjectTest, HeapStringLocalFullPipeline) {
+    ExprTestFixture fixture;
+    auto val_result = fixture.compileAndRun("var s: string = \"ok\"; return 0;");
+    ASSERT_TRUE(val_result.has_value()) << "full pipeline with heap local should succeed";
+    EXPECT_EQ(val_result.value().type, ValueType::Integer);
+    EXPECT_EQ(val_result.value().as.integer, 0);
+}
+
 // D-3: 函数调用: func add(a:int,b:int)->int{return a+b;} func main()->int{return add(20,22);}
 TEST(DriverProjectTest, FunctionCallWithinModule) {
     ExprTestFixture fixture;
@@ -75,10 +87,10 @@ TEST(DriverProjectTest, FunctionCallWithinModule) {
         "func add(a:int,b:int)->int{return a+b;}"
         "func __test_main()->int{return add(20,22);}"
         "}";
-    auto unit = buildUnitFromSource(fixture.interner_, source, "__test__");
+    auto unit = buildUnitFromSource(fixture.interner_, source, "__test__", fixture.module_id_allocator_);
     ASSERT_TRUE(unit.root.isvalid());
 
-    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.symbols_);
+    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.module_namespace_);
     ASSERT_TRUE(compile_result.has_value()) << "Compile should succeed for function call";
 
     linker::Linker linker;
@@ -104,10 +116,10 @@ TEST(DriverProjectTest, MultiFunctionCallChain) {
         "func doubleIt(x:int)->int{return x*2;}"
         "func __test_main()->int{return doubleIt(addOne(20));}"
         "}";
-    auto unit = buildUnitFromSource(fixture.interner_, source, "__test__");
+    auto unit = buildUnitFromSource(fixture.interner_, source, "__test__", fixture.module_id_allocator_);
     ASSERT_TRUE(unit.root.isvalid());
 
-    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.symbols_);
+    auto compile_result = meta::orchestrator::compileParsedUnit(unit, fixture.arena_, fixture.module_namespace_);
     ASSERT_TRUE(compile_result.has_value()) << "Compile should succeed for multi-function call chain";
 
     linker::Linker linker;

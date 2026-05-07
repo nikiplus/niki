@@ -4,6 +4,7 @@
 #include "niki/l0_core/vm/object.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include <bit>
+#include <span>
 #include <vector>
 
 /** @builder_expr_impl: 表达式求值路径降解实现
@@ -67,24 +68,10 @@ InstKind mapBinaryTokenToInst(TokenType token_type) {
 }
 
 /**
- * @brief 判断名称是否属于可见的导入项或模块顶层实体。
- * @param unit 当前编译单元。
- * @param name_sid 名称字符串 id。
- * @return true 名称可见（函数/结构体/显式导入）。
- * @return false 名称不可见或模块根不合法。
+ * @brief 在声明列表中查找顶层符号名（含嵌套 `module { ... }`，与 parse() 外包 ModuleDecl 结构一致）。
  */
-bool isImportedOrTopLevelName(const GlobalCompilationUnit &unit, uint32_t name_sid) {
-    if (!unit.root.isvalid()) {
-        return false;
-    }
-    const auto &root_node = unit.pool.getNode(unit.root);
-    if (root_node.type != NodeType::ModuleDecl && root_node.type != NodeType::ProgramRoot) {
-        return false;
-    }
-    const ASTNodeIndex body_idx =
-        (root_node.type == NodeType::ModuleDecl) ? root_node.payload.module_decl.body : unit.root;
-    const auto &body_node = unit.pool.getNode(body_idx);
-    auto decls = unit.pool.get_list(body_node.payload.list.elements);
+static bool moduleDeclListDeclaresName(const CompilationUnit &unit, std::span<const ASTNodeIndex> decls,
+                                       uint32_t name_sid) {
     for (const ASTNodeIndex decl_idx : decls) {
         if (!decl_idx.isvalid()) {
             continue;
@@ -111,9 +98,53 @@ bool isImportedOrTopLevelName(const GlobalCompilationUnit &unit, uint32_t name_s
                     return true;
                 }
             }
+        } else if (decl.type == NodeType::ModuleDecl) {
+            const ASTNodeIndex inner_body = decl.payload.module_decl.body;
+            if (!inner_body.isvalid()) {
+                continue;
+            }
+            const auto &inner_node = unit.pool.getNode(inner_body);
+            if (inner_node.type != NodeType::BlockStmt) {
+                continue;
+            }
+            auto inner_decls = unit.pool.get_list(inner_node.payload.list.elements);
+            if (moduleDeclListDeclaresName(unit, inner_decls, name_sid)) {
+                return true;
+            }
         }
     }
     return false;
+}
+
+/**
+ * @brief 通过 UnitVisibleSymbols 表查找名字是否跨模块可见，
+ *        替代旧的 AST 遍历 isImportedOrTopLevelName()。
+ */
+// 前向声明
+static bool isImportedOrTopLevelName(const CompilationUnit &unit, uint32_t name_sid);
+
+static bool isNameVisibleInUnit(const CompilationUnit &unit, const semantic::UnitVisibleSymbols *visible_symbols,
+                                uint32_t name_sid) {
+    if (visible_symbols == nullptr) {
+        // 测试/单模块环境不可见表 → 改为查 AST（保留旧兼容，但功能等价旧 isImportedOrTopLevelName）
+        return isImportedOrTopLevelName(unit, name_sid);
+    }
+    return visible_symbols->tables.find(name_sid) != visible_symbols->tables.end();
+}
+
+bool isImportedOrTopLevelName(const CompilationUnit &unit, uint32_t name_sid) {
+    if (!unit.root.isvalid()) {
+        return false;
+    }
+    const auto &root_node = unit.pool.getNode(unit.root);
+    if (root_node.type != NodeType::ModuleDecl && root_node.type != NodeType::ProgramRoot) {
+        return false;
+    }
+    const ASTNodeIndex body_idx =
+        (root_node.type == NodeType::ModuleDecl) ? root_node.payload.module_decl.body : unit.root;
+    const auto &body_node = unit.pool.getNode(body_idx);
+    auto decls = unit.pool.get_list(body_node.payload.list.elements);
+    return moduleDeclListDeclaresName(unit, decls, name_sid);
 }
 } // namespace
 
@@ -190,7 +221,7 @@ bool IRBuilder::buildExpr(BuildCtx &bc, FuncCtx &fc, ASTNodeIndex expr_idx, RegI
             *out_reg = it->second;
             return true;
         }
-        if (!isImportedOrTopLevelName(*bc.unit, name_sid)) {
+        if (!isNameVisibleInUnit(*bc.unit, bc.visible_symbols, name_sid)) {
             error(bc, "Identifier is unresolved in current function scope.", expr_idx);
             return false;
         }

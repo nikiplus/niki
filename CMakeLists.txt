@@ -20,7 +20,7 @@ set(NIKI_L0_CORE_SOURCES
     src/l0_core/ir/builder_declaration.cpp
     src/l0_core/ir/extensions.cpp
     src/l0_core/ir/lower_to_chunk.cpp
-    src/l0_core/syntax/global_interner.cpp
+    src/l0_core/syntax/string_interner.cpp
     src/l0_core/syntax/scanner.cpp
     src/l0_core/syntax/parse.cpp
     src/l0_core/syntax/parser_declaration.cpp
@@ -33,8 +33,9 @@ set(NIKI_L0_CORE_SOURCES
     src/l0_core/semantic/type_checker_decl.cpp
     src/l0_core/semantic/extensions.cpp
     src/l0_core/semantic/type_checker_pre_decl.cpp
-    src/l0_core/semantic/global_symbol_table.cpp
-    src/l0_core/semantic/global_type_arena.cpp
+    src/l0_core/semantic/type_arena.cpp
+    src/l0_core/semantic/module_id.cpp
+    src/l0_core/semantic/module_namespace.cpp
     src/l0_core/linker/linker_facade.cpp
     src/l0_core/runtime/launcher.cpp
     src/l0_core/vm/vm.cpp
@@ -117,6 +118,7 @@ add_executable(niki_tests
     test/syntax/parser_stmt_test.cpp
     test/semantic/type_checker_test.cpp
     test/semantic/type_checker_stmt_test.cpp
+    test/semantic/module_chain_test.cpp
     test/ir/builder_test.cpp
     test/ir/verify_test.cpp
     test/ir/module_ir_test.cpp
@@ -124,8 +126,9 @@ add_executable(niki_tests
     test/driver/driver_project_test.cpp
     test/linker/linker_test.cpp
     test/runtime/launcher_test.cpp
+    test/runtime/endpoint_test.cpp
     test/l1_domain/domain_split_test.cpp
-    test/test_helpers.hpp
+    test/helpers/test_helpers.hpp
 )
 
 # 注意 GTest::gtest_main 的大小写

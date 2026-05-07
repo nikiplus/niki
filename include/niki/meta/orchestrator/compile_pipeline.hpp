@@ -3,9 +3,11 @@
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/ir/module_ir.hpp"
 #include "niki/l0_core/linker/linker_facade.hpp"
-#include "niki/l0_core/semantic/global_compilation.hpp"
-#include "niki/l0_core/semantic/global_symbol_table.hpp"
-#include "niki/l0_core/semantic/global_type_arena.hpp"
+#include "niki/l0_core/semantic/compilation_unit.hpp"
+#include "niki/l0_core/semantic/module_id.hpp"
+#include "niki/l0_core/semantic/module_namespace.hpp"
+#include "niki/l0_core/semantic/module_semantic.hpp"
+#include "niki/l0_core/semantic/type_arena.hpp"
 #include "niki/l0_core/vm/chunk.hpp"
 #include <expected>
 #include <string>
@@ -18,6 +20,8 @@
 namespace niki::meta::orchestrator {
 
 struct UnitCompileArtifact {
+    // 模块稳定 id（由 compileUnitChunk 从 unit.module_id 回填）。
+    ModuleId module_id = kInvalidModuleId;
     // 模块逻辑名（由 IRBuilder 从 ModuleDecl 提取；为空时由 buildCompileModule 回退到文件名 stem）。
     std::string module_name;
     Chunk init_chunk;
@@ -27,21 +31,19 @@ struct UnitCompileArtifact {
 };
 
 /// @brief 执行单 unit 的 IR 构建、verify、lower，并产出中间工件。
-std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> compileUnitChunk(GlobalCompilationUnit &unit,
-                                                                                GlobalTypeArena &global_arena,
-                                                                                GlobalSymbolTable &global_symbols);
+std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> compileUnitChunk(
+    CompilationUnit &unit, TypeArena &global_arena, const semantic::UnitVisibleSymbols *visible_symbols = nullptr);
 
 /// @brief 将中间工件打包为 linker 可消费的 CompileModule。
-linker::CompileModule buildCompileModule(std::string source_path, UnitCompileArtifact artifact);
+linker::CompileModule buildCompileModule(std::string source_path, ModuleId module_id, UnitCompileArtifact artifact);
 
 /// @brief 单 unit 后端编译（假定调用方已完成 predeclare 与 TypeChecker）。编排器批量语义后使用。
-std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedBackend(GlobalCompilationUnit &unit,
-                                                                                  GlobalTypeArena &global_arena,
-                                                                                  GlobalSymbolTable &global_symbols);
+std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedBackend(
+    CompilationUnit &unit, TypeArena &global_arena, const semantic::UnitVisibleSymbols *visible_symbols = nullptr);
 
 /// @brief 单 unit 完整编译：predeclare → 模块可见性 → typecheck → IR/verify/lower → CompileModule。
-std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedUnit(GlobalCompilationUnit &unit,
-                                                                                  GlobalTypeArena &global_arena,
-                                                                                  GlobalSymbolTable &global_symbols);
+std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedUnit(CompilationUnit &unit,
+                                                                                  TypeArena &global_arena,
+                                                                                  ModuleNamespace &module_namespace);
 
 } // namespace niki::meta::orchestrator

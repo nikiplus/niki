@@ -1,7 +1,8 @@
 #pragma once
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/ir/module_ir.hpp"
-#include "niki/l0_core/semantic/global_compilation.hpp"
+#include "niki/l0_core/semantic/compilation_unit.hpp"
+#include "niki/l0_core/semantic/module_semantic.hpp"
 #include <expected>
 #include <unordered_map>
 #include <unordered_set>
@@ -36,9 +37,10 @@ namespace niki::ir {
 class IRBuilder {
   public:
     //---模块级构建入口---
-    // 输入：单编译单元（AST + 语义上下文）。
+    // 输入：单编译单元（AST + 语义上下文）+ 可选 visible_symbols（跨模块引用）。
     // 输出：可验证的 ModuleIR 或诊断包。
-    std::expected<ModuleIR, diagnostic::DiagnosticBag> build(GlobalCompilationUnit &unit);
+    std::expected<ModuleIR, diagnostic::DiagnosticBag> build(CompilationUnit &unit,
+                                                             const semantic::UnitVisibleSymbols *visible_symbols = nullptr);
 
   private:
     //---循环回填信息（函数内临时状态）---
@@ -51,18 +53,24 @@ class IRBuilder {
     //---模块级构建上下文---
     struct BuildCtx {
         // 当前正在降级的编译单元。
-        GlobalCompilationUnit *unit = nullptr;
+        CompilationUnit *unit = nullptr;
         // 正在构建的模块 IR 产物。
         ModuleIR module;
         // 构建阶段诊断集合。
         diagnostic::DiagnosticBag diags;
         // 已声明为导出的符号名称（module.string_pool sid，跨 func/struct/kits/component 统一处理）。
         std::unordered_set<uint32_t> exported_name_sids;
+        // 单元可见符号表指针（跨模块引用查询），nullptr 表示无可见表（测试环境）。
+        const semantic::UnitVisibleSymbols *visible_symbols = nullptr;
     };
     //---函数级构建上下文---
     struct FuncCtx {
         // 当前函数 id。
         FuncId fid = std::numeric_limits<FuncId>::max();
+        /// 当前正在构建的函数声明节点（用于查询 func_exit_free_name_ids）。
+        niki::syntax::ASTNodeIndex func_decl_node_idx = niki::syntax::ASTNodeIndex::invalid();
+        /// 嵌套的 BlockStmt 节点栈（return 时需自内向外补发块尾 OP_FREE）。
+        std::vector<niki::syntax::ASTNodeIndex> block_stack;
         // 当前发射目标块 id。
         BlockId cur_bid = std::numeric_limits<BlockId>::max();
         // 当前发射源码位置（用于指令级调试映射）。
@@ -111,6 +119,10 @@ class IRBuilder {
     void emitConstantBool(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId dst_reg, bool value);
     void emitConstantF64Bits(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId dst_reg, uint64_t value_bits);
     void emitConstantStringId(BuildCtx &build_ctx, FuncCtx &func_ctx, RegId dst_reg, uint32_t string_id);
+    void emitFree(BuildCtx &bc, FuncCtx &fc, RegId vreg);
+    void emitBlockExitFreesFromPool(BuildCtx &bc, FuncCtx &fc, niki::syntax::ASTNodeIndex block_stmt_idx);
+    void emitFuncExitFreesFromPool(BuildCtx &bc, FuncCtx &fc, niki::syntax::ASTNodeIndex func_decl_idx);
+    void emitAllOpenScopeFreesBeforeReturn(BuildCtx &bc, FuncCtx &fc);
     //---块终结与错误上报辅助---
     void emitReturnInvalid(BuildCtx &bc, FuncCtx &fc);
     bool isCurrentBlockTerminated(BuildCtx &bc, FuncCtx &fc);

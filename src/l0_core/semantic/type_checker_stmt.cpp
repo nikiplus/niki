@@ -74,10 +74,22 @@ void TypeChecker::checkAssignmentStmt(syntax::ASTNodeIndex nodeIdx) {
     auto [node, line, column] = getNodeCtx(nodeIdx);
     NKType targetType = checkExpression(node.payload.assign_stmt.target);
     NKType valueType = checkExpression(node.payload.assign_stmt.value);
+    bool types_ok = true;
     if (targetType.getBase() != semantic::NKBaseType::Unknown && valueType.getBase() != semantic::NKBaseType::Unknown) {
         if (targetType != valueType) {
             reportError(line, column, "Type mismatch in assignment statement.",
                         niki::diagnostic::events::SemanticCode::TypeMismatch);
+            types_ok = false;
+        }
+    }
+    if (!types_ok) {
+        return;
+    }
+    // 简单所有权转移：堆类型右值标识符在 `=` 赋值后视为已 move。
+    if (node.payload.assign_stmt.op == syntax::TokenType::SYM_EQUAL) {
+        const syntax::ASTNode &valNode = currentPool->getNode(node.payload.assign_stmt.value);
+        if (valNode.type == syntax::NodeType::IdentifierExpr) {
+            tryMarkRhsIdentifierMovedForAssign(valNode.payload.identifier.name_id);
         }
     }
 }
@@ -96,10 +108,12 @@ void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
     if (node.payload.var_decl.init_expr.isvalid()) {
         initType = checkExpression(node.payload.var_decl.init_expr);
     }
+    bool decl_init_type_clash = false;
     if (declType.getBase() != semantic::NKBaseType::Unknown && initType.getBase() != semantic::NKBaseType::Unknown) {
         if (declType != initType) {
             reportError(line, column, "Type mismatch in varibale declaration.",
                         niki::diagnostic::events::SemanticCode::TypeMismatch);
+            decl_init_type_clash = true;
         }
     }
     NKType finalType = declType.getBase() != semantic::NKBaseType::Unknown ? declType : initType;
@@ -108,7 +122,14 @@ void TypeChecker::checkVarDeclStmt(syntax::ASTNodeIndex nodeIdx) {
         reportError(line, column, "Cannot infer type for variable.Type annotation or initializer required.",
                     niki::diagnostic::events::SemanticCode::MissingTypeAnnotation);
     }
-    declareSymbol(node.payload.var_decl.name_id, finalType, line, column);
+    // 初始化右值为堆类型拥有标识符时，视同 `=` 转移所有权（与 AssignmentStmt 一致）。
+    if (!decl_init_type_clash && node.payload.var_decl.init_expr.isvalid()) {
+        const syntax::ASTNode &initNode = currentPool->getNode(node.payload.var_decl.init_expr);
+        if (initNode.type == syntax::NodeType::IdentifierExpr) {
+            tryMarkRhsIdentifierMovedForAssign(initNode.payload.identifier.name_id);
+        }
+    }
+    declareSymbol(node.payload.var_decl.name_id, finalType, line, column, isHeapType(finalType));
 }
 
 /** @brief 检查代码块语句并管理作用域。 */
@@ -120,13 +141,16 @@ void TypeChecker::checkBlockStmt(syntax::ASTNodeIndex nodeIdx) {
     for (auto stmt : stmts) {
         checkNode(stmt);
     }
-    endScope(); // 出门解锁
+    endBlockScope(nodeIdx); // 出门解锁并记录块尾待释放符号
 }
 
 /** @brief 检查 if 语句。 */
 void TypeChecker::checkIfStmt(syntax::ASTNodeIndex nodeIdx) {
-    const auto &node = getNodeCtx(nodeIdx).node;
-    checkExpression(node.payload.if_stmt.condition);
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    const NKType condType = checkExpression(node.payload.if_stmt.condition);
+    if (condType.getBase() != NKBaseType::Unknown && condType.getBase() != NKBaseType::Bool) {
+        reportError(line, column, "If condition must be Bool.", niki::diagnostic::events::SemanticCode::NotABoolContext);
+    }
     checkStatement(node.payload.if_stmt.then_branch);
     if (node.payload.if_stmt.else_branch.isvalid()) {
         checkStatement(node.payload.if_stmt.else_branch);
@@ -135,16 +159,39 @@ void TypeChecker::checkIfStmt(syntax::ASTNodeIndex nodeIdx) {
 
 /** @brief 检查常量声明语句（复用变量声明检查）。 */
 void TypeChecker::checkConstDeclStmt(syntax::ASTNodeIndex nodeIdx) { checkVarDeclStmt(nodeIdx); }
-/** @brief 检查 loop 语句（占位实现）。 */
-void TypeChecker::checkLoopStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 loop 语句：可选条件须为 Bool，并递归检查循环体。 */
+void TypeChecker::checkLoopStmt(syntax::ASTNodeIndex nodeIdx) {
+    const auto [node, line, column] = getNodeCtx(nodeIdx);
+    if (node.payload.loop.condition.isvalid()) {
+        const NKType condType = checkExpression(node.payload.loop.condition);
+        if (condType.getBase() != NKBaseType::Unknown && condType.getBase() != NKBaseType::Bool) {
+            reportError(line, column, "Loop condition must be Bool.",
+                        niki::diagnostic::events::SemanticCode::NotABoolContext);
+        }
+    }
+    ++loopNestingDepth;
+    checkStatement(node.payload.loop.body);
+    --loopNestingDepth;
+}
 /** @brief 检查 match 语句（占位实现）。 */
 void TypeChecker::checkMatchStmt(syntax::ASTNodeIndex nodeIdx) {}
 /** @brief 检查 match case 语句（占位实现）。 */
 void TypeChecker::checkMatchCaseStmt(syntax::ASTNodeIndex nodeIdx) {}
-/** @brief 检查 continue 语句（占位实现）。 */
-void TypeChecker::checkContinueStmt(syntax::ASTNodeIndex nodeIdx) {}
-/** @brief 检查 break 语句（占位实现）。 */
-void TypeChecker::checkBreakStmt(syntax::ASTNodeIndex nodeIdx) {}
+/** @brief 检查 continue 语句：必须在循环体内。 */
+void TypeChecker::checkContinueStmt(syntax::ASTNodeIndex nodeIdx) {
+    const auto ctx = getNodeCtx(nodeIdx);
+    if (loopNestingDepth <= 0) {
+        reportError(ctx.line, ctx.column, "continue used outside loop.",
+                    niki::diagnostic::events::SemanticCode::GenericError);
+    }
+}
+/** @brief 检查 break 语句：必须在循环体内。 */
+void TypeChecker::checkBreakStmt(syntax::ASTNodeIndex nodeIdx) {
+    const auto ctx = getNodeCtx(nodeIdx);
+    if (loopNestingDepth <= 0) {
+        reportError(ctx.line, ctx.column, "break used outside loop.", niki::diagnostic::events::SemanticCode::GenericError);
+    }
+}
 /** @brief 检查 return 语句。 */
 void TypeChecker::checkReturnStmt(syntax::ASTNodeIndex nodeIdx) {
     const auto [node, line, column] = getNodeCtx(nodeIdx);

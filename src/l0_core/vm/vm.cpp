@@ -31,6 +31,7 @@ using namespace niki::vm;
  */
 std::expected<Value, InterpretResult> VM::executeChunk(const Chunk &chunk, bool should_print) {
     current_string_pool = &chunk.string_pool;
+    current_chunk_module_id_ = chunk.module_id;
 
     // 顶层脚本：用伪 ObjFunction 持有 chunk（与旧 interpret 前半段一致；不再在此自动调用 main）
     // 这样 VM 主循环始终“执行函数对象”，脚本与普通函数走同一执行协议。
@@ -75,6 +76,7 @@ std::expected<Value, InterpretResult> VM::executeFunction(ObjFunction *function,
         return std::unexpected(InterpretResult::RUNTIME_ERROR);
     }
     current_string_pool = &function->chunk.string_pool;
+    current_chunk_module_id_ = function->chunk.module_id;
 
     if (function->chunk.code.empty()) {
         return Value::makeNil();
@@ -96,8 +98,8 @@ std::expected<Value, InterpretResult> VM::executeFunction(ObjFunction *function,
  * @param id 字符串池 id。
  * @return 命中返回函数指针，否则 nullptr。
  */
-ObjFunction *VM::lookupGlobalFunctionById(uint32_t id) {
-    auto global_function_iter = globals.find(id);
+ObjFunction *VM::lookupGlobalFunctionById(ModuleId module_id, uint32_t name_id) {
+    auto global_function_iter = globals.find(GlobalKey{module_id, name_id});
     return global_function_iter == globals.end() ? nullptr : global_function_iter->second;
 }
 
@@ -112,7 +114,7 @@ ObjFunction *VM::lookupGlobalFunctionByName(const std::string &name) {
     }
     for (uint32_t string_index = 0; string_index < current_string_pool->size(); ++string_index) {
         if ((*current_string_pool)[string_index] == name) {
-            return lookupGlobalFunctionById(string_index);
+            return lookupGlobalFunctionById(current_chunk_module_id_, string_index);
         }
     }
     return nullptr;
@@ -1076,11 +1078,13 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
 
             // 安全反序列化：检查 object 的 type 来分类存放
             Object *object = static_cast<Object *>(funcVal.value().as.object);
+            GlobalKey key{current_chunk_module_id_, 0};
             if (object != nullptr && object->type == ObjType::StructDef) {
-                global_objects[static_cast<ObjStructDef *>(static_cast<void *>(object))->name_id] = object;
+                key.name_id = static_cast<ObjStructDef *>(static_cast<void *>(object))->name_id;
+                global_objects[key] = object;
             } else if (object != nullptr && object->type == ObjType::Function) {
-                globals[static_cast<ObjFunction *>(static_cast<void *>(object))->name_id] =
-                    static_cast<ObjFunction *>(static_cast<void *>(object));
+                key.name_id = static_cast<ObjFunction *>(static_cast<void *>(object))->name_id;
+                globals[key] = static_cast<ObjFunction *>(static_cast<void *>(object));
             } else {
                 runtime_error("Invalid global definition type.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -1095,11 +1099,13 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 return std::unexpected(funcVal.error());
             }
             Object *object = static_cast<Object *>(funcVal.value().as.object);
+            GlobalKey key{current_chunk_module_id_, 0};
             if (object != nullptr && object->type == ObjType::StructDef) {
-                global_objects[static_cast<ObjStructDef *>(static_cast<void *>(object))->name_id] = object;
+                key.name_id = static_cast<ObjStructDef *>(static_cast<void *>(object))->name_id;
+                global_objects[key] = object;
             } else if (object != nullptr && object->type == ObjType::Function) {
-                globals[static_cast<ObjFunction *>(static_cast<void *>(object))->name_id] =
-                    static_cast<ObjFunction *>(static_cast<void *>(object));
+                key.name_id = static_cast<ObjFunction *>(static_cast<void *>(object))->name_id;
+                globals[key] = static_cast<ObjFunction *>(static_cast<void *>(object));
             } else {
                 runtime_error("Invalid global definition type.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -1116,12 +1122,12 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
             uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
 
-            // 先查函数，再查结构体蓝图
-            auto global_function_iter = globals.find(name_id);
+            GlobalKey key{current_chunk_module_id_, name_id};
+            auto global_function_iter = globals.find(key);
             if (global_function_iter != globals.end()) {
                 currentRegisters()[targetReg] = Value::makeObject(global_function_iter->second);
             } else {
-                auto global_object_iter = global_objects.find(name_id);
+                auto global_object_iter = global_objects.find(key);
                 if (global_object_iter != global_objects.end()) {
                     currentRegisters()[targetReg] = Value::makeObject(global_object_iter->second);
                 } else {
@@ -1141,11 +1147,12 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
             }
             uint32_t name_id = static_cast<uint32_t>(nameIdVal.value().as.integer);
 
-            auto global_function_iter = globals.find(name_id);
+            GlobalKey key{current_chunk_module_id_, name_id};
+            auto global_function_iter = globals.find(key);
             if (global_function_iter != globals.end()) {
                 currentRegisters()[targetReg] = Value::makeObject(global_function_iter->second);
             } else {
-                auto global_object_iter = global_objects.find(name_id);
+                auto global_object_iter = global_objects.find(key);
                 if (global_object_iter != global_objects.end()) {
                     currentRegisters()[targetReg] = Value::makeObject(global_object_iter->second);
                 } else {
@@ -1170,10 +1177,11 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             Object *object = static_cast<Object *>(value.as.object);
+            GlobalKey key{current_chunk_module_id_, name_id};
             if (object->type == ObjType::StructDef) {
-                global_objects[name_id] = object;
+                global_objects[key] = object;
             } else if (object->type == ObjType::Function) {
-                globals[name_id] = static_cast<ObjFunction *>(static_cast<void *>(object));
+                globals[key] = static_cast<ObjFunction *>(static_cast<void *>(object));
             } else {
                 runtime_error("Top-level symbol write only supports function/struct definitions.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
@@ -1195,10 +1203,11 @@ std::expected<Value, InterpretResult> VM::run(bool should_print) {
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);
             }
             Object *object = static_cast<Object *>(value.as.object);
+            GlobalKey key{current_chunk_module_id_, name_id};
             if (object->type == ObjType::StructDef) {
-                global_objects[name_id] = object;
+                global_objects[key] = object;
             } else if (object->type == ObjType::Function) {
-                globals[name_id] = static_cast<ObjFunction *>(static_cast<void *>(object));
+                globals[key] = static_cast<ObjFunction *>(static_cast<void *>(object));
             } else {
                 runtime_error("Top-level symbol write only supports function/struct definitions.");
                 return std::unexpected(InterpretResult::RUNTIME_ERROR);

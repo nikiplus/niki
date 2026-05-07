@@ -229,14 +229,33 @@ const std::vector<InstOpcodeChecklistEntry> kInstOpcodeChecklist = {
     {InstKind::Jump, vm::OPCODE::OP_JMP, "Forward jump; patched to OP_LOOP for backward edge."},
     {InstKind::Branch, vm::OPCODE::OP_JNZ, "Two-instruction lowering: JNZ + JMP/LOOP."},
     {InstKind::Phi, std::nullopt, "SSA phi not supported in MVP lowering."},
+    {InstKind::Free, vm::OPCODE::OP_FREE, "Release heap object and set register to Nil."},
 };
 //------------------------------------------------------------------------------
 // PATCH: 分支/跳转回填记录。
 //------------------------------------------------------------------------------
+/**
+ * CHG-20260506 PendingJumpPatch 增加 original_opcode + opcode_off_back 字段。
+ *
+ * 旧实现仅有 offset_u16_code_index / target_block_id / offset_base_code_index 三个字段。
+ * PATCH_APPLY 阶段对所有跳转指令统一覆盖 opcode 为 OP_JMP（或回边 OP_LOOP），
+ * 且假设 opcode 总是在 u16 offset 前 1 字节处。
+ *
+ * 问题 1（漏盖 opcode）：Branch lower 生成了 JNZ + JMP 两条指令。回填时把 JNZ 的 opcode
+ *                   字节覆写为 OP_JMP，条件分支退化为无条件跳转，VM 不再判断条件寄存器。
+ * 问题 2（漏盖格式）：JNZ 编码为「opcode + cond_reg + u16_offset」，
+ *                   opcode 在 u16 offset 前 2 字节，旧逻辑按 1 字节偏移覆盖，
+ *                   实际改动了 cond_reg 字节而非 opcode 字节，造成条件寄存器损坏。
+ *
+ * 修复：original_opcode 保留 lowering 时写入的原始 opcode；
+ *       opcode_off_back 区分指令格式（JMP=1, JNZ=2）。
+ */
 struct PendingJumpPatch {
     size_t offset_u16_code_index = 0; // 指向 16-bit offset 的首字节位置
     BlockId target_block_id = std::numeric_limits<BlockId>::max();
     size_t offset_base_code_index = 0; // 相对偏移基准（通常是该指令末尾）
+    vm::OPCODE original_opcode = vm::OPCODE::OP_JMP; // 原始 opcode，patch 时保留
+    size_t opcode_off_back = 1; // opcode 在 u16 offset 之前的字节偏移（JMP=1, JNZ=2）
 };
 // FUNC: 降解单函数主体。
 /**
@@ -639,6 +658,8 @@ std::expected<vm::ObjFunction *, std::string> lowerOneFunction(const ModuleIR &m
                     .offset_u16_code_index = offset_u16_code_index,
                     .target_block_id = static_cast<BlockId>(first_u32),
                     .offset_base_code_index = writer.chunk.code.size(),
+                    .original_opcode = vm::OPCODE::OP_JMP,
+                    .opcode_off_back = 1,
                 });
                 break;
             }
@@ -664,6 +685,8 @@ std::expected<vm::ObjFunction *, std::string> lowerOneFunction(const ModuleIR &m
                     .offset_u16_code_index = jnz_offset_u16_index,
                     .target_block_id = static_cast<BlockId>(second_u32),
                     .offset_base_code_index = writer.chunk.code.size(),
+                    .original_opcode = vm::OPCODE::OP_JNZ,
+                    .opcode_off_back = 2,  // JNZ: opcode + reg, offset 在 reg 之后
                 });
                 // JMP false_target
                 if (auto emitted = writer.writeRunnableOp(vm::OPCODE::OP_JMP, source_line, source_col);
@@ -676,7 +699,21 @@ std::expected<vm::ObjFunction *, std::string> lowerOneFunction(const ModuleIR &m
                     .offset_u16_code_index = jmp_offset_u16_index,
                     .target_block_id = static_cast<BlockId>(third_u32),
                     .offset_base_code_index = writer.chunk.code.size(),
+                    .original_opcode = vm::OPCODE::OP_JMP,
+                    .opcode_off_back = 1,
                 });
+                break;
+            }
+            case InstKind::Free: {
+                uint8_t target_reg = 0;
+                if (!requireVReg(dst_kind, dst_u32, &target_reg)) {
+                    return std::unexpected("Free expects dst VReg <= 255.");
+                }
+                if (auto emitted = writer.writeRunnableOp(vm::OPCODE::OP_FREE, source_line, source_col);
+                    !emitted.has_value()) {
+                    return std::unexpected(emitted.error());
+                }
+                writer.writeByte(target_reg, source_line, source_col);
                 break;
             }
             case InstKind::Return: {
@@ -702,7 +739,12 @@ std::expected<vm::ObjFunction *, std::string> lowerOneFunction(const ModuleIR &m
         }
     }
 
-    // PATCH_APPLY: 按目标 block 入口回填相对偏移。
+    // CHG-20260506 PATCH_APPLY: 按目标 block 入口回填相对偏移。
+    // 旧实现：所有 pending patch 统一设 jump_opcode = OP_JMP（回边时 OP_LOOP），
+    //         且 opcode 位置固定为 offset_u16_code_index - 1。
+    // 修复：保留 PendingJumpPatch::original_opcode 并在前向跳转时不变更；
+    //       通过 opcode_off_back 区分 JMP(1字节) vs JNZ(2字节) 的指令格式。
+    //       回边时仅把 JMP 翻转为 LOOP，JNZ 保持原样（条件分支始终前向）。
     for (const PendingJumpPatch &patch : pending_patches) {
         auto target_iter = block_entry_code_index.find(patch.target_block_id);
         if (target_iter == block_entry_code_index.end()) {
@@ -710,25 +752,30 @@ std::expected<vm::ObjFunction *, std::string> lowerOneFunction(const ModuleIR &m
         }
         const size_t target_code_index = target_iter->second;
         size_t relative_offset = 0;
-        vm::OPCODE jump_opcode = vm::OPCODE::OP_JMP;
+        vm::OPCODE jump_opcode = patch.original_opcode;
         if (target_code_index < patch.offset_base_code_index) {
-            // 回边：使用 OP_LOOP（向后跳）。
+            // 回边：JMP → LOOP，JNZ → JNZ 不变（JNZ 始终保持前向语义）
             relative_offset = patch.offset_base_code_index - target_code_index;
-            jump_opcode = vm::OPCODE::OP_LOOP;
+            if (jump_opcode == vm::OPCODE::OP_JMP) {
+                jump_opcode = vm::OPCODE::OP_LOOP;
+            }
         } else {
-            // 前跳：使用 OP_JMP（向前跳）。
+            // 前跳：保持原 opcode
             relative_offset = target_code_index - patch.offset_base_code_index;
         }
         if (relative_offset > std::numeric_limits<uint16_t>::max()) {
             return std::unexpected("Jump offset exceeds uint16 range.");
         }
-        // PATCH_OPCODE: patch.offset_u16_code_index 的前一字节就是 opcode 位。
-        const size_t opcode_code_index = patch.offset_u16_code_index - 1;
+        // PATCH_OPCODE: 根据指令格式计算 opcode 字节位置。
+        // JMP: opcode + u16_offset  → opcode 在 offset 前 1 字节
+        // JNZ: opcode + reg + u16   → opcode 在 offset 前 2 字节
+        const size_t opcode_code_index = patch.offset_u16_code_index - patch.opcode_off_back;
         writer.chunk.code[opcode_code_index] = vm::ToInt(jump_opcode);
         writer.patchU16(patch.offset_u16_code_index, static_cast<uint16_t>(relative_offset));
     }
 
     function_object->chunk = std::move(writer.chunk);
+    function_object->chunk.module_id = module_ir.module_id;
     return function_object;
 }
 } // namespace

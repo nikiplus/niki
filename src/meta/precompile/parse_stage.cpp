@@ -3,7 +3,7 @@
 #include "niki/l0_core/syntax/scanner.hpp"
 
 /** @meta_precompile_parse_impl: 预编译解析阶段实现
- * 该文件仅负责 scan+parse，把源文本转成 `GlobalCompilationUnit` 可消费结构。
+ * 该文件仅负责 scan+parse，把源文本转成 `CompilationUnit` 可消费结构。
  * 它不处理符号、类型和模块可见性，保持 parse 阶段单一职责。
  */
 namespace niki::meta::precompile {
@@ -13,7 +13,7 @@ namespace niki::meta::precompile {
  * @param unit 编译单元，输入 source/source_path，输出 tokens/root。
  * @return std::expected<void, diagnostic::DiagnosticBag> 成功返回空，失败返回词法或语法诊断。
  */
-std::expected<void, diagnostic::DiagnosticBag> parseIntoCompilationUnit(GlobalCompilationUnit &unit) {
+std::expected<void, diagnostic::DiagnosticBag> parseIntoCompilationUnit(CompilationUnit &unit) {
     unit.tokens.clear();
     syntax::Scanner scanner(unit.source, unit.source_path);
     while (true) {

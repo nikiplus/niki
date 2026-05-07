@@ -53,7 +53,7 @@ class Scanner {
      * @return token（错误时返回 TOKEN_ERROR 并写入 diagnostics）。
      */
     Token scanToken();
-    // scanner扫描后所产出的token 并不在这里存储，而是存在global_compilation.hpp中。
+    // scanner扫描后所产出的token 并不在这里存储，而是存在compilation_unit.hpp中。
 
     // 统一错误日志输出
     /** @brief 是否存在扫描阶段错误。 */

@@ -1,4 +1,4 @@
-#include "../test_helpers.hpp"
+#include "../helpers/test_helpers.hpp"
 #include "ast_printer.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/syntax/ast_payloads.hpp"
@@ -203,7 +203,7 @@ TEST(ParserExprTest, FunctionCall) {
     auto unit = fixture.wrapAndParse("var x = foo(1,2); return x;");
     // 使用自定义包裹方式
     unit = [&]() {
-        GlobalCompilationUnit u(fixture.interner_);
+        CompilationUnit u(fixture.interner_);
         u.source = source;
         u.source_path = "__test__";
         syntax::Scanner scanner(u.source, u.source_path);
@@ -308,7 +308,7 @@ TEST(ParserExprTest, MultipleFunctionsInModule) {
         "func helper(x:int)->int{return x+1;}"
         "func __test_main()->int{return helper(41);}"
         "}";
-    GlobalCompilationUnit unit(fixture.interner_);
+    CompilationUnit unit(fixture.interner_);
     unit.source = source;
     unit.source_path = "__test__";
     syntax::Scanner scanner(unit.source, unit.source_path);

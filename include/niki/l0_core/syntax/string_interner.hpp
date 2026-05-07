@@ -11,15 +11,15 @@
 namespace niki::syntax {
 
 /*
- * global_interner.hpp —— Driver 级字符串驻留表。
+ * string_interner.hpp —— Driver 级字符串驻留表。
  *
- * 该模块在一次编译会话内维护“字符串 -> 稳定 id”映射，避免各 ASTPool 各自编号导致
+ * 该模块在一次编译会话内维护"字符串 -> 稳定 id"映射，避免各 ASTPool 各自编号导致
  * 跨模块链接阶段出现同名异 id 的不一致问题。
  */
-class GlobalInterner {
+class StringInterner {
   public:
     /** @brief 构造 interner，并预热内置类型名。 */
-    GlobalInterner();
+    StringInterner();
 
     /** @brief 驻留字符串，已存在则返回旧 id。 */
     uint32_t intern(std::string_view str);

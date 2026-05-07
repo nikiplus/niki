@@ -1,9 +1,13 @@
 #include "niki/l0_core/semantic/type_checker.hpp"
+#include "niki/l0_core/semantic/module_namespace.hpp"
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace niki::semantic {
 
@@ -28,17 +32,19 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
  * @return 成功返回空结果，失败返回诊断集合。
  */
 std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(
-    syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::GlobalSymbolTable &global_symbols,
-    const niki::GlobalTypeArena &global_arena) {
+    syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::TypeArena &global_arena,
+    ModuleId module_id, const ModuleNamespace &module_namespace) {
     currentPool = &pool;
     diagnostics = niki::diagnostic::DiagnosticBag{};
     symbols.clear();
     currentDepth = 0;
     inFunction = false;
+    loopNestingDepth = 0;
 
-    globalSymbols = &global_symbols;
-    globalArena = &global_arena;
+    typeArena = &global_arena;
     visibleSymbols = nullptr;
+    currentModuleId = module_id;
+    moduleNamespace = &module_namespace;
 
     // 1. node_types 已经在 ASTPool 分配时预填充了 Unknown，
     // 我们不需要再做初始化操作，直接开始遍历覆盖它即可。
@@ -47,9 +53,10 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
     checkNode(root);
     // 清理上下文，避免悬挂引用
     currentPool = nullptr;
-    globalSymbols = nullptr;
-    globalArena = nullptr;
+    typeArena = nullptr;
     visibleSymbols = nullptr;
+    currentModuleId = kInvalidModuleId;
+    moduleNamespace = nullptr;
 
     if (!diagnostics.empty()) {
         return std::unexpected(std::move(diagnostics));
@@ -62,24 +69,27 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
  * @brief 类型检查入口（带单元可见符号上下文）。
  */
 std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::check(
-    syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::GlobalSymbolTable &global_symbols,
-    const niki::GlobalTypeArena &global_arena, const UnitVisibleSymbols &visible_symbols) {
+    syntax::ASTPool &pool, syntax::ASTNodeIndex root, const niki::TypeArena &global_arena,
+    const UnitVisibleSymbols &visible_symbols, ModuleId module_id, const ModuleNamespace &module_namespace) {
     currentPool = &pool;
     diagnostics = niki::diagnostic::DiagnosticBag{};
     symbols.clear();
     currentDepth = 0;
     inFunction = false;
+    loopNestingDepth = 0;
 
-    globalSymbols = &global_symbols;
-    globalArena = &global_arena;
+    typeArena = &global_arena;
     visibleSymbols = &visible_symbols;
+    currentModuleId = module_id;
+    moduleNamespace = &module_namespace;
 
     checkNode(root);
 
     currentPool = nullptr;
-    globalSymbols = nullptr;
-    globalArena = nullptr;
+    typeArena = nullptr;
     visibleSymbols = nullptr;
+    currentModuleId = kInvalidModuleId;
+    moduleNamespace = nullptr;
 
     if (!diagnostics.empty()) {
         return std::unexpected(std::move(diagnostics));
@@ -87,18 +97,74 @@ std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> TypeChecker::che
     return TypeCheckResult{};
 }
 
-/** @brief 结束当前作用域并回收本层局部符号。 */
-void TypeChecker::endScope() {
-    // 【作用域退出（栈回退）】
-    // 当遇到 } 或者执行完一个代码块时调用。
-    // 我们把符号表看作一个栈，从后往前找，只要符号的 depth 等于当前深度，就说明它是这个代码块里的局部变量，
-    // 出了代码块就死了，必须把它从栈顶弹出去（销毁）。
+bool TypeChecker::isHeapType(NKType type) {
+    switch (type.getBase()) {
+    case NKBaseType::Array:
+    case NKBaseType::Map:
+    case NKBaseType::Object:
+    case NKBaseType::String:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void TypeChecker::tryMarkRhsIdentifierMovedForAssign(uint32_t rhs_name_id) {
+    for (int i = static_cast<int>(symbols.size()) - 1; i >= 0; --i) {
+        if (symbols[i].depth < currentDepth) {
+            break;
+        }
+        if (symbols[i].name_id != rhs_name_id) {
+            continue;
+        }
+        if (symbols[i].is_owned && isHeapType(symbols[i].type) && !symbols[i].is_moved) {
+            symbols[i].is_moved = true;
+        }
+        break;
+    }
+}
+
+/** @brief 弹出当前作用域：可选记录本层待 OP_FREE 的 owned 符号到 ASTPool。 */
+void TypeChecker::popScope(std::optional<uint32_t> block_exit_key, std::optional<uint32_t> func_exit_key) {
+    if (!block_exit_key.has_value() && !func_exit_key.has_value()) {
+        while (!symbols.empty() && symbols.back().depth == currentDepth) {
+            symbols.pop_back();
+        }
+        currentDepth--;
+        return;
+    }
+
+    std::vector<uint32_t> names;
+    names.reserve(8);
+    for (int i = static_cast<int>(symbols.size()) - 1; i >= 0; --i) {
+        if (symbols[i].depth < currentDepth) {
+            break;
+        }
+        if (symbols[i].is_owned && !symbols[i].is_moved) {
+            names.push_back(symbols[i].name_id);
+        }
+    }
+    if (block_exit_key.has_value()) {
+        currentPool->block_exit_free_name_ids[*block_exit_key] = std::move(names);
+    } else if (func_exit_key.has_value()) {
+        currentPool->func_exit_free_name_ids[*func_exit_key] = std::move(names);
+    }
+
     while (!symbols.empty() && symbols.back().depth == currentDepth) {
         symbols.pop_back();
     }
-    // 退出后，当前作用域深度减一
     currentDepth--;
 }
+
+void TypeChecker::endBlockScope(syntax::ASTNodeIndex block_stmt_node) {
+    popScope(block_stmt_node.index, std::nullopt);
+}
+
+void TypeChecker::endFunctionLocalScope(syntax::ASTNodeIndex function_decl_node) {
+    popScope(std::nullopt, function_decl_node.index);
+}
+
+void TypeChecker::endScopePlain() { popScope(std::nullopt, std::nullopt); }
 
 /**
  * @brief 在当前作用域声明符号。
@@ -136,12 +202,20 @@ NKType TypeChecker::resolveSymbol(uint32_t name_id, uint32_t line, uint32_t colu
     // 从栈顶（从后往前）开始查
     for (int i = static_cast<int>(symbols.size()) - 1; i >= 0; i--) {
         if (symbols[i].name_id == name_id) {
+            if (symbols[i].is_moved) {
+                reportError(line, column, "Use of moved value.",
+                            niki::diagnostic::events::SemanticCode::UseOfMovedValue);
+                return NKType::makeUnknown();
+            }
             return symbols[i].type;
         }
     }
 
-    if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
-        return global_sym->type;
+    // 通过 ModuleNamespace 查询同模块符号（O(1) per-module）
+    if (moduleNamespace != nullptr && currentModuleId != kInvalidModuleId) {
+        if (const auto *ns_sym = moduleNamespace->find(currentModuleId, name_id); ns_sym != nullptr) {
+            return ns_sym->type;
+        }
     }
     if (visibleSymbols != nullptr) {
         auto it = visibleSymbols->tables.find(name_id);
@@ -194,11 +268,13 @@ NKType TypeChecker::resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx) {
         if (name_id == currentPool->ID_STRING)
             return NKType(NKBaseType::String, -1);
 
-        // 1) 先查全局符号表（同模块/已预声明的顶层类型别名/结构体/函数签名）
-        if (const auto *global_sym = globalSymbols->find(name_id); global_sym != nullptr) {
-            if (global_sym->kind == niki::Kind::Struct || global_sym->kind == niki::Kind::Function ||
-                global_sym->kind == niki::Kind::TypeAlias) {
-                return global_sym->type;
+        // 1) 通过 ModuleNamespace 查询同模块符号
+        if (moduleNamespace != nullptr && currentModuleId != kInvalidModuleId) {
+            if (const auto *ns_sym = moduleNamespace->find(currentModuleId, name_id); ns_sym != nullptr) {
+                if (ns_sym->kind == niki::Kind::Struct || ns_sym->kind == niki::Kind::Function ||
+                    ns_sym->kind == niki::Kind::TypeAlias) {
+                    return ns_sym->type;
+                }
             }
         }
 

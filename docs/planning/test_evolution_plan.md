@@ -64,6 +64,75 @@ NIKI 语言的底层结构决定了测试的拓扑顺序：
 
 下文的分波路径已经按此拓扑依赖重新排列。
 
+### 0.2 已发现的具体链路断点（2026-05-05 审查）
+
+经过对测试文件与实际代码实现的逐层对照审查，发现当前测试体系存在**"各层自证清白、无人串联验证"**的系统性缺口。以下为具体发现：
+
+#### 0.2.1 函数调用全链路断裂（代码已写，VM 执行不通）
+
+| 层 | 代码位置 | 状态 |
+|----|---------|:----:|
+| Parser | `parser_expression.cpp:347` — `CallExpr` 解析 | 有代码，有测试 (A-16) |
+| TypeChecker | `type_checker_expr.cpp:329` — `checkCallExpr` | 有代码，有测试 (B-17) |
+| IR Builder | `builder_expression.cpp:259-300` — `InstKind::Call` 发射 | 有代码 |
+| Lower | `lower_to_chunk.cpp:600-624` — `OP_CALL` 降级 | 有代码 |
+| VM | `vm.cpp:1280-1340` — `OP_CALL` 解释器（栈帧推入/参数滑动窗口） | 有代码 |
+| **端到端** | `driver_project_test.cpp` D-3/D-4 | **改为硬断言后失败** |
+
+此前 D-3/D-4 使用软断言（"失败也可接受"），`compileParsedUnit` 返回错误时不会触发 `ASSERT`。2026-05-05 将这些测试改为硬断言后，立即暴露了 VM 中 `OP_CALL` 的调用约定 Bug——**代码已写完整，但各层从未被同一组数据串联验证过**。
+
+#### 0.2.2 控制流（if/loop/match）IR 代码已存在但零端到端测试
+
+| 能力 | Parser 测试 | TypeChecker 测试 | IR Builder 代码 | IR Builder 测试 | 端到端测试 |
+|------|:----------:|:---------------:|:--------------:|:--------------:|:---------:|
+| if/else | S-1, S-2 | T-1（故意放水） | `builder_statement.cpp:152-190`（完整 CFG） | **无** | **无** |
+| loop | S-3, S-4 | **无** | `builder_statement.cpp:192-236`（完整 CFG + break 回填） | **无** | **无** |
+| break | S-4 | **无** | `builder_statement.cpp:238-248`（占位跳转 + loop_stack） | **无** | **无** |
+| continue | S-5 | **无** | `builder_statement.cpp:250-259`（跳转到 loop.cond） | **无** | **无** |
+| match | S-6 | **无** | **未实现** | **无** | **无** |
+| 赋值 | S-7 | T-2（类型不匹配） | `builder_statement.cpp:119-150`（支持简单+复合赋值） | **无** | **无** |
+| nock | S-8 | **无** | **仅占位，不生成指令** | **无** | **无** |
+
+关键发现：`builder_statement.cpp` 中 if/loop/break/continue 的 CFG 骨架代码**已完整实现**——包括基本块管理（`beginBlock`/`switchBlock`）、条件分支（`emitBranchOnReg`）、跳转（`emitJumpToBlock`）、break 占位跳转的栈式回填——但 `test/ir/builder_test.cpp` 只覆盖表达式，**从未验证过任何语句的 IR 生成**。
+
+#### 0.2.3 TypeChecker 语句测试放水
+
+`type_checker_stmt_test.cpp` 的 T-1（IfStatementParses）使用 `SUCCEED()` 无条件通过，不对 `runTypeCheck` 的返回值做任何断言：
+
+```cpp
+TEST(TypeCheckerStmtTest, IfStatementParses) {
+    ...
+    auto result = fixture.runTypeCheck(unit);
+    // 当前 checkIfStmt 只检查表达式但不强制 Bool 类型校验
+    // 只要不崩溃即可
+    SUCCEED();
+}
+```
+
+这意味着 TypeChecker 对 if 语句的处理**没有任何有效的正确性验证**——它可以返回成功、返回失败、甚至内部错误后静默传播到下层，测试都会绿灯。
+
+#### 0.2.4 覆盖矩阵与真实状态严重偏离
+
+文档 2.1 节覆盖矩阵将 `if/loop/match/assignment/nock` 的 Parser、TypeChecker、IR Builder 全部标为"空白"，但实际：
+
+- **Parser**：`parser_stmt_test.cpp` 已覆盖所有 8 组语句
+- **TypeChecker**：`type_checker_stmt_test.cpp` 覆盖了部分语句（但测试放水或被跳过）
+- **IR Builder**：if/loop/break/continue/assignment 的代码**全部存在**，match/nock 缺失
+
+矩阵的"空白"标记掩盖了真实问题：**不是代码没写，是没测**。
+
+#### 0.2.5 根因：测试金字塔倒置
+
+```
+        单元测试（各层独立）  ████████████████████  过多
+        集成测试（跨两层）    ██                    严重不足
+        端到端测试（全链路）  ███                   仅表达式通过
+                                                    
+        compileAndRun 从未被用于 if/loop/match 验证
+```
+
+`compileAndRun` 是测试夹具中唯一能从源码直通 VM 返回值的 API，但它的调用仅出现在 `builder_test.cpp`（2 次，表达式）和 `driver_project_test.cpp`（3 次，表达式+变量）。对 if/loop/match/函数调用，**零次**调用。
+
 ---
 
 ## 1. 核心纪律
@@ -110,27 +179,37 @@ EXPECT_EQ(diags[0].severity, diagnostic::DiagnosticSeverity::Error);
 
 ## 2. 当前测试现状快照
 
-### 2.1 已覆盖 / 未覆盖矩阵
+### 2.1 真实覆盖矩阵（2026-05-05 更新）
+
+> **注意**：下表基于代码实现状态而非测试覆盖状态。`⚠️代码存在/未测` 表示该层代码已实现但在测试体系中未被验证。
 
 | 语法类别 | 解析器 (Parser) | 类型检查 (TypeChecker) | IR 构建 (Builder) | 运行时验证 |
 |---------|:-------------:|:--------------------:|:---------------:|:---------:|
-| **表达式 (Expr)** | ✅ A-1~A-21 (21 用例) | ✅ B-1~B-20, E-2~E-3 (23 用例) | ✅ C-1~C-12 (12 用例) | ⚠️ D-1~D-5 (5 用例, 全整数) |
-| **变量声明 (var)** | ✅ 间接测试 | ✅ B-4, B-6, B-7, B-19, B-20 | ✅ C-7, C-12 | ⚠️ 间接 |
+| **表达式 (Expr)** | ✅ A-1~A-23 (23 用例) | ✅ B-1~B-20, E-2~E-3 (23 用例) | ✅ C-1~C-12 (12 用例) | ✅ D-1~D-5 (表达式/变量) |
+| **变量声明 (var)** | ✅ 间接测试 | ✅ B-4, B-6, B-7, B-19, B-20 | ✅ C-7, C-12 | ✅ D-2 |
 | **常量声明 (const)** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **赋值语句 (=, +=等)** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **If-Else** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Loop** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Break/Continue** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Match** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Return** | ✅ 间接测试 | ✅ B-15, B-16 | ✅ C-1~C-12 隐含 | ✅ 间接 |
-| **Nock** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Struct 声明** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Enum 声明** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Interface/Impl** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Import/Export** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Type Alias** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **System / Flow / Tag** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
-| **Component / Kits** | ❌ 空白 | ❌ 空白 | ❌ 空白 | ❌ 空白 |
+| **赋值语句 (=, +=等)** | ✅ S-7 | ⚠️ T-2 (部分) | ⚠️代码存在/未测 | ❌ 未测 |
+| **If-Else** | ✅ S-1, S-2 | ⚠️ T-1 (测试放水) | ⚠️代码存在/未测 | ❌ 未测 |
+| **Loop** | ✅ S-3, S-4 | ❌ 未测 | ⚠️代码存在/未测 | ❌ 未测 |
+| **Break/Continue** | ✅ S-4, S-5 | ❌ 未测 | ⚠️代码存在/未测 | ❌ 未测 |
+| **Match** | ✅ S-6 | ❌ 未测 | ❌ 未实现 | ❌ 未测 |
+| **Return** | ✅ 间接测试 | ✅ B-15, B-16, T-5, T-6 | ✅ C-1~C-12 隐含 | ✅ 间接 |
+| **Nock** | ✅ S-8 | ❌ 未测 | ❌ 仅占位 | ❌ 未测 |
+| **函数调用** | ✅ A-16 | ✅ B-17 | ⚠️代码存在/未测 | ❌ 断 (D-3/D-4) |
+| **Struct 声明** | ❌ 未测 | ❌ 未测 | ❌ 未测 | N/A |
+| **Enum 声明** | ❌ 未测 | ❌ 未测 | ❌ 未测 | N/A |
+| **Interface/Impl** | ❌ 未测 | ❌ 未测 | ❌ 未测 | N/A |
+| **Import/Export** | ❌ 未测 | ❌ 未测 | ❌ 未测 | N/A |
+| **Type Alias** | ❌ 未测 | ❌ 未测 | ❌ 未测 | N/A |
+| **System / Flow / Tag** | ❌ 未测 | ❌ 未测 | ❌ 未测 | N/A |
+| **Component / Kits** | ❌ 未测 | ❌ 未测 | ❌ 未测 | N/A |
+
+**图例**：
+- ✅ = 代码存在且已通过测试验证
+- ⚠️代码存在/未测 = 代码已实现，但测试未覆盖或测试放水
+- ❌ 未测 = 代码已实现但未被测试（或未实现）
+- ❌ 空白 = 代码与测试均为空白
+- ❌ 断 = 全链路已写但端到端执行失败
 
 ### 2.2 错误码断言现状
 
@@ -149,19 +228,21 @@ EXPECT_EQ(diags[0].severity, diagnostic::DiagnosticSeverity::Error);
 | 文件 | 阶段代码 | 用例数 | 当前状态 |
 |------|---------|:------:|:--------:|
 | `test/syntax/scanner_test.cpp` | Phase 0 | 7 | 充分 |
-| `test/syntax/parser_test.cpp` | Phase A | 21 | 仅为表达式 |
+| `test/syntax/parser_test.cpp` | Phase A | 23 | 表达式+包裹结构 |
+| `test/syntax/parser_stmt_test.cpp` | Phase S | 8 | 语句解析，已存在 |
 | `test/syntax/ast_printer.hpp` | — | 辅助工具 | 仅为表达式 |
-| `test/semantic/type_checker_test.cpp` | Phase B | 23 | 仅为表达式 |
+| `test/semantic/type_checker_test.cpp` | Phase B | 23 | 表达式，错误码已细化 |
+| `test/semantic/type_checker_stmt_test.cpp` | Phase T | 6 | 语句类型检查，已存在 |
 | `test/ir/builder_test.cpp` | Phase C | 12 | 仅为表达式 |
 | `test/ir/verify_test.cpp` | — | 3 | 偏弱 |
 | `test/ir/module_ir_test.cpp` | — | 3 | 可接受 |
 | `test/ir/lower_to_chunk_test.cpp` | — | 2 | 偏弱 |
 | `test/linker/linker_test.cpp` | — | 2 | 充分，含错误码 |
 | `test/runtime/launcher_test.cpp` | — | 1 | 偏弱 |
-| `test/driver/driver_project_test.cpp` | Phase D | 5 | 覆盖浅 |
+| `test/driver/driver_project_test.cpp` | Phase D | 5 | 含函数调用硬断言(2 项失败) |
 | `test/diagnostic/diagnostic_test.cpp` | — | 4 | 充分 |
 | `test/l1_domain/domain_split_test.cpp` | — | 1 | 偏弱 |
-| `test/test_helpers.hpp` | — | 夹具 | 仅支持表达式 |
+| `test/helpers/test_helpers.hpp` | — | 夹具 | 仅支持表达式 |
 
 ---
 
@@ -218,7 +299,7 @@ TEST(ParserExprTest, MultipleFunctionsInModule) {
         "func helper(x:int)->int{return x+1;}"
         "func __test_main()->int{return helper(41);}"
         "}";
-    GlobalCompilationUnit unit(fixture.interner_);
+    CompilationUnit unit(fixture.interner_);
     unit.source = source;
     unit.source_path = "__test__";
     syntax::Scanner scanner(unit.source, unit.source_path);
@@ -520,7 +601,7 @@ add_executable(niki_tests
     test/linker/linker_test.cpp
     test/runtime/launcher_test.cpp
     test/l1_domain/domain_split_test.cpp
-    test/test_helpers.hpp
+    test/helpers/test_helpers.hpp
 )
 ```
 
@@ -565,10 +646,8 @@ add_executable(niki_tests
 ```
 test/
 ├── helpers/
-│   ├── test_helpers.hpp         # 保留，增强 wrapAndParse 支持多返回类型
+│   ├── test_helpers.hpp         # ✅ 保留，增强 wrapAndParse 支持多返回类型
 │   └── module_builder.hpp       # [第三波] 新增通用模块构造器
-│
-├── syntax/
 │   ├── scanner_test.cpp                # 保留
 │   ├── parser_test.cpp                 # 保留，[第一波增强] 新增 Module/Function 显式断言
 │   ├── parser_stmt_test.cpp            # [第一波新增] 8 组语句解析
@@ -607,7 +686,7 @@ test/
 ├── l1_domain/
 │   └── domain_split_test.cpp     # 保留，[第三波增强]
 │
-└── test_helpers.hpp              # [第三波重构] 保留并增强
+└── test_helpers.hpp              # [已迁移至 helpers/ 目录]
 ```
 
 ---
@@ -628,6 +707,11 @@ test/
 | 8 | 重构现有测试的错误码断言 | `test/semantic/type_checker_test.cpp` | | [X] |
 | 9 | 更新 CMakeLists.txt | `CMakeLists.txt` | | [X] |
 | 10 | 编译确认 + 运行全部测试 | — | | [X] |
+| 11 | **补全第二波 (新增)** | — | | 见下方 |
+| 11a | 修复 T-1 测试放水（if typecheck 改为硬断言） | `test/semantic/type_checker_stmt_test.cpp` | | [ ] |
+| 11b | 修复函数调用 OP_CALL VM Bug | `src/l0_core/vm/vm.cpp` | | [ ] |
+| 11c | 新增语句 IR 构建测试（if/loop/break/continue/赋值） | `test/ir/builder_test.cpp` | | [ ] |
+| 11d | 新增控制流端到端测试（if/loop/match 通过 compileAndRun） | `test/runtime/endpoint_test.cpp` 或 `test/driver/driver_project_test.cpp` | | [ ] |
 
 ### 第二波 2a（建议优先级：高，与第一波可并行推进）
 
@@ -667,7 +751,7 @@ test/
 ### 语句解析测试模板（`parser_stmt_test.cpp`）
 
 ```cpp
-#include "../test_helpers.hpp"
+#include "../helpers/test_helpers.hpp"
 #include "ast_printer.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include <gtest/gtest.h>

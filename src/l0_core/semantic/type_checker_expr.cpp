@@ -376,7 +376,7 @@ NKType TypeChecker::checkCallExpr(syntax::ASTNodeIndex nodeIdx) {
     // 提取签名进行比对 (Function)
     uint32_t sig_id = static_cast<uint32_t>(calleeType.getTypeId());
 
-    const FunctionSignature *sig = globalArena->findFuncSig(sig_id);
+    const FunctionSignature *sig = typeArena->findFuncSig(sig_id);
 
     if (sig == nullptr) {
         reportError(line, column, "Invalid function signature id.");
@@ -417,7 +417,7 @@ NKType TypeChecker::checkMemberExpr(syntax::ASTNodeIndex nodeIdx) {
     }
 
     uint32_t struct_id = static_cast<uint32_t>(objType.getTypeId());
-    const auto *struct_info = globalArena->findStruct(struct_id);
+    const auto *struct_info = typeArena->findStruct(struct_id);
     if (struct_info == nullptr) {
         reportError(line, column, "Invalid global struct type.");
         return NKType::makeUnknown();

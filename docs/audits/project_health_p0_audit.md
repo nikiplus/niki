@@ -12,7 +12,7 @@
 
 1. **IR 降级路径可生成、虚拟机未实现的字节码**会导致「类型过了、能生成 chunk、运行时才炸」——属于最高优先级缺陷类。
 2. **语义检查按单文件 AST 进行**，跨文件符号对类型系统不可见；与「项目级 Driver + Linker」组合在一起时，会出现「链接/运行可能成立，但语义层不成立」或相反的不一致，需尽早定策略并收口。
-3. **Linker 的字符串池合并与操作数重映射**在头文件中承诺为后续能力，`.cpp` 中仍为占位实现；在依赖「全项目共享 `GlobalInterner`」的前提下可维持 MVP，但必须把**不变量写死并加测试**，否则后续一改链接策略就容易出现隐蔽错误。
+3. **Linker 的字符串池合并与操作数重映射**在头文件中承诺为后续能力，`.cpp` 中仍为占位实现；在依赖「全项目共享 `StringInterner`」的前提下可维持 MVP，但必须把**不变量写死并加测试**，否则后续一改链接策略就容易出现隐蔽错误。
 4. **回归测试**对语义专项与复杂工程场景覆盖仍偏薄；仅靠当前单元测试与手工脚本时，上述问题仍可能回归。
 
 ### 2026-04-30 现状快照
@@ -63,7 +63,7 @@
 
 ### 现象
 
-`meta/orchestrator` 编排层中每个源文件独立执行：`Scanner` → `Parser` → `TypeChecker::check` → `IRBuilder` → `Verify` → `LowerToChunk`，仅在 `compileAll` 层共享 `GlobalInterner`。
+`meta/orchestrator` 编排层中每个源文件独立执行：`Scanner` → `Parser` → `TypeChecker::check` → `IRBuilder` → `Verify` → `LowerToChunk`，仅在 `compileAll` 层共享 `StringInterner`。
 
 因此**文件 B 无法在类型检查阶段看到文件 A 的顶层符号**，除非未来引入：
 
@@ -93,7 +93,7 @@
 
 ### 隐含契约（需在文档与测试中写死）
 
-当前链接器依赖：**跨模块 `name_id` 由共享 `GlobalInterner` 统一**，从而弱化「每模块 chunk 内 string 池索引重映射」的紧迫性。一旦未来出现：
+当前链接器依赖：**跨模块 `name_id` 由共享 `StringInterner` 统一**，从而弱化「每模块 chunk 内 string 池索引重映射」的紧迫性。一旦未来出现：
 
 - 每模块独立池与索引，或  
 - 链接期合并常量池，

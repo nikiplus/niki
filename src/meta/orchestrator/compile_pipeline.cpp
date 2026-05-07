@@ -1,4 +1,5 @@
 #include "niki/meta/orchestrator/compile_pipeline.hpp"
+#include "niki/debug/logger.hpp"
 #include "niki/l0_core/ir/builder.hpp"
 #include "niki/l0_core/ir/lower_to_chunk.hpp"
 #include "niki/l0_core/ir/verify.hpp"
@@ -29,7 +30,7 @@ struct DeclLocation {
  * @param unit 编译单元。
  * @return std::vector<syntax::ASTNodeIndex> 顶层声明节点集合。
  */
-std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUnit &unit) {
+std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const CompilationUnit &unit) {
     std::vector<syntax::ASTNodeIndex> decls;
     if (!unit.root.isvalid()) {
         return decls;
@@ -51,7 +52,7 @@ std::vector<syntax::ASTNodeIndex> collectTopLevelDecls(const GlobalCompilationUn
  * @param unit 编译单元。
  * @return std::unordered_map<uint32_t, DeclLocation> 名称 sid 到声明位置映射。
  */
-std::unordered_map<uint32_t, DeclLocation> collectTopDeclNameLocations(const GlobalCompilationUnit &unit) {
+std::unordered_map<uint32_t, DeclLocation> collectTopDeclNameLocations(const CompilationUnit &unit) {
     std::unordered_map<uint32_t, DeclLocation> locations_by_name_id;
     auto decls = collectTopLevelDecls(unit);
     locations_by_name_id.reserve(decls.size());
@@ -84,7 +85,7 @@ std::unordered_map<uint32_t, DeclLocation> collectTopDeclNameLocations(const Glo
  * @param issue verify issue。
  * @return diagnostic::SourceSpan 最佳努力定位后的源码 span。
  */
-diagnostic::SourceSpan buildVerifyIssueSourceSpan(const GlobalCompilationUnit &unit, const ir::ModuleIR &module_ir,
+diagnostic::SourceSpan buildVerifyIssueSourceSpan(const CompilationUnit &unit, const ir::ModuleIR &module_ir,
                                                   const ir::VerifyIssue &issue) {
     uint32_t line = 0;
     uint32_t column = 0;
@@ -107,8 +108,9 @@ diagnostic::SourceSpan buildVerifyIssueSourceSpan(const GlobalCompilationUnit &u
  * @return Chunk 可执行初始化 chunk。
  */
 Chunk makeInitChunkFromLoweredFunctions(const std::vector<vm::ObjFunction *> &lowered_functions,
-                                        const std::vector<std::string> &string_pool) {
+                                        const std::vector<std::string> &string_pool, ModuleId module_id) {
     Chunk init_chunk;
+    init_chunk.module_id = module_id;
     init_chunk.string_pool = string_pool;
     init_chunk.max_register_slots = 1;
     init_chunk.constants.reserve(lowered_functions.size());
@@ -165,39 +167,50 @@ std::unordered_map<uint32_t, uint32_t> collectExportsFromLoweredFunctions(const 
  * @param global_symbols 全局符号表（接口保留）。
  * @return std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> 成功返回后端产物，失败返回诊断。
  */
-std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> compileUnitChunk(GlobalCompilationUnit &unit,
-                                                                                GlobalTypeArena &global_arena,
-                                                                                GlobalSymbolTable &global_symbols) {
+std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> compileUnitChunk(
+    CompilationUnit &unit, TypeArena &global_arena, const semantic::UnitVisibleSymbols *visible_symbols) {
     (void)global_arena;
-    (void)global_symbols;
+    debug::trace("pipeline", "compileUnitChunk: IR build start, path={}", unit.source_path);
     ir::IRBuilder ir_builder;
-    auto ir_result = ir_builder.build(unit);
+    auto ir_result = ir_builder.build(unit, visible_symbols);
     if (!ir_result.has_value()) {
+        debug::trace("pipeline", "compileUnitChunk: IR build FAILED");
         return std::unexpected(std::move(ir_result.error()));
     }
+    debug::trace("pipeline", "compileUnitChunk: IR build OK, funcs={}, blocks={}, insts={}",
+                 ir_result.value().funcs.size(), ir_result.value().blocks.size(), ir_result.value().insts.size());
+    debug::trace("pipeline", "compileUnitChunk: IR verify start");
     ir::VerifyReport verify_report = ir::verifyModuleIRFlat(ir_result.value());
     if (!verify_report.ok()) {
+        debug::trace("pipeline", "compileUnitChunk: IR verify FAILED ({} issues)", verify_report.issues.size());
         diagnostic::DiagnosticBag diagnostics;
         for (const auto &issue : verify_report.issues) {
             std::ostringstream verify_message;
-            verify_message << "IR verify failed code=" << static_cast<uint16_t>(issue.error_code) << " func_idx=" << issue.func_idx
-                           << " rel_block_idx=" << issue.rel_block_idx << " inst_idx=" << issue.inst_idx
-                           << " message=" << issue.message;
+            verify_message << "IR verify failed code=" << static_cast<uint16_t>(issue.error_code)
+                           << " func_idx=" << issue.func_idx << " rel_block_idx=" << issue.rel_block_idx
+                           << " inst_idx=" << issue.inst_idx << " message=" << issue.message;
+            debug::trace("pipeline", "  verify issue: {}", verify_message.str());
             diagnostics.error(diagnostic::events::IRCode::VerifyFailed, verify_message.str(),
                               buildVerifyIssueSourceSpan(unit, ir_result.value(), issue));
         }
         return std::unexpected(std::move(diagnostics));
     }
+    debug::trace("pipeline", "compileUnitChunk: IR verify OK");
+    debug::trace("pipeline", "compileUnitChunk: IR lower start");
     auto lower_result = ir::lowerModuleToChunk(ir_result.value());
     if (!lower_result.has_value()) {
+        debug::trace("pipeline", "compileUnitChunk: IR lower FAILED: {}", lower_result.error());
         diagnostic::DiagnosticBag diagnostics;
         diagnostics.error(diagnostic::events::IRCode::LowerFailed, "IR lower failed: " + lower_result.error(),
                           diagnostic::makeSourceSpan(unit.source_path));
         return std::unexpected(std::move(diagnostics));
     }
+    debug::trace("pipeline", "compileUnitChunk: IR lower OK, lowered_funcs={}", lower_result.value().functions.size());
     UnitCompileArtifact artifact;
+    artifact.module_id = unit.module_id;
     artifact.module_name = ir_result.value().module_name;
-    artifact.init_chunk = makeInitChunkFromLoweredFunctions(lower_result.value().functions, ir_result.value().string_pool);
+    artifact.init_chunk = makeInitChunkFromLoweredFunctions(lower_result.value().functions,
+                                                            ir_result.value().string_pool, unit.module_id);
     artifact.exports = collectExportsFromLoweredFunctions(lower_result.value().functions);
 
     // 收集非函数导出符号（component/kits 等）
@@ -216,8 +229,9 @@ std::expected<UnitCompileArtifact, diagnostic::DiagnosticBag> compileUnitChunk(G
  * @param artifact 后端产物。
  * @return linker::CompileModule 模块产物。
  */
-linker::CompileModule buildCompileModule(std::string source_path, UnitCompileArtifact artifact) {
+linker::CompileModule buildCompileModule(std::string source_path, ModuleId module_id, UnitCompileArtifact artifact) {
     linker::CompileModule module;
+    module.module_id = module_id;
     // 优先取显式 module 名，回退到文件名 stem
     if (!artifact.module_name.empty()) {
         module.module_name = std::move(artifact.module_name);
@@ -238,51 +252,63 @@ linker::CompileModule buildCompileModule(std::string source_path, UnitCompileArt
  * @param global_symbols 全局符号表。
  * @return std::expected<linker::CompileModule, diagnostic::DiagnosticBag> 成功返回模块产物，失败返回诊断。
  */
-std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedBackend(GlobalCompilationUnit &unit,
-                                                                                    GlobalTypeArena &global_arena,
-                                                                                    GlobalSymbolTable &global_symbols) {
-    auto artifact_result = compileUnitChunk(unit, global_arena, global_symbols);
+std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedBackend(
+    CompilationUnit &unit, TypeArena &global_arena, const semantic::UnitVisibleSymbols *visible_symbols) {
+    auto artifact_result = compileUnitChunk(unit, global_arena, visible_symbols);
     if (!artifact_result.has_value()) {
         return std::unexpected(std::move(artifact_result.error()));
     }
-    return buildCompileModule(std::move(unit.source_path), std::move(artifact_result.value()));
+    return buildCompileModule(std::move(unit.source_path), unit.module_id, std::move(artifact_result.value()));
 }
 
 /**
  * @brief 单编译单元完整流水线：预声明、模块可见性、类型检查、后端编译。
- * @note 通过临时 vector 调用 buildModuleSemanticContext，避免复制 GlobalCompilationUnit。
+ * @note 通过临时 vector 调用 buildModuleSemanticContext，避免复制 CompilationUnit。
  */
-std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedUnit(GlobalCompilationUnit &unit,
-                                                                                GlobalTypeArena &global_arena,
-                                                                                GlobalSymbolTable &global_symbols) {
-    auto predeclare_result = meta::precompile::predeclareSingleUnit(unit, global_arena, global_symbols);
+std::expected<linker::CompileModule, diagnostic::DiagnosticBag> compileParsedUnit(CompilationUnit &unit,
+                                                                                  TypeArena &global_arena,
+                                                                                  ModuleNamespace &module_namespace) {
+    debug::trace("pipeline", "compileParsedUnit: predeclare start");
+    auto predeclare_result = meta::precompile::predeclareSingleUnit(unit, global_arena, module_namespace);
     if (!predeclare_result.has_value()) {
+        debug::trace("pipeline", "compileParsedUnit: predeclare FAILED");
         return std::unexpected(std::move(predeclare_result.error()));
     }
+    debug::trace("pipeline", "compileParsedUnit: predeclare OK");
 
-    std::vector<GlobalCompilationUnit> single_unit;
+    std::vector<CompilationUnit> single_unit;
     single_unit.push_back(std::move(unit));
 
-    auto context_result = meta::precompile::buildModuleSemanticContext(single_unit, global_symbols);
+    debug::trace("pipeline", "compileParsedUnit: buildModuleSemanticContext start");
+    auto context_result = meta::precompile::buildModuleSemanticContext(single_unit, module_namespace);
     if (!context_result.has_value()) {
         unit = std::move(single_unit[0]);
+        debug::trace("pipeline", "compileParsedUnit: buildModuleSemanticContext FAILED");
         return std::unexpected(std::move(context_result.error()));
     }
+    debug::trace("pipeline", "compileParsedUnit: buildModuleSemanticContext OK");
 
     semantic::TypeChecker checker;
+    debug::trace("pipeline", "compileParsedUnit: typecheck start");
     auto type_result =
-        checker.check(single_unit[0].pool, single_unit[0].root, global_symbols, global_arena,
-                      context_result.value().visible_per_unit[0]);
+        checker.check(single_unit[0].pool, single_unit[0].root, global_arena,
+                      context_result.value().visible_per_unit[0], single_unit[0].module_id, module_namespace);
     if (!type_result.has_value()) {
         unit = std::move(single_unit[0]);
+        debug::trace("pipeline", "compileParsedUnit: typecheck FAILED");
         return std::unexpected(std::move(type_result.error()));
     }
+    debug::trace("pipeline", "compileParsedUnit: typecheck OK");
 
-    auto backend_result = compileParsedBackend(single_unit[0], global_arena, global_symbols);
+    debug::trace("pipeline", "compileParsedUnit: backend start");
+    auto backend_result =
+        compileParsedBackend(single_unit[0], global_arena, &context_result.value().visible_per_unit[0]);
     unit = std::move(single_unit[0]);
     if (!backend_result.has_value()) {
+        debug::trace("pipeline", "compileParsedUnit: backend FAILED");
         return std::unexpected(std::move(backend_result.error()));
     }
+    debug::trace("pipeline", "compileParsedUnit: DONE");
     return backend_result;
 }
 

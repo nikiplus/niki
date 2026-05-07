@@ -99,6 +99,7 @@ enum class SemanticCode : uint8_t {
     NotABoolContext,
     InvalidUnaryOperand,
     AssignmentToConst,
+    UseOfMovedValue,
 };
 
 enum class IRCode : uint8_t {

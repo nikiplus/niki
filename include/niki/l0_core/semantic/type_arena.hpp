@@ -4,12 +4,12 @@
 #include <string>
 #include <vector>
 namespace niki {
-class GlobalTypeArena {
+class TypeArena {
   public:
     struct StructInfo {
-        uint32_t name_id; ///< 结构体名 id。
-        std::string owner_module; ///< 所属模块路径/标识。
-        std::vector<uint32_t> field_name_ids; ///< 字段名 id 列表。
+        uint32_t name_id;                          ///< 结构体名 id。
+        std::string owner_module;                  ///< 所属模块路径/标识。
+        std::vector<uint32_t> field_name_ids;      ///< 字段名 id 列表。
         std::vector<semantic::NKType> field_types; ///< 字段类型列表。
     };
 
@@ -24,7 +24,7 @@ class GlobalTypeArena {
     const StructInfo *findStruct(uint32_t id) const;
 
   private:
-    std::vector<StructInfo> structs_; ///< 全局结构体池。
-    std::vector<semantic::FunctionSignature> func_sigs_; ///< 全局函数签名池。
+    std::vector<StructInfo> structs_;                    ///< 结构体池。
+    std::vector<semantic::FunctionSignature> func_sigs_; ///< 函数签名池。
 };
 } // namespace niki

@@ -1,6 +1,7 @@
 #pragma once
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
 #include "niki/l0_core/ir/module_ir.hpp"
+#include "niki/l0_core/semantic/module_id.hpp"
 #include "niki/l0_core/vm/chunk.hpp"
 #include <cstdint>
 #include <expected>
@@ -15,6 +16,8 @@ namespace niki::linker {
 
 //---编译产物(每个.nk一个)---
 struct CompileModule {
+    // 模块稳定 id（为 Linker 基于 ID 决议提供基础）。
+    ModuleId module_id = kInvalidModuleId;
     // 模块逻辑名（当前由文件名 stem 推导）。
     std::string module_name;
     // 原始源文件路径（用于报错定位）。
@@ -34,6 +37,8 @@ struct LinkedProgram {
     std::vector<Chunk> init_chunks;
     // 决议后的入口函数 name_id；无入口时保持 UINT32_MAX。
     uint32_t entry_name_id = UINT32_MAX;
+    // 入口函数所属模块 id（供 VM 以 (module_id, name_id) 复合键查找）。
+    ModuleId entry_module_id = kInvalidModuleId;
     // 项目级合并后的字符串池（用于诊断、调试与后续重映射）。
     std::vector<std::string> string_pool;
 };

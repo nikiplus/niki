@@ -55,7 +55,7 @@
 
 ### 现状
 - 负责单 unit 的 IR build/verify/lower，并封装为 `CompileModule`。
-- `compileUnitChunk` 参数包含 `GlobalTypeArena/GlobalSymbolTable`，当前实现中显式 `(void)` 未使用。
+- `compileUnitChunk` 参数包含 `TypeArena/GlobalSymbolTable`，当前实现中显式 `(void)` 未使用。
 - 文件内定义了 `collectTopLevelDecls`（用于 verify issue 位置映射辅助）。
 
 ### 边界残余
@@ -96,7 +96,7 @@
 ## 3.4 parse_stage（`meta/precompile/parse_stage`）
 
 ### 现状
-- 职责清晰：scan + parse，填充 `GlobalCompilationUnit` 的 `tokens/root`。
+- 职责清晰：scan + parse，填充 `CompilationUnit` 的 `tokens/root`。
 - 无符号解析、无可见性构建，单一职责执行较好。
 
 ### 边界残余
@@ -115,7 +115,7 @@
 ## 3.5 predeclare_stage（`meta/precompile/predeclare_stage`）
 
 ### 现状
-- 负责顶层 function/struct/typealias 的预声明，写入 `GlobalSymbolTable/GlobalTypeArena`。
+- 负责顶层 function/struct/typealias 的预声明，写入 `GlobalSymbolTable/TypeArena`。
 - 能处理 `export wrapped decl` 的预声明映射。
 
 ### 边界残余

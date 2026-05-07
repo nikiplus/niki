@@ -1,4 +1,5 @@
 #pragma once
+#include "niki/l0_core/semantic/module_id.hpp"
 #include "niki/l1_domain/ir.hpp"
 #include <cstdint>
 #include <limits>
@@ -83,7 +84,8 @@ enum class InstKind : uint8_t {
     SetMember,
     Jump,
     Branch,
-    Phi
+    Phi,
+    Free
 };
 struct Span {
     // 线性表区间起点（包含）。
@@ -156,6 +158,8 @@ struct InstTable {
 };
 //---模块级 IR 产物（单编译单元一份）---
 struct ModuleIR {
+    // 模块稳定 id（供 lowering 将 module_id 嵌入每个函数 chunk）。
+    ModuleId module_id = kInvalidModuleId;
     // 模块逻辑名（通常来自源路径或模块声明）。
     std::string module_name;
     // 模块原始源路径（用于错误定位与回溯）。

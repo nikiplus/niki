@@ -1,5 +1,6 @@
 #pragma once
 
+#include "niki/l0_core/semantic/module_id.hpp"
 #include "value.hpp"
 #include <cstdint>
 #include <string>
@@ -18,6 +19,8 @@ namespace niki {
  * 也便于 lowering 阶段一次性写入并在调试时做位置回溯。
  */
 struct Chunk {
+    // 稳定模块 id（供 VM 以 (module_id, name_id) 复合键写入 globals 表）。
+    ModuleId module_id = kInvalidModuleId;
     std::vector<uint8_t> code;       ///< 字节码流（opcode + 操作数字节）。
     std::vector<vm::Value> constants; ///< 常量池，按索引被 OP_LOAD_CONST(_W) 读取。
     std::vector<uint32_t> lines;      ///< 与 code 同步的源码行号。

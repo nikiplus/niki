@@ -2,12 +2,13 @@
 
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/syntax/ast_payloads.hpp"
-#include "niki/l0_core/syntax/global_interner.hpp"
+#include "niki/l0_core/syntax/string_interner.hpp"
 #include "niki/l0_core/vm/value.hpp"
 #include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vcruntime_typeinfo.h>
 #include <vector>
 
@@ -105,6 +106,11 @@ struct ASTPool {
     // --- [semantic] 与 nodes 同下标：表达式/子表达式的静态类型（TypeChecker 写，IRBuilder 读）---
     std::vector<semantic::NKType> node_types; ///< 与 nodes 同下标类型表。
 
+    // --- [semantic + ir] 块/函数作用域退出时需 OP_FREE 的局部名 name_id（TypeChecker 写，IRBuilder 读）---
+    /// key: BlockStmt 或 FunctionDecl 节点在 nodes 中的下标。
+    std::unordered_map<uint32_t, std::vector<uint32_t>> block_exit_free_name_ids;
+    std::unordered_map<uint32_t, std::vector<uint32_t>> func_exit_free_name_ids;
+
     // --- [syntax + vm] 解析期字面量常量池；AST 内仅存 const_pool_index，避免把 vm::Value 塞进定长节点 ---
     std::vector<vm::Value> constants; ///< 字面量常量池。
 
@@ -119,17 +125,17 @@ struct ASTPool {
     std::vector<ImportDeclData> import_decl_data; ///< import 声明旁侧表。
     std::vector<ExportDeclData> export_decl_data; ///< export 声明旁侧表。
 
-    // 函数签名的权威 intern 在 GlobalTypeArena；NKType::Function 的 type_id 均为全局 sig id。
+    // 函数签名的权威 intern 在 TypeArena；NKType::Function 的 type_id 均为全局 sig id。
 
     // --- [syntax.intern] Driver 级共享字符串驻留表（ASTPool 只转发，不持有权威ID状态）---
-    GlobalInterner *interner = nullptr; ///< Driver 共享 interner（不拥有生命周期）。
+    StringInterner *interner = nullptr; ///< Driver 共享 interner（不拥有生命周期）。
 
     // --- [syntax.core] 列表视图：对 lists_elements 的只读切片（实现与说明见 ast.cpp）---
     /** @brief 获取 ASTListIndex 对应的只读列表切片。 */
     std::span<const ASTNodeIndex> get_list(ASTListIndex list_info) const;
 
     /** @brief 构造 ASTPool 并绑定共享 interner。 */
-    explicit ASTPool(GlobalInterner &shared_interner);
+    explicit ASTPool(StringInterner &shared_interner);
 
     /** @brief 分配空节点并同步追加旁侧表项。 */
     ASTNodeIndex allocateNode(NodeType type);

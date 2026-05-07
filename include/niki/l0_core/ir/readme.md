@@ -41,7 +41,7 @@ graph LR
 
 ## 数据边界
 
-- 输入：`ASTPool`、`root`、`node_types`、`GlobalSymbolTable`、`GlobalTypeArena`
+- 输入：`ASTPool`、`root`、`node_types`、`ModuleNamespace`、`TypeArena`
 - 输出：`ModuleIR`、`vm::Chunk`（以及 Driver 组织的 `CompileModule`）
 
 ## 模块间依赖

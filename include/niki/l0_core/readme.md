@@ -46,8 +46,8 @@ graph LR
     T --> A[ASTPool]
 
     A --> P[Predeclare]
-    P --> G1[GlobalSymbolTable]
-    P --> G2[GlobalTypeArena]
+    P --> G1[ModuleNamespace]
+    P --> G2[TypeArena]
 
     A --> TC[TypeCheck]
     G1 --> TC
@@ -91,8 +91,8 @@ graph LR
 ```mermaid
 graph LR
     A[ASTPool] --> PD[Predeclare]
-    PD --> GST[GlobalSymbolTable]
-    PD --> GTA[GlobalTypeArena]
+    PD --> GST[ModuleNamespace]
+    PD --> GTA[TypeArena]
     A --> TC[TypeChecker]
     GST --> TC
     GTA --> TC
@@ -149,11 +149,11 @@ graph LR
 
 - Pass-1 Parse
   - 输入：`source text`
-  - 输出：`GlobalCompilationUnit{tokens, ASTPool, root}`
+  - 输出：`CompilationUnit{tokens, ASTPool, root}`
   - 细节：`syntax/readme.md`
 - Pass-2 Predeclare
   - 输入：全部 Unit AST
-  - 输出：`GlobalSymbolTable` + `GlobalTypeArena`
+  - 输出：`ModuleNamespace` + `TypeArena`
   - 细节：`semantic/readme.md`
 - Pass-3 TypeCheck
   - 输入：`ASTPool` + 全局语义表

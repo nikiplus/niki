@@ -1,4 +1,5 @@
 #include "niki/meta/project/project_linker.hpp"
+#include "niki/l0_core/semantic/module_id.hpp"
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -79,22 +80,38 @@ std::expected<linker::LinkedProgram, diagnostic::DiagnosticBag> ProjectLinker::l
     }
     collectMergedStringPool(modules, program.string_pool);
 
-    std::unordered_map<std::string, std::string> name_to_owner;
+    // 基于 (module_id, 符号名) 复合键做重复检测，允许跨模块同名符号。
+    struct SymbolKey {
+        ModuleId module_id;
+        std::string name;
+        bool operator==(const SymbolKey &o) const { return module_id == o.module_id && name == o.name; }
+    };
+    struct SymbolKeyHash {
+        size_t operator()(const SymbolKey &k) const {
+            return std::hash<uint64_t>{}((static_cast<uint64_t>(k.module_id) << 32) ^ std::hash<std::string>{}(k.name));
+        }
+    };
+    std::unordered_map<SymbolKey, std::string, SymbolKeyHash> symbol_def_map; // (module_id, name) -> source_path
+    // 跨模块同名检测：仅检测同模块内的同名符号（多模块允许不同模块上有同名符号）
+    std::unordered_map<std::string, uint32_t> name_to_entry_module; // name -> module_id（用于入口函数定位）
     uint32_t entry_id = UINT32_MAX;
+    uint32_t entry_module_id = kInvalidModuleId;
     int entry_count = 0;
     for (const auto &module : modules) {
         auto defined_symbols = collectDefinedSymbols(module);
         for (const auto &symbol_def : defined_symbols) {
-            auto existing_owner = name_to_owner.find(symbol_def.name);
-            if (existing_owner == name_to_owner.end()) {
-                name_to_owner.emplace(symbol_def.name, symbol_def.module_path);
-            } else {
+            SymbolKey key{module.module_id, symbol_def.name};
+            auto [it, inserted] = symbol_def_map.try_emplace(key, symbol_def.module_path);
+            if (!inserted) {
+                // 同模块、同名符号冲突
                 diagnostics.error(diagnostic::events::LinkerCode::DuplicateSymbol,
-                                  "Duplicate symbol: \"" + symbol_def.name + "\"",
+                                  "Duplicate symbol in same module: \"" + symbol_def.name + "\"",
                                   diagnostic::makeSourceSpan(symbol_def.module_path));
             }
             if (symbol_def.name == options.entry_name) {
+                name_to_entry_module.try_emplace(symbol_def.name, module.module_id);
                 entry_id = symbol_def.id;
+                entry_module_id = module.module_id;
                 entry_count++;
             }
         }
@@ -111,6 +128,7 @@ std::expected<linker::LinkedProgram, diagnostic::DiagnosticBag> ProjectLinker::l
         return std::unexpected(std::move(diagnostics));
     }
     program.entry_name_id = entry_id;
+    program.entry_module_id = entry_module_id;
     return program;
 }
 

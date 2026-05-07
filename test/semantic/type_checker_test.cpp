@@ -1,4 +1,4 @@
-#include "../test_helpers.hpp"
+#include "../helpers/test_helpers.hpp"
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/syntax/ast_payloads.hpp"
@@ -267,7 +267,7 @@ TEST(TypeCheckerExprTest, FunctionCallSigMatch) {
         "func addOne(x:int)->int{return x+1;}"
         "func __test_main()->int{return addOne(41);}"
         "}";
-    GlobalCompilationUnit unit(fixture.interner_);
+    CompilationUnit unit(fixture.interner_);
     unit.source = source;
     unit.source_path = "__test__";
     syntax::Scanner scanner(unit.source, unit.source_path);
@@ -281,6 +281,7 @@ TEST(TypeCheckerExprTest, FunctionCallSigMatch) {
     syntax::Parser parser(unit.source, unit.tokens, unit.pool, unit.source_path);
     auto parse_result = parser.parse();
     unit.root = parse_result.root;
+    unit.module_id = fixture.module_id_allocator_.ensure(unit.source_path);
     auto result = fixture.runTypeCheck(unit);
     EXPECT_TRUE(result.has_value()) << "Function call with matching signature should succeed";
 }
@@ -293,7 +294,7 @@ TEST(TypeCheckerExprTest, FunctionCallArgTypeError) {
         "func addOne(x:int)->int{return x+1;}"
         "func __test_main()->int{return addOne(\"str\");}"
         "}";
-    GlobalCompilationUnit unit(fixture.interner_);
+    CompilationUnit unit(fixture.interner_);
     unit.source = source;
     unit.source_path = "__test__";
     syntax::Scanner scanner(unit.source, unit.source_path);
@@ -307,6 +308,7 @@ TEST(TypeCheckerExprTest, FunctionCallArgTypeError) {
     syntax::Parser parser(unit.source, unit.tokens, unit.pool, unit.source_path);
     auto parse_result = parser.parse();
     unit.root = parse_result.root;
+    unit.module_id = fixture.module_id_allocator_.ensure(unit.source_path);
     auto result = fixture.runTypeCheck(unit);
     // 应产生语义错误（可能是 TypeMismatch 或 ArgumentCountMismatch）
     ASSERT_FALSE(result.has_value()) << "Should report error for argument type mismatch";
@@ -364,4 +366,41 @@ TEST(TypeCheckerExprTest, LargeExpressionChain) {
     EXPECT_TRUE(result.has_value()) << "Complex arithmetic expression should type-check";
     auto bin_indices = fixture.findNodes(unit.pool, NodeType::BinaryExpr);
     EXPECT_GE(bin_indices.size(), 4u) << "Should have multiple binary nodes for complex expression";
+}
+
+// F-1: 堆类型局部变量在块结束时登记待 OP_FREE 的 name_id
+TEST(TypeCheckerOwnershipTest, BlockExitRecordsHeapLocal) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse("{ var s: string = \"z\"; } return 0;");
+    auto result = fixture.runTypeCheck(unit);
+    ASSERT_TRUE(result.has_value());
+    bool any_names = false;
+    for (const auto &kv : unit.pool.block_exit_free_name_ids) {
+        if (!kv.second.empty()) {
+            any_names = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(any_names) << "Block exit should record at least one owned heap local";
+}
+
+// F-2: 赋值 move 后再次使用应报 UseOfMovedValue
+TEST(TypeCheckerOwnershipTest, UseAfterMoveDiagnostic) {
+    ExprTestFixture fixture;
+    auto unit = fixture.wrapAndParse(
+        "var a: string = \"x\";\n"
+        "var b: string = a;\n"
+        "var c: string = a;\n"
+        "return 0;");
+    auto result = fixture.runTypeCheck(unit);
+    ASSERT_FALSE(result.has_value());
+    const auto &diags = result.error().all();
+    bool found = false;
+    for (const auto &d : diags) {
+        if (d.code == diagnostic::codeOf(diagnostic::events::SemanticCode::UseOfMovedValue)) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
 }

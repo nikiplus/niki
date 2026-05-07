@@ -1,14 +1,16 @@
 #pragma once
+
 #include "niki/l0_core/diagnostic/diagnostic.hpp"
-#include "niki/l0_core/semantic/global_symbol_table.hpp"
-#include "niki/l0_core/semantic/global_type_arena.hpp"
+#include "niki/l0_core/semantic/type_arena.hpp"
+#include "niki/l0_core/semantic/module_id.hpp"
+#include "niki/l0_core/semantic/module_namespace.hpp"
 #include "niki/l0_core/semantic/module_semantic.hpp"
 #include "niki/l0_core/semantic/nktype.hpp"
 #include "niki/l0_core/syntax/ast.hpp"
 #include "niki/l0_core/syntax/ast_payloads.hpp"
-#include "nktype.hpp"
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -29,7 +31,7 @@
  * 这是一个非常重要的工程决策：后续 IRBuilder 不再重复推导类型，而是消费语义层已经确定的类型标签。
  * 这种“单一事实来源”能显著减少前后阶段类型分歧。
  *
- * 这里之所以显式持有 `GlobalSymbolTable` / `GlobalTypeArena` / `UnitVisibleSymbols`，
+ * 这里之所以显式持有 `TypeArena` / `UnitVisibleSymbols`，
  * 是为了把“单文件局部语义”与“项目级全局语义”接起来。
  * 没有这三个上下文，跨文件函数、结构体、导入别名等场景将无法稳定判定。
  *
@@ -49,25 +51,30 @@ class TypeChecker {
                                                                           syntax::ASTNodeIndex root);
 
     // 必须已执行 Driver 级预声明（predeclareSingleUnit / predeclareAllUnits），全局表与 arena 不可为空。
+    // check() 接收 module_id + module_namespace，查询时通过 ModuleNamespace 解析符号。
     std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> check(syntax::ASTPool &pool,
                                                                           syntax::ASTNodeIndex root,
-                                                                          const GlobalSymbolTable &global_symbols,
-                                                                          const GlobalTypeArena &global_arena);
+                                                                          const TypeArena &global_arena,
+                                                                          ModuleId module_id,
+                                                                          const ModuleNamespace &module_namespace);
     std::expected<TypeCheckResult, niki::diagnostic::DiagnosticBag> check(
-        syntax::ASTPool &pool, syntax::ASTNodeIndex root, const GlobalSymbolTable &global_symbols,
-        const GlobalTypeArena &global_arena, const UnitVisibleSymbols &visible_symbols);
+        syntax::ASTPool &pool, syntax::ASTNodeIndex root, const TypeArena &global_arena,
+        const UnitVisibleSymbols &visible_symbols, ModuleId module_id, const ModuleNamespace &module_namespace);
 
   private:
     syntax::ASTPool *currentPool = nullptr;
     niki::diagnostic::DiagnosticBag diagnostics;
 
-    const GlobalSymbolTable *globalSymbols = nullptr;
-    const GlobalTypeArena *globalArena = nullptr;
+    const TypeArena *typeArena = nullptr;
     const UnitVisibleSymbols *visibleSymbols = nullptr;
+    ModuleId currentModuleId = kInvalidModuleId;
+    const ModuleNamespace *moduleNamespace = nullptr;
 
     NKType currentReturnType = NKType::makeUnknown();
     bool inFunction = false;
     bool inSystemContext = false;
+    /// loop 嵌套深度：用于校验 break/continue 仅出现在循环体内。
+    int loopNestingDepth = 0;
 
     struct KitsWindowEntry {
         uint32_t component_name_id = 0;
@@ -93,7 +100,12 @@ class TypeChecker {
     int currentDepth = 0;
 
     void beginScope() { currentDepth++; }
-    void endScope();
+    /// 弹出当前 depth 的符号；可选将本层待释放的 owned 符号写入 ASTPool（供 IR 发射 OP_FREE）。
+    void popScope(std::optional<uint32_t> block_exit_node_index, std::optional<uint32_t> func_decl_node_index);
+    void endBlockScope(syntax::ASTNodeIndex block_stmt_node);
+    void endFunctionLocalScope(syntax::ASTNodeIndex function_decl_node);
+    /// 无退出释放列表的作用域（如 component 包装层）。
+    void endScopePlain();
     void declareSymbol(uint32_t name_id, NKType type, uint32_t line, uint32_t column, bool is_owned = false);
     NKType resolveSymbol(uint32_t name_id, uint32_t line, uint32_t column);
     //---辅助方法---
@@ -109,9 +121,12 @@ class TypeChecker {
     }
 
     NKType resolveTypeAnnotation(syntax::ASTNodeIndex typeNodeIdx);
+    static bool isHeapType(NKType type);
+    void tryMarkRhsIdentifierMovedForAssign(uint32_t rhs_name_id);
     //---错误报告---
-    void reportError(uint32_t line, uint32_t column, const std::string &message,
-                      niki::diagnostic::events::SemanticCode code = niki::diagnostic::events::SemanticCode::GenericError);
+    void reportError(
+        uint32_t line, uint32_t column, const std::string &message,
+        niki::diagnostic::events::SemanticCode code = niki::diagnostic::events::SemanticCode::GenericError);
 
     //---遍历入口---
     // checkNode 是语义层总分发器，根据 NodeType 路由到表达式/语句/声明分支。
