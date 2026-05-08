@@ -10,7 +10,7 @@
 #include <vector>
 
 /** @linker_facade: 链接阶段对外契约与入口
- * `CompileModule` / `LinkedProgram` / `LinkOptions` 为跨层稳定类型；`Linker` 为门面见 `ProjectLinker` 的实现说明。
+ * `CompileModule` / `LinkedProgram` / `LinkOptions` 为跨层稳定类型；`Linker::link` 标准实现位于 `src/l0_core/linker/linker_facade.cpp`。
  */
 namespace niki::linker {
 

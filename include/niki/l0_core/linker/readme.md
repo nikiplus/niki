@@ -66,7 +66,7 @@ graph LR
 - `linker/linker_facade.hpp`
 - `src/l0_core/linker/linker_facade.cpp`
 
-标准实现：`src/meta/project/project_linker.cpp`（见 `meta/project/project_linker.hpp` 说明）。
+标准实现：`src/l0_core/linker/linker_facade.cpp`（`Linker::link`）。
 
 ## 当前实现结构（2026-04）
 

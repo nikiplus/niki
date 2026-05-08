@@ -23,8 +23,8 @@
 | **Object artifact（落盘）** | 未来引入的模块化中间文件（格式待定），可由编译器写出、由链接器读入，支撑缓存与增量。 |
 | **Load image（可启动镜像）** | 当前 [`LinkedProgram`](../../include/niki/l0_core/linker/linker_facade.hpp)，或未来替换为带版本/重定位状态的 `LoadableProgram` 等更强类型。 |
 
-**标准实现位置**：[`meta::project::ProjectLinker`](../../include/niki/meta/project/project_linker.hpp)（实现见 [`project_linker.cpp`](../../src/meta/project/project_linker.cpp)）。  
-**稳定门面**：[`niki::linker::Linker`](../../include/niki/l0_core/linker/linker_facade.hpp) 仅转发到 `ProjectLinker`。
+**标准实现位置**：[`niki::linker::Linker::link`](../../include/niki/l0_core/linker/linker_facade.hpp)（实现见 [`linker_facade.cpp`](../../src/l0_core/linker/linker_facade.cpp)）。  
+**启动实现**：[`niki::runtime::Launcher::launchProgram`](../../include/niki/l0_core/runtime/launcher.hpp)（实现见 [`launcher.cpp`](../../src/l0_core/runtime/launcher.cpp)）。
 
 ---
 
@@ -33,30 +33,30 @@
 ```mermaid
 flowchart LR
   compile_pipeline["compile_pipeline\nIR lower -> CompileModule"]
-  project_linker["ProjectLinker.link"]
+  linker_link["Linker.link"]
   linked["LinkedProgram"]
-  runtime_host["RuntimeHost.launch"]
+  launcher_launch["Launcher.launchProgram"]
   vm["VM globals + chunks"]
 
-  compile_pipeline --> project_linker --> linked --> runtime_host --> vm
+  compile_pipeline --> linker_link --> linked --> launcher_launch --> vm
 ```
 
 - **编译后端**（[`compile_pipeline.cpp`](../../src/meta/orchestrator/compile_pipeline.cpp)）产出 `CompileModule`：含每模块 `init_chunk`、`exports`、`exported_symbols` 等。  
-- **链接**（[`project_linker.cpp`](../../src/meta/project/project_linker.cpp)）汇总多模块，做字符串池合并（写入 `LinkedProgram.string_pool`）、导出符号采集、重复符号与入口决议，填充 `LinkedProgram.init_chunks` 与 `entry_name_id`。  
-- **运行**（[`runtime_host.cpp`](../../src/meta/runtime_host/runtime_host.cpp)）顺序执行每个 `init_chunk`，再 `vm.lookupGlobalFunctionById(program.entry_name_id)` 调用入口。
+- **链接**（[`linker_facade.cpp`](../../src/l0_core/linker/linker_facade.cpp)）汇总多模块，做字符串池合并（写入 `LinkedProgram.string_pool`）、导出符号采集、重复符号与入口决议，填充 `LinkedProgram.init_chunks` 与 `entry_name_id` / `entry_module_id`。  
+- **运行**（[`launcher.cpp`](../../src/l0_core/runtime/launcher.cpp)）顺序执行每个 `init_chunk`，再 `vm.lookupGlobalFunctionById(program.entry_module_id, program.entry_name_id)` 调用入口。
 
 ---
 
 ## 4. 执行层不变量（当前行为，需在 L0 写死并测）
 
-以下事实来自 [`vm.cpp`](../../src/l0_core/vm/vm.cpp) 与 `RuntimeHost` 的配合，**链接器与启动器文档必须与之对齐**。
+以下事实来自 [`vm.cpp`](../../src/l0_core/vm/vm.cpp) 与 `Launcher` 的配合，**链接器与启动器文档必须与之对齐**。
 
-1. **Init 顺序**：`RuntimeHost` 按 `LinkedProgram.init_chunks` 的**向量顺序**依次 `executeChunk`；无拓扑排序、无并行。  
+1. **Init 顺序**：`Launcher` 按 `LinkedProgram.init_chunks` 的**向量顺序**依次 `executeChunk`；无拓扑排序、无并行。  
 2. **每 chunk 的字符串池**：`VM::executeChunk` 将 `current_string_pool` 设为**该 chunk 自带**的 `chunk.string_pool`，而非 `LinkedProgram.string_pool`。  
 3. **全局函数表键**：`OP_DEFINE_GLOBAL` 将函数登记到 `globals`，键为 **`ObjFunction::name_id`**（与 IR lower 中 `func_name_sid` 一致），不是「当前 chunk 内名字串在池中的下标」这一概念本身。  
-4. **入口解析**：`program.entry_name_id` 必须与上述 `name_id` 一致，否则 `lookupGlobalFunctionById` 失败。当前 `ProjectLinker` 用导出信息中的 id 与名字匹配入口名（见 `collectDefinedSymbols` 与 `options.entry_name`）。
+4. **入口解析**：`program.entry_name_id` 与 `program.entry_module_id` 必须与全局函数表键一致，否则 `lookupGlobalFunctionById` 失败。当前 `Linker` 用导出信息中的 id 与名字匹配入口名（见 `collectDefinedSymbols` 与 `options.entry_name`）。
 
-**关于 `LinkedProgram.string_pool`**：链接阶段会合并各模块 chunk 的字符串去重后写入该字段，但 **`RuntimeHost` 执行路径不读取它**。若仅用于诊断/调试/未来重映射，应在类型或文档中标注角色，避免调用方误以为「执行已切换到全局池」。
+**关于 `LinkedProgram.string_pool`**：链接阶段会合并各模块 chunk 的字符串去重后写入该字段，但 **`Launcher` 执行路径不读取它**。若仅用于诊断/调试/未来重映射，应在类型或文档中标注角色，避免调用方误以为「执行已切换到全局池」。
 
 ---
 
@@ -70,7 +70,7 @@ flowchart LR
 
 ### 5.2 重复符号检测模型
 
-- **现象**：`ProjectLinker` 用**符号名字符串**（从各模块池取出）检测重复导出。  
+- **现象**：`Linker` 用**符号名字符串**（从各模块池取出）检测重复导出。  
 - **与 VM 的关系**：运行时冲突由 `globals[name_id]` 决定；在**全局 intern 与编译管线保证 SID 一致**的前提下，名字级检测与 SID 级注册可对齐。  
 - **风险**：引入 per-module 池、重命名导出、不同模块相同显示名不同 SID 等时，必须把**符号主键模型**统一到链接器与 VM（见 **L1**）。
 
@@ -88,8 +88,8 @@ flowchart LR
 | 层次 | 职责 |
 |------|------|
 | `meta::precompile` / `compile_pipeline` | 产出 **compile artifact** 或未来 **object artifact**；不决策项目级符号冲突与入口唯一性。 |
-| `meta::project::ProjectLinker`（或未来 `IncrementalLinker`） | 只消费 **稳定 ABI 的链接输入**；完成符号/池/重定位策略与诊断。 |
-| `meta::runtime_host` / `l0` VM | 只消费 **已达启动不变量** 的 load image（未来可要求「已 remap」状态或镜像版本号）。 |
+| `niki::linker::Linker`（或未来 `IncrementalLinker`） | 只消费 **稳定 ABI 的链接输入**；完成符号/池/重定位策略与诊断。 |
+| `niki::runtime::Launcher` / `l0` VM | 只消费 **已达启动不变量** 的 load image（未来可要求「已 remap」状态或镜像版本号）。 |
 
 ---
 
@@ -123,7 +123,7 @@ flowchart LR
 
 ### 必须纳入链接输入摘要的信息（否则会 silent wrong）
 
-- **工具链与策略**：编译器版本、lower 契约版本、`LinkOptions`、`ProjectLinker` 行为版本标识。  
+- **工具链与策略**：编译器版本、lower 契约版本、`LinkOptions`、`Linker` 行为版本标识。  
 - **跨模块耦合**：任一模块导出/公有接口变化，可导致**其它未改文件的链接语义**变化（符号冲突、入口可见性、`init_chunks` 合并顺序的预期）。增量编译若为「文件级粒度」，链接缓存键仍需要 **依赖图闭合集**或 **导出 API 哈希**，不能只凭单文件 stamp。  
 - **L2 与增量的先后顺序**：在未完成「池合并 + remap」或等价不变量闭环前做大规模链接缓存，容易把错误的池语义**固化进缓存**。建议：**L2 行为稳定后再主推 L4 命中路径**。
 
@@ -171,7 +171,7 @@ flowchart LR
 读者在约 10 分钟内应能回答：
 
 - 链接器解决的是哪些**项目级**问题（与语义/单模块编译的边界）？  
-- 今天 `LinkedProgram` 被 **RuntimeHost/VM** 如何使用？`string_pool` 未参与执行的含义是什么？  
+- 今天 `LinkedProgram` 被 **Launcher/VM** 如何使用？`string_pool` 未参与执行的含义是什么？  
 - 当前最大的 **silent wrong** 风险来自哪里？  
 - 落盘与增量链接在路线图中处于哪一阶段、依赖哪些前置（尤其 L2）？  
 - 下一阶段（L0/L1）的**可测完成定义**是什么？

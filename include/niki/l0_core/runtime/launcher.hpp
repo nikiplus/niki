@@ -6,8 +6,8 @@
 #include <expected>
 
 /** @launcher: 链接产物到执行引擎的启动编排层
- * 这个头文件定义 runtime 启动阶段的对外契约。它不参与语法、语义、IR、链接本身，
- * 只负责把 `LinkedProgram` 正确、可诊断地送进 VM 执行。
+ * 这个头文件定义 runtime 启动阶段的对外契约；`Launcher::launchProgram` 标准实现位于 `src/l0_core/runtime/launcher.cpp`。
+ * 它不参与语法、语义、IR、链接本身，只负责把 `LinkedProgram` 正确、可诊断地送进 VM 执行。
  *
  * 从运行时架构看，启动并不是一次“直接调用 main”这么简单，至少包含三个步骤：
  * 1) 装载链接产物；

@@ -55,7 +55,7 @@
 | 映射层 | `src/l0_core/diagnostic/diagnostic.cpp` | `events::*Code -> 标准错误码字符串` 映射与事件归一化 | 新增错误码必须同步 `codeOf(...)` |
 | 渲染层 | `include/niki/l0_core/diagnostic/renderer.hpp` `src/l0_core/diagnostic/renderer.cpp` | 文本渲染与输出格式化 | 禁止编码业务语义分支 |
 | 使用层（前端） | `src/l0_core/syntax/*` `src/l0_core/semantic/*` | 语法/语义阶段上报诊断 | 只发事件，不做码映射 |
-| 使用层（中后端） | `src/l0_core/ir/*` `src/l0_core/linker/*` `src/l0_core/runtime/*` `src/meta/orchestrator/*` `src/meta/project/*` `src/meta/runtime_host/*` `src/meta/precompile/*` | IR/链接/启动与元编排层上报诊断 | 保持 stage 与 error code 一致 |
+| 使用层（中后端） | `src/l0_core/ir/*` `src/l0_core/linker/*` `src/l0_core/runtime/*` `src/meta/orchestrator/*` `src/meta/precompile/*` | IR/链接/启动与元编排层上报诊断 | 保持 stage 与 error code 一致 |
 
 ## 4. 错误码实际位置索引（调用点）
 
@@ -84,12 +84,12 @@
 | `IR_VERIFY_FAILED` | `src/meta/orchestrator/compiler_orchestrator.cpp` | Verify 收到 issue 后聚合上报 |
 | `IR_LOWER_FAILED` | `src/meta/orchestrator/compiler_orchestrator.cpp` | Lower 失败统一上报 |
 | `IR_ERROR` | `src/l0_core/ir/builder.cpp` | Builder 通用错误路径 |
-| `LINKER_DUPLICATE_SYMBOL` | `src/meta/project/project_linker.cpp` | 链接符号冲突 |
-| `LINKER_MULTIPLE_ENTRY` | `src/meta/project/project_linker.cpp` | 多入口冲突 |
-| `LINKER_ENTRY_NOT_FOUND` | `src/meta/project/project_linker.cpp` | 缺失入口或无模块 |
-| `LAUNCHER_INIT_RUNTIME_ERROR` | `src/meta/runtime_host/runtime_host.cpp` | 运行时初始化失败 |
-| `LAUNCHER_ENTRY_LOOKUP_FAILED` | `src/meta/runtime_host/runtime_host.cpp` | 入口查找失败 |
-| `LAUNCHER_ENTRY_RUNTIME_ERROR` | `src/meta/runtime_host/runtime_host.cpp` | 入口执行失败 |
+| `LINKER_DUPLICATE_SYMBOL` | `src/l0_core/linker/linker_facade.cpp` | 链接符号冲突 |
+| `LINKER_MULTIPLE_ENTRY` | `src/l0_core/linker/linker_facade.cpp` | 多入口冲突 |
+| `LINKER_ENTRY_NOT_FOUND` | `src/l0_core/linker/linker_facade.cpp` | 缺失入口或无模块 |
+| `LAUNCHER_INIT_RUNTIME_ERROR` | `src/l0_core/runtime/launcher.cpp` | 运行时初始化失败 |
+| `LAUNCHER_ENTRY_LOOKUP_FAILED` | `src/l0_core/runtime/launcher.cpp` | 入口查找失败 |
+| `LAUNCHER_ENTRY_RUNTIME_ERROR` | `src/l0_core/runtime/launcher.cpp` | 入口执行失败 |
 | `DRIVER_IO_ERROR` | `src/meta/orchestrator/compiler_orchestrator.cpp` | 读取源文件失败 |
 | `DRIVER_NO_INPUT` | `src/meta/orchestrator/compiler_orchestrator.cpp` | 无输入源文件 |
 

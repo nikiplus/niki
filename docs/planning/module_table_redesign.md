@@ -65,7 +65,7 @@ O(number_of_units × total_symbols) — 大型项目不可接受。
 
 ### 1.6 链接阶段基于字符串决议
 
-`project_linker.cpp` 中 `collectDefinedSymbols()` 用 `string_pool[sid]` 反查符号名称，再用 `name_to_owner` 做字符串级别的冲突检测和入口决议。
+`linker_facade.cpp` 中 `collectDefinedSymbols()` 用 `string_pool[sid]` 反查符号名称，再用 `name_to_owner` 做字符串级别的冲突检测和入口决议。
 
 **后果**: 字符串池的合并顺序影响符号决议；"同名"的判断依赖池内字符串一致。
 
@@ -391,7 +391,7 @@ public:
 | `src/l0_core/ir/builder_expression.cpp` | 修改 | `isImportedOrTopLevelName` 改为查 SymbolRefTable |
 | `src/l0_core/ir/builder.cpp` | 修改 | 传递 module_id 到 buildExpr |
 | `include/niki/l0_core/linker/linker_facade.hpp` | 修改 | CompileModule 新增 module_id |
-| `src/meta/project/project_linker.cpp` | 重写 | 链接决议改为基于 ModuleId + SymbolRef 而非字符串 |
+| `src/l0_core/linker/linker_facade.cpp` | 重写 | 链接决议改为基于 ModuleId + SymbolRef 而非字符串 |
 | `include/niki/l0_core/vm/vm.hpp` | 修改 | `globals` key 改为 `(module_id, name_id)` |
 | `src/l0_core/vm/vm.cpp` | 修改 | `defineGlobal/getGlobal` 查找逻辑 |
 | `src/l1_domain/**` | 修改 | ir/sym_record 可能需要 module_id |
@@ -684,7 +684,7 @@ ModuleDecl (用户写，name_id=__t)  // 直接是 root
 | `include/niki/l0_core/linker/linker_facade.hpp` | **修改** | 新增 `#include module_id.hpp`；`CompileModule` 新增 `ModuleId module_id` 字段 |
 | `include/niki/meta/orchestrator/compile_pipeline.hpp` | **修改** | 新增 `#include module_id.hpp`；`UnitCompileArtifact` 新增 `ModuleId module_id` 字段；`buildCompileModule()` 签名新增 `ModuleId module_id` 参数 |
 | `src/meta/orchestrator/compile_pipeline.cpp` | **修改** | `compileUnitChunk()` 中 `artifact.module_id = unit.module_id`（回填）；`buildCompileModule()` 新增 `module_id` 写入；`compileParsedBackend()` 传递 `unit.module_id` |
-| `src/meta/project/project_linker.cpp` | **修改** | 新增 `#include module_id.hpp`；重名检测从单层 `unordered_map<string, source_path>` 改为 `unordered_map<(module_id, string_name), source_path>` 复合键——**允许跨模块同名符号，仅检测同模块内重名**；`SymbolKey` 自定义 hash 使用 `(module_id, name)` |
+| `src/l0_core/linker/linker_facade.cpp` | **修改** | 新增 `#include module_id.hpp`；重名检测从单层 `unordered_map<string, source_path>` 改为 `unordered_map<(module_id, string_name), source_path>` 复合键——**允许跨模块同名符号，仅检测同模块内重名**；`SymbolKey` 自定义 hash 使用 `(module_id, name)` |
 
 ### 15.2 设计要点
 
@@ -708,8 +708,8 @@ ModuleDecl (用户写，name_id=__t)  // 直接是 root
 | `include/niki/l0_core/vm/vm.hpp` | **修改** | 新增 `GlobalKey` / `GlobalKeyHash`；`globals` / `global_objects` 改为 `unordered_map<GlobalKey, …>`；新增 `current_chunk_module_id_`；`lookupGlobalFunctionById(ModuleId, uint32_t)` |
 | `src/l0_core/vm/vm.cpp` | **修改** | `executeChunk` / `executeFunction` 设置 `current_chunk_module_id_`；`OP_DEFINE_GLOBAL*` / `OP_GET_GLOBAL*` / `OP_SET_GLOBAL*` 使用 `(current_chunk_module_id_, name_id)` 复合键 |
 | `include/niki/l0_core/linker/linker_facade.hpp` | **修改** | `LinkedProgram` 新增 `entry_module_id`；链接成功时与 `entry_name_id` 一并回填 |
-| `src/meta/project/project_linker.cpp` | **修改** | `program.entry_module_id = entry_module_id` |
-| `src/meta/runtime_host/runtime_host.cpp` | **修改** | `lookupGlobalFunctionById(program.entry_module_id, program.entry_name_id)` |
+| `src/l0_core/linker/linker_facade.cpp` | **修改** | `program.entry_module_id = entry_module_id` |
+| `src/l0_core/runtime/launcher.cpp` | **修改** | `lookupGlobalFunctionById(program.entry_module_id, program.entry_name_id)` |
 | `include/niki/l0_core/ir/module_ir.hpp` | **修改** | `ModuleIR` 新增 `module_id` |
 | `src/l0_core/ir/builder.cpp` | **修改** | `bc.module.module_id = unit.module_id` |
 | `src/l0_core/ir/lower_to_chunk.cpp` | **修改** | `function_object->chunk.module_id = module_ir.module_id` |
@@ -790,7 +790,7 @@ ModuleDecl (用户写，name_id=__t)  // 直接是 root
 | `src/l0_core/ir/builder_expression.cpp` | **修改** | 删除"阶段 H"标注前缀 |
 | `src/meta/precompile/predeclare_stage.cpp` | **修改** | 4 处删除"阶段 C/K"过渡注释 |
 | `src/meta/precompile/module_context_stage.cpp` | **修改** | 删除"阶段 F"标注前缀 |
-| `src/meta/project/project_linker.cpp` | **修改** | 删除"阶段 I"标注前缀 |
+| `src/l0_core/linker/linker_facade.cpp` | **修改** | 删除"阶段 I"标注前缀 |
 
 ### 18.2 设计要点
 

@@ -20,9 +20,8 @@ def main() -> int:
         "niki/meta/",
     )
 
+    # module_ir.hpp 通过领域扩展段包含 l1_domain；核心 IR 与领域表契约所需，单独豁免。
     adapter_allowlist = {
-        Path("src/l0_core/linker/linker.cpp"),
-        Path("src/l0_core/runtime/launcher.cpp"),
         Path("include/niki/l0_core/ir/module_ir.hpp"),
     }
     targets = list((repo / "src" / "l0_core").rglob("*.cpp")) + list((repo / "include" / "niki" / "l0_core").rglob("*.hpp"))
@@ -56,10 +55,6 @@ def main() -> int:
             if "meta/precompile/" in str(rel).replace("\\", "/"):
                 if header.startswith("niki/meta/orchestrator/"):
                     violations.append(f"{rel}:{lineno}: precompile must not include '{header}'")
-            if "meta/project/" in str(rel).replace("\\", "/") or "meta/runtime_host/" in str(rel).replace("\\", "/"):
-                if header.startswith("niki/meta/orchestrator/") or header.startswith("niki/meta/precompile/"):
-                    violations.append(f"{rel}:{lineno}: project/runtime_host must not include '{header}'")
-
     if violations:
         print("Layer boundary violations found:")
         for v in violations:

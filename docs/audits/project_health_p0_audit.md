@@ -85,7 +85,7 @@
 
 ### 现象
 
-当前链接策略主实现已迁到 `project_linker.cpp`；`src/l0_core/linker/linker_facade.cpp` 仅保留稳定门面转发。仍需关注字符串池重映射与深层重定位演进：
+链接策略主实现位于 `src/l0_core/linker/linker_facade.cpp`。仍需关注字符串池重映射与深层重定位演进：
 
 - 多模块 `init_chunk` 顺序保留；
 - 合并后的 `program.string_pool`（用于诊断等）；
@@ -209,9 +209,9 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 | IR 降级实现 | `src/l0_core/ir/lower_to_chunk.cpp` |
 | 预编译阶段实现 | `src/meta/precompile/parse_stage.cpp` / `src/meta/precompile/predeclare_stage.cpp` / `src/meta/precompile/module_context_stage.cpp` |
 | 编排层入口 | `src/meta/orchestrator/compiler_orchestrator.cpp` |
-| Linker 策略实现 | `src/meta/project/project_linker.cpp` |
+| Linker 策略实现 | `src/l0_core/linker/linker_facade.cpp` |
 | 语义二元表达式 | `src/l0_core/semantic/type_checker_expr.cpp` |
-| 启动与入口策略实现 | `src/meta/runtime_host/runtime_host.cpp` |
+| 启动与入口策略实现 | `src/l0_core/runtime/launcher.cpp` |
 | 测试注册 | `CMakeLists.txt` |
 | 跨文件语义用例（脚本） | `scripts/cases/fail/semantic_01_cross_file_call/` |
 

@@ -74,8 +74,6 @@ set(NIKI_APP_SOURCES
     src/meta/precompile/module_context_stage.cpp
     src/meta/orchestrator/compiler_orchestrator.cpp
     src/meta/orchestrator/compile_pipeline.cpp
-    src/meta/project/project_linker.cpp
-    src/meta/runtime_host/runtime_host.cpp
     src/debug/logger.cpp
     src/debug/diagnostic_logger.cpp
 )

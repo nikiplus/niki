@@ -12,9 +12,9 @@
 
 ## 2. 总体结论
 
-当前代码已经形成“`meta::orchestrator` 负责流程编排、`meta::precompile` 负责语义前置、`l0::linker` 门面 + `meta::project_linker` 标准实现负责链接策略”的骨架，但仍存在以下典型残余：
+当前代码已经形成“`meta::orchestrator` 负责流程编排、`meta::precompile` 负责语义前置、`l0::linker` + `l0::runtime` 负责链接与 VM 启动”的骨架，但仍存在以下典型残余：
 
-1. **（linker 已收敛）`l0` 门面仍转发至 `meta` 实现**：边界已明确为主动设计而非重复实现分歧；演进见 [Linker 演进方案](../architecture/linker_evolution_plan.md)。  
+1. **（linker/runtime 已下沉）链接与 `Launcher` 实现已迁至 `l0_core`**：`l0_core` 不再依赖 `meta` 头文件；演进见 [Linker 演进方案](../architecture/linker_evolution_plan.md)。  
 2. **`compile_pipeline` 与 `predeclare_stage` 重复维护顶层声明收集逻辑**，存在分叉风险。  
 3. **`compile_orchestrator` 仍直接编排部分 `l0` 细节**（`TypeChecker`、`VM/Launcher`），边界仍偏“重”。  
 4. **`module_context_stage` 的模块名绑定策略依赖文件名 stem + interner 查找**，与“语义模块名”存在潜在错位。  
@@ -24,30 +24,17 @@
 
 ## 3. 分模块检查结果
 
-## 3.1 linker（`l0_core/linker` + `meta/project_linker`）
+## 3.1 linker（`l0_core/linker`）
 
-### 改造状态（2026-05-01 已完成）
-- 已将 `meta::project::ProjectLinker` 固化为链接阶段唯一标准实现。
-- `l0_core/linker::Linker` 明确为 Facade，只保留稳定 `link()` 入口。
-- 已删除 `l0_core/linker` 中未启用的影子私有接口（`mergeStringPools/remapChunkOperands/resolveSymbols/mergeInitChunks`）。
-
-### 现状
-- `l0_core/linker::Linker::link` 当前直接委托到 `meta::project::ProjectLinker::link`。
-- 真实链接策略（入口决议、重复符号检查、字符串池合并）位于 `src/meta/project/project_linker.cpp`。
-- `include/niki/l0_core/linker/linker_facade.hpp` 当前承载链接阶段对外契约（`CompileModule`/`LinkedProgram`/`LinkOptions`）与门面 `Linker`。
+### 改造状态（2026-05 起）
+- 链接标准实现位于 `src/l0_core/linker/linker_facade.cpp`（`Linker::link`）；`l0_core` 不包含 `niki/meta/*` include。
+- `include/niki/l0_core/linker/linker_facade.hpp` 承载链接阶段对外契约（`CompileModule`/`LinkedProgram`/`LinkOptions`）与 `Linker`。
 
 ### 边界残余
-- **已收敛主残余**：双实现分叉风险已解除，当前不存在 l0 内部影子实现。
-- 当前是“l0 稳定入口 + meta 唯一实现”的分层形态，需在架构文档中持续强调该约束，避免未来回流。
-
-### 风险
-- 后续新增链接特性（重定位/重映射）如果直接加回 `l0::Linker`，可能重新引入双实现。
-- 若调用方绕过 Facade 直接散落依赖 `meta/project_linker`，会削弱入口稳定性。
+- 无 `meta` 与 `l0` 双轨链接实现；新增链接能力应落在 `linker_facade.cpp`（或拆出的同层实现文件）。
 
 ### 建议
-- 新增链接能力统一落在 `meta::project::ProjectLinker`，`l0::Linker` 仅做门面转发。
-- 为 linker 增补一条约束测试：验证 `l0::Linker::link` 与 `ProjectLinker::link` 行为一致（同输入同诊断/产物）。
-- **远期演进路线**：见 [Linker 演进方案](../architecture/linker_evolution_plan.md)（现状不变量、池/remap、落盘 object、增量链接分阶段）。
+- **远期演进路线**：见 [Linker 演进方案](../architecture/linker_evolution_plan.md)（池/remap、落盘 object、增量链接分阶段）。
 
 ---
 

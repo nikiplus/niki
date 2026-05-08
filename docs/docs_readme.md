@@ -20,9 +20,8 @@
 - 元编排总目录：`include/niki/meta` + `src/meta`
   - `meta/precompile`（解析/预声明/模块语义上下文）
   - `meta/orchestrator`（编译编排）
-  - `meta/project`（项目链接策略）
-  - `meta/runtime_host`（宿主执行策略）
-- 元编排命名空间统一：`niki::meta::precompile` / `niki::meta::orchestrator` / `niki::meta::project` / `niki::meta::runtime_host`
+- 链接与进程内启动：`niki::linker::Linker` / `niki::runtime::Launcher`（实现位于 `l0_core/linker`、`l0_core/runtime`）
+- 元编排命名空间：`niki::meta::precompile` / `niki::meta::orchestrator`
 - 旧兼容头入口（`include/niki/orchestrator`、`include/niki/project`、`include/niki/runtime_host`）已移除
 - `driver` 物理层已移除，统一由 `meta/orchestrator` 提供编排入口
 - 领域扩展：`include/niki/l1_domain` + `src/l1_domain`

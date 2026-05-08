@@ -21,8 +21,7 @@
 - 元编排总层（meta）：统一以 `include/niki/meta` 与 `src/meta` 承载工程编排相关实现：
   - `meta/precompile`：预编译阶段（parse/predeclare/module semantic context）
   - `meta/orchestrator`：项目级编译编排门面
-  - `meta/project`：项目级链接策略
-  - `meta/runtime_host`：进程级启动执行策略
+  - 多模块链接与 VM 启动：`l0_core/linker`、`l0_core/runtime`（`Linker` / `Launcher`），由编排层调用而非定义在 `meta`
 - 旧兼容头路径 `include/niki/orchestrator|project|runtime_host` 已移除。
 - `driver` 目录已下线，不再作为物理层存在。
 
