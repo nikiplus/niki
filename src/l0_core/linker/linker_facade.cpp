@@ -6,7 +6,7 @@
 #include <vector>
 
 /** @linker_facade_impl: 多模块链接实现
- * 将编译期模块产物拼装为 LinkedProgram，完成字符串池合并、同模块重复符号检测与入口决议。
+ * 将编译期模块产物拼装为 LinkedProgram，完成字符串池合并、导出名全局唯一性检测与入口决议。
  */
 namespace niki::linker {
 namespace {
@@ -70,28 +70,39 @@ static std::expected<LinkedProgram, niki::diagnostic::DiagnosticBag> linkModules
     }
     collectMergedStringPool(modules, program.string_pool);
 
-    struct SymbolKey {
+    struct PerModuleSymbolKey {
         ModuleId module_id;
         std::string name;
-        bool operator==(const SymbolKey &o) const { return module_id == o.module_id && name == o.name; }
+        bool operator==(const PerModuleSymbolKey &o) const {
+            return module_id == o.module_id && name == o.name;
+        }
     };
-    struct SymbolKeyHash {
-        size_t operator()(const SymbolKey &k) const {
+    struct PerModuleSymbolKeyHash {
+        size_t operator()(const PerModuleSymbolKey &k) const {
             return std::hash<uint64_t>{}((static_cast<uint64_t>(k.module_id) << 32) ^ std::hash<std::string>{}(k.name));
         }
     };
-    std::unordered_map<SymbolKey, std::string, SymbolKeyHash> symbol_def_map;
+    std::unordered_map<std::string, std::string> global_export_name_to_path;
+    std::unordered_map<PerModuleSymbolKey, std::string, PerModuleSymbolKeyHash> per_module_symbol_map;
     uint32_t entry_id = UINT32_MAX;
     ModuleId entry_module_id = kInvalidModuleId;
     int entry_count = 0;
     for (const auto &module : modules) {
         auto defined_symbols = collectDefinedSymbols(module);
         for (const auto &symbol_def : defined_symbols) {
-            SymbolKey key{module.module_id, symbol_def.name};
-            auto [it, inserted] = symbol_def_map.try_emplace(key, symbol_def.module_path);
-            if (!inserted) {
+            PerModuleSymbolKey per_module_key{module.module_id, symbol_def.name};
+            auto [per_it, per_inserted] = per_module_symbol_map.try_emplace(per_module_key, symbol_def.module_path);
+            if (!per_inserted) {
                 diagnostics.error(niki::diagnostic::events::LinkerCode::DuplicateSymbol,
                                   "Duplicate symbol in same module: \"" + symbol_def.name + "\"",
+                                  niki::diagnostic::makeSourceSpan(symbol_def.module_path));
+            }
+            auto [global_it, global_inserted] =
+                global_export_name_to_path.try_emplace(symbol_def.name, symbol_def.module_path);
+            if (!global_inserted) {
+                diagnostics.error(niki::diagnostic::events::LinkerCode::DuplicateSymbol,
+                                  "Duplicate exported symbol \"" + symbol_def.name + "\" (first in \"" +
+                                      global_it->second + "\", also in \"" + symbol_def.module_path + "\")",
                                   niki::diagnostic::makeSourceSpan(symbol_def.module_path));
             }
             if (symbol_def.name == options.entry_name) {

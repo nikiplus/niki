@@ -114,6 +114,10 @@ add_executable(niki_tests
     test/syntax/scanner_test.cpp
     test/syntax/parser_test.cpp
     test/syntax/parser_stmt_test.cpp
+    test/syntax/parser_expr_matrix_test.cpp
+    test/syntax/parser_stmt_matrix_test.cpp
+    test/syntax/parser_decl_independent_test.cpp
+    test/syntax/parser_decl_dependent_test.cpp
     test/semantic/type_checker_test.cpp
     test/semantic/type_checker_stmt_test.cpp
     test/semantic/module_chain_test.cpp
@@ -126,6 +130,7 @@ add_executable(niki_tests
     test/runtime/launcher_test.cpp
     test/runtime/endpoint_test.cpp
     test/l1_domain/domain_split_test.cpp
+    test/diagnostic/diagnostic_test.cpp
     test/helpers/test_helpers.hpp
 )
 
@@ -140,10 +145,56 @@ include(GoogleTest)
 gtest_discover_tests(niki_tests)
 
 find_package(Python3 COMPONENTS Interpreter)
+
+set(NIKI_CASES_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/cases)
+set(NIKI_FAIL_EXIT 65)
+
 if(Python3_Interpreter_FOUND)
     add_custom_target(check_layer_boundaries
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_layer_boundaries.py
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Check physical layer boundary includes"
     )
+
+    add_test(NAME layer_boundaries
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_layer_boundaries.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    add_test(NAME smoke_e2e
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_case.py
+                $<TARGET_FILE:NIKI> ${CMAKE_CURRENT_SOURCE_DIR}/scripts/smoke 0
+    )
+
+    set(NIKI_CASE_SUCCESS
+        success/01_multi_file_basic
+        success/02_init_order
+        success/03_multi_decl_stable
+        success/04_dice_basic
+        success/06_comment_tokens
+    )
+    foreach(case_rel IN LISTS NIKI_CASE_SUCCESS)
+        string(REPLACE "/" "_" case_id ${case_rel})
+        add_test(NAME cases_${case_id}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_case.py
+                    $<TARGET_FILE:NIKI> ${NIKI_CASES_ROOT}/${case_rel} 0
+        )
+    endforeach()
+
+    set(NIKI_CASE_FAIL
+        fail/link_01_no_entry
+        fail/link_02_multiple_entry
+        fail/link_03_id_conflict
+        fail/semantic_kits_duplicate_alias
+        fail/semantic_01_cross_file_call
+        fail/runtime_01_init_error
+        fail/runtime_02_entry_error
+    )
+    foreach(case_rel IN LISTS NIKI_CASE_FAIL)
+        string(REPLACE "/" "_" case_id ${case_rel})
+        add_test(NAME cases_${case_id}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_case.py
+                    $<TARGET_FILE:NIKI> ${NIKI_CASES_ROOT}/${case_rel} ${NIKI_FAIL_EXIT}
+        )
+    endforeach()
 endif()

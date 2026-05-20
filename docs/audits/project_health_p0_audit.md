@@ -1,8 +1,8 @@
 # Niki 项目健康度体检报告（P0）
 
 **文档性质**：工程诊断与优先级建议，与 `MILESTONES.md` 中的 M0～M2 对齐。  
-**更新说明**：首版整理自 2026-04 代码审查；含二次深入核对（VM 指令分发、Driver 流水线、语义层与测试矩阵）。2026-04-30 已按仓库当前状态复核并修正路径/测试清单。  
-**迁移注记**：文中部分条目基于旧 `Compiler` 路径描述；当前主链路已迁移为 `IRBuilder -> Verify -> LowerToChunk`。
+**更新说明**：首版整理自 2026-04 代码审查；2026-04-30 复核路径/测试清单；**2026-05-18 M0 工程基线已完成**（见 [docs/engineering/m0_baseline.md](../engineering/m0_baseline.md)）。  
+**迁移注记**：文中部分条目基于旧 `Compiler` / `driver` 路径描述；当前主链路为 `meta::orchestrator` + `IRBuilder -> Verify -> LowerToChunk`。
 
 ---
 
@@ -15,11 +15,12 @@
 3. **Linker 的字符串池合并与操作数重映射**在头文件中承诺为后续能力，`.cpp` 中仍为占位实现；在依赖「全项目共享 `StringInterner`」的前提下可维持 MVP，但必须把**不变量写死并加测试**，否则后续一改链接策略就容易出现隐蔽错误。
 4. **回归测试**对语义专项与复杂工程场景覆盖仍偏薄；仅靠当前单元测试与手工脚本时，上述问题仍可能回归。
 
-### 2026-04-30 现状快照
+### 2026-05-18 现状快照（M0 后）
 
-- L0/L1 分层改造主干已落地：领域语义与领域 IR 逻辑已迁入 `l1_domain`，并通过扩展点接入。
-- 文档体系已按领域重组至 `docs/architecture`、`docs/diagnostics`、`docs/audits`、`docs/planning`。
-- 代码仍存在若干架构级 P0 风险（本报告 P0-1 ～ P0-4），当前结论以“结构与语义风险”优先级为主。
+- **M0 已完成**：`CMakePresets.json`、204 项 `ctest` 全绿、`scripts/smoke` 端到端、GitHub Actions CI、工程文档（README / m0_baseline / build_and_test）。
+- L0/L1 分层改造主干已落地；`buildModuleSemanticContext` 已接入跨文件可见性（P0-2 部分缓解，规则仍待收紧）。
+- Opcode 能力表 + `writeRunnableOp` 已阻断多数「能编不能跑」路径（P0-1 部分缓解）。
+- 代码仍存在 P0-1～P0-4、P0-7 等语义/领域风险；**下一优先级为 M1 主路径可信**，而非重复 M0 工程项。
 
 ---
 
@@ -31,11 +32,11 @@
 | P0-2 | Semantic / Precompile-Orchestrator | **阻断级** | 跨文件语义仍依赖显式模块语义上下文构建，若规则收口不足易导致语义与工程模型不一致 |
 | P0-3 | Linker | **高风险** | `mergeStringPools` / `remapChunkOperands` 等为 stub；依赖共享 interner 的隐含契约未用测试锁死 |
 | P0-4 | 语言表面 | **高** | 领域声明已接入 `l1_domain`，但 `system/flow/kits` 的语义到可执行链路仍未完全闭环 |
-| P0-5 | 工程基线 | **高** | `MILESTONES.md` M0：构建、`ctest`、`scripts/test.nk` 端到端需保持可重复绿基线 |
-| P0-6 | 测试矩阵 | **中高** | CMake 未注册语义/类型检查专项测试；无 Driver 级集成测试 |
+| P0-5 | 工程基线 | ~~**高**~~ **已收口（M0）** | Preset、ctest 139 项、smoke、CI；见 [m0_baseline.md](../engineering/m0_baseline.md) |
+| P0-6 | 测试矩阵 | **中** | 已注册 `type_checker_*`、`diagnostic_test`、10×cases、`smoke_e2e`；仍缺 `runProject` 目录级集成测试 |
 | P0-7 | 语义实现细节 | **中** | `Unknown` 操作数在比较运算上被宽松推断为 `Bool`，可能掩盖错误并仍向下编译 |
-| P0-8 | 产品一致性 | **低～中** | Launcher 错误文案硬编码「main」，与 `DriverOptions::entry_name` 可配置性略不一致 |
-| P0-9 | 文档与实现 | **低** | 虚拟机设计文档强调 Scanner 按需迭代；Driver 当前将全文件 token 化入 `vector`（实现选择，非功能错误，但与文档叙事不一致） |
+| P0-8 | 产品一致性 | **低** | Launcher 已使用通用诊断文案；入口名由 `LinkOptions::entry_name` 参与链接阶段 |
+| P0-9 | 文档与实现 | **低** | 虚拟机设计文档强调 Scanner 按需迭代；`parse_stage` 当前将全文件 token 化入 `vector`（实现选择，非功能错误） |
 
 ---
 
@@ -118,29 +119,33 @@ Parser 越完整，用户越容易误以为特性已可用；与 M1「V0 最小�
 
 ---
 
-## 7. P0-5：工程基线（M0）
+## 7. P0-5：工程基线（M0）— 已完成
 
-以 `MILESTONES.md` M0 验收为准：
+M0 已于 2026-05-18 完成，权威操作说明见 [docs/engineering/m0_baseline.md](../engineering/m0_baseline.md)。
 
-- `cmake --preset default` 成功  
-- `cmake --build --preset default` 成功  
-- `ctest --test-dir build` 全绿  
-- `scripts/test.nk` 完成一次端到端执行  
+验收摘要：
 
-**说明**：上述为发布与协作的最低门槛；任何 P0-1～P0-4 的修复都应在该基线绿的前提下合并。
+- [x] `cmake --preset default` / `cmake --build --preset default`
+- [x] `ctest --test-dir build` 全绿（139 项）
+- [x] `.\build\NIKI.exe scripts\smoke` 退出码 0
+- [x] GitHub Actions CI
+
+**说明**：后续 P0-1～P0-4 修复须在绿基线上合并；新增回归优先接入 CTest（`run_case.py` 或 GTest）。
 
 ---
 
 ## 8. 深入考察：测试矩阵（P0-6）
 
-### 当前 `CMakeLists.txt` 中 `niki_tests` 组成（主干）
+### 当前测试组成（2026-05-18）
 
-- `scanner_test` / `parser_test` / `builder_test` / `verify_test` / `module_ir_test` / `driver_project_test` / `linker_test` / `launcher_test` / `domain_split_test`
+**GTest（`niki_tests`）**：含 `scanner_test`、`parser_test`、`parser_stmt_test`、`type_checker_test`、`type_checker_stmt_test`、`module_chain_test`、`builder_test`、`verify_test`、`module_ir_test`、`lower_to_chunk_test`、`driver_project_test`、`linker_test`、`launcher_test`、`endpoint_test`、`domain_split_test`、`diagnostic_test`。
+
+**CTest 附加**：`layer_boundaries`、`smoke_e2e`、10×`cases_*`（见 m0_baseline.md）。
 
 ### 缺口
 
-- **无** `type_checker_*` 或语义层专项测试 → `Unknown` 恢复、比较运算宽松分支等易回归且难察觉。
-- **无** `Driver::runProject` 或「收集 → 编译全部 → 链接 → 启动」的集成测试 → 多文件与诊断聚合路径依赖 `scripts/cases` 与手工。
+- **无** `CompilerOrchestrator::runProject` 临时目录级集成测试（cases 仅覆盖固定目录）。
+- `Unknown` 恢复等语义边角仍易回归，需 M1 补专用断言。
 
 ### 建议（非必须一次做完）
 

@@ -1,12 +1,33 @@
 # 多文件联编测试集
 
-本目录用于验证 `driver -> linker -> launcher -> vm` 的多文件联编路径。
+本目录用于验证 `orchestrator -> linker -> launcher -> vm` 的多文件联编路径。
 
 约束说明（当前阶段）：
 
 - 不支持顶层 `var`
 - 顶层仅允许声明（不允许顶层表达式语句）
 - 跨文件符号调用当前按失败预期处理（记录已知限制）
+
+## CTest 自动化（M0 核心子集）
+
+以下用例已注册到 `ctest`（通过 [scripts/run_case.py](../run_case.py) 断言退出码）：
+
+| CTest 名称 | 目录 | 期望退出码 |
+|---|---|---|
+| `cases_success_01_multi_file_basic` | `success/01_multi_file_basic` | 0 |
+| `cases_success_02_init_order` | `success/02_init_order` | 0 |
+| `cases_success_03_multi_decl_stable` | `success/03_multi_decl_stable` | 0 |
+| `cases_success_04_dice_basic` | `success/04_dice_basic` | 0 |
+| `cases_success_06_comment_tokens` | `success/06_comment_tokens` | 0 |
+| `cases_fail_link_01_no_entry` | `fail/link_01_no_entry` | 65 |
+| `cases_fail_link_02_multiple_entry` | `fail/link_02_multiple_entry` | 65 |
+| `cases_fail_link_03_id_conflict` | `fail/link_03_id_conflict` | 65 |
+| `cases_fail_semantic_kits_duplicate_alias` | `fail/semantic_kits_duplicate_alias` | 65 |
+| `cases_fail_semantic_01_cross_file_call` | `fail/semantic_01_cross_file_call` | 65 |
+| `cases_fail_runtime_01_init_error` | `fail/runtime_01_init_error` | 65 |
+| `cases_fail_runtime_02_entry_error` | `fail/runtime_02_entry_error` | 65 |
+
+说明见 [docs/engineering/m0_baseline.md](../../docs/engineering/m0_baseline.md)。
 
 ## 运行方式
 
@@ -52,4 +73,4 @@
 ## 当前缺陷清单（本轮新增观察）
 
 - 全局共享 `interner` 重构后，`success/*` 不再出现伪 `符号ID冲突`。
-- `link_03_id_conflict` 的失败语义已调整为“重复定义符号”，与当前链接策略一致。
+- `success/04_dice_basic`、`fail/link_03_id_conflict` 已纳入 M0 CTest（2026-05-20）。

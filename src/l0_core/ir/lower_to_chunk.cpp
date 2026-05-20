@@ -174,6 +174,8 @@ std::expected<vm::OPCODE, std::string> mapBinaryOpcode(InstKind inst_kind) {
         return vm::OPCODE::OP_IDIV;
     case InstKind::Mod:
         return vm::OPCODE::OP_IMOD;
+    case InstKind::Dice:
+        return vm::OPCODE::OP_DICE;
     case InstKind::CmpEq:
         return vm::OPCODE::OP_IEQ;
     case InstKind::CmpNe:
@@ -204,6 +206,7 @@ const std::vector<InstOpcodeChecklistEntry> kInstOpcodeChecklist = {
     {InstKind::Mul, vm::OPCODE::OP_IMUL, "Mapped by mapBinaryOpcode."},
     {InstKind::Div, vm::OPCODE::OP_IDIV, "Mapped by mapBinaryOpcode."},
     {InstKind::Mod, vm::OPCODE::OP_IMOD, "Mapped by mapBinaryOpcode."},
+    {InstKind::Dice, vm::OPCODE::OP_DICE, "Mapped by mapBinaryOpcode."},
     {InstKind::Neg, vm::OPCODE::OP_NEG, "Unary negation."},
     {InstKind::CmpEq, vm::OPCODE::OP_IEQ, "Mapped by mapBinaryOpcode."},
     {InstKind::CmpNe, vm::OPCODE::OP_INE, "Mapped by mapBinaryOpcode."},
@@ -363,6 +366,7 @@ std::expected<vm::ObjFunction *, std::string> lowerOneFunction(const ModuleIR &m
             case InstKind::Mul:
             case InstKind::Div:
             case InstKind::Mod:
+            case InstKind::Dice:
             case InstKind::CmpEq:
             case InstKind::CmpNe:
             case InstKind::CmpLt:

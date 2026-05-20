@@ -46,6 +46,8 @@ InstKind mapBinaryTokenToInst(TokenType token_type) {
         return InstKind::Div;
     case TokenType::SYM_MOD:
         return InstKind::Mod;
+    case TokenType::SYM_DICE:
+        return InstKind::Dice;
     case TokenType::SYM_EQUAL_EQUAL:
         return InstKind::CmpEq;
     case TokenType::SYM_BANG_EQUAL:

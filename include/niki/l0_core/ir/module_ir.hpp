@@ -60,6 +60,7 @@ enum class InstKind : uint8_t {
     Mul,
     Div,
     Mod,
+    Dice,
     Neg,
     CmpEq,
     CmpNe,

@@ -47,6 +47,25 @@ TEST(LinkerDiagnosticsTest, DuplicateSymbolProducesDiagnostic) {
     EXPECT_FALSE(diagnostics[0].message.empty());
 }
 
+TEST(LinkerDiagnosticsTest, CrossModuleDuplicateSymbolProducesDiagnostic) {
+    Linker linker;
+    LinkOptions options;
+    options.entry_name = "main";
+
+    std::vector<CompileModule> modules;
+    modules.push_back(makeModuleWithFunction("dup", "a.nk", 0));
+    modules.push_back(makeModuleWithFunction("dup", "b.nk", 1));
+
+    auto result = linker.link(modules, options);
+    ASSERT_FALSE(result.has_value());
+    const auto &diagnostics = result.error().all();
+    ASSERT_FALSE(diagnostics.empty());
+    EXPECT_EQ(diagnostics[0].code, niki::diagnostic::codeOf(niki::diagnostic::events::LinkerCode::DuplicateSymbol));
+    EXPECT_EQ(diagnostics[0].stage, niki::diagnostic::DiagnosticStage::Linker);
+    EXPECT_EQ(diagnostics[0].severity, niki::diagnostic::DiagnosticSeverity::Error);
+    EXPECT_FALSE(diagnostics[0].message.empty());
+}
+
 TEST(LinkerDiagnosticsTest, MissingEntryProducesDiagnostic) {
     Linker linker;
     LinkOptions options;
